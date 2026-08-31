@@ -126,6 +126,40 @@ function broadcastCount() {
   }
 }
 
+function safeSend(ws, obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---------- PVP matchmaking + turn relay ----------
+// Nothing fancy: a waiting list of one-at-a-time players, and a map of
+// active matches (matchId -> [wsA, wsB]) used purely to relay each
+// player's turn payload to their opponent. No game logic lives on the
+// server — both clients run the same deterministic game engine and just
+// exchange what they placed on their own board each round.
+const waitingQueue = []; // { ws, username }
+const activeMatches = new Map(); // matchId -> [ws, ws]
+
+function otherSocketInMatch(matchId, ws) {
+  const pair = activeMatches.get(matchId);
+  if (!pair) return null;
+  return pair[0] === ws ? pair[1] : pair[0];
+}
+
+function removeFromQueue(ws) {
+  const idx = waitingQueue.findIndex((w) => w.ws === ws);
+  if (idx !== -1) waitingQueue.splice(idx, 1);
+}
+
+function leaveAnyActiveMatch(ws) {
+  for (const [matchId, pair] of activeMatches) {
+    if (pair.includes(ws)) {
+      const opp = pair[0] === ws ? pair[1] : pair[0];
+      safeSend(opp, { type: 'opponent_left' });
+      activeMatches.delete(matchId);
+    }
+  }
+}
+
 wss.on('connection', (ws) => {
   clients.add(ws);
   broadcastCount();
@@ -134,15 +168,63 @@ wss.on('connection', (ws) => {
     if (ws.readyState === WebSocket.OPEN) ws.ping();
   }, 25000);
 
+  ws.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw);
+    } catch (e) {
+      return;
+    }
+    if (!msg || typeof msg.type !== 'string') return;
+
+    if (msg.type === 'find_match') {
+      removeFromQueue(ws); // avoid double-queueing the same socket
+      if (waitingQueue.length > 0) {
+        const opponent = waitingQueue.shift();
+        const matchId = crypto.randomBytes(8).toString('hex');
+        activeMatches.set(matchId, [ws, opponent.ws]);
+        const myName = String(msg.username || 'Игрок').slice(0, 20);
+        safeSend(ws, { type: 'match_found', matchId, opponent: opponent.username });
+        safeSend(opponent.ws, { type: 'match_found', matchId, opponent: myName });
+      } else {
+        waitingQueue.push({ ws, username: String(msg.username || 'Игрок').slice(0, 20) });
+        safeSend(ws, { type: 'searching' });
+      }
+      return;
+    }
+
+    if (msg.type === 'cancel_search') {
+      removeFromQueue(ws);
+      return;
+    }
+
+    if (msg.type === 'turn_data' && msg.matchId) {
+      const opp = otherSocketInMatch(msg.matchId, ws);
+      if (opp) safeSend(opp, { type: 'opponent_turn', payload: msg.payload });
+      return;
+    }
+
+    if (msg.type === 'leave_match' && msg.matchId) {
+      const opp = otherSocketInMatch(msg.matchId, ws);
+      if (opp) safeSend(opp, { type: 'opponent_left' });
+      activeMatches.delete(msg.matchId);
+      return;
+    }
+  });
+
   ws.on('close', () => {
     clearInterval(heartbeat);
     clients.delete(ws);
     broadcastCount();
+    removeFromQueue(ws);
+    leaveAnyActiveMatch(ws);
   });
   ws.on('error', () => {
     clearInterval(heartbeat);
     clients.delete(ws);
     broadcastCount();
+    removeFromQueue(ws);
+    leaveAnyActiveMatch(ws);
   });
 });
 
