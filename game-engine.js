@@ -35,11 +35,9 @@ export function cardById(id) {
 }
 
 export function defaultDeckCounts() {
-  const counts = {};
-  CARD_POOL.forEach((c) => {
-    counts[c.id] = c.cost <= 3 ? 2 : 1;
-  });
-  return counts;
+  // A full 30-card starting deck (max 4 copies of any single card),
+  // given to every new account from the moment it's registered.
+  return { c1: 4, c2: 3, c3: 3, c4: 2, c5: 2, c6: 2, c7: 2, c8: 2, c9: 2, s1: 3, s2: 2, s3: 3 };
 }
 
 let uidCounter = 1;
@@ -112,7 +110,25 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
   };
   draw(match.decks[nameA], match.hands[nameA], 3);
   draw(match.decks[nameB], match.hands[nameB], 3);
+  captureCommitted(match);
   return match;
+}
+
+// A snapshot of "what's publicly visible right now" — taken at the start
+// of each placing phase (match creation, and again after every round's
+// combat resolves). While a round is in progress, a player's own board
+// updates live as they play cards, but their opponent's board (and hand
+// count, and queued spells) stay frozen at this snapshot — so nobody
+// can watch the other side's moves happen in real time. Everything
+// becomes visible again the moment both players end their turn and the
+// round resolves.
+function deepClone(x) {
+  return JSON.parse(JSON.stringify(x));
+}
+function captureCommitted(match) {
+  const counts = {};
+  match.players.forEach((n) => { counts[n] = match.hands[n].length; });
+  match.committed = { boards: deepClone(match.boards), handCounts: counts };
 }
 
 export function otherPlayer(match, username) {
@@ -313,6 +329,7 @@ export function tryEndTurn(match, username) {
     draw(match.decks[nameA], match.hands[nameA], 1);
     draw(match.decks[nameB], match.hands[nameB], 1);
     match.phase = 'placing';
+    captureCommitted(match); // new round's hidden baseline = the just-resolved board
   }
 
   return { ready: true, events, gameOver: match.phase === 'over', winner };
@@ -321,6 +338,19 @@ export function tryEndTurn(match, username) {
 // ---------- Snapshots (per-player perspective; hides opponent's hand) ----------
 export function snapshotFor(match, username) {
   const other = otherPlayer(match, username);
+  // During placement, your own board updates live as you play — but the
+  // opponent's side of the field only updates once both of you have
+  // ended the turn and the round has actually resolved. Until then they
+  // see the board exactly as it looked at the start of this round.
+  const stillPlacing = match.phase === 'placing';
+  const committed = match.committed || { boards: {}, handCounts: {} };
+  const opponentBoard = stillPlacing ? (committed.boards[other] || freshBoard()) : match.boards[other];
+  const opponentHandCount = stillPlacing
+    ? (typeof committed.handCounts[other] === 'number' ? committed.handCounts[other] : match.hands[other].length)
+    : match.hands[other].length;
+  const pendingSpells = stillPlacing
+    ? match.pendingSpells.filter((sp) => sp.side === username)
+    : match.pendingSpells;
   return {
     matchId: match.matchId,
     round: match.round,
@@ -332,10 +362,10 @@ export function snapshotFor(match, username) {
     myHp: match.hp[username],
     opponentHp: match.hp[other],
     myBoard: match.boards[username],
-    opponentBoard: match.boards[other],
+    opponentBoard,
     myHand: match.hands[username],
-    opponentHandCount: match.hands[other].length,
-    pendingSpells: match.pendingSpells,
+    opponentHandCount,
+    pendingSpells,
     opponentName: other,
     myReady: match.readyToEnd[username],
     opponentReady: match.readyToEnd[other],

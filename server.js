@@ -86,6 +86,9 @@ app.post('/api/register', (req, res) => {
     passwordHash,
     createdAt: new Date().toISOString(),
   });
+  // Every new account starts with a full 30-card deck already saved,
+  // not just falling back to a default at read time.
+  db.data.decks[name] = engine.defaultDeckCounts();
   db.write();
 
   res.status(201).json({ ok: true });
