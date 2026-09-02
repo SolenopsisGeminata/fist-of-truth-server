@@ -1,14 +1,14 @@
 // Fist Duel — game server
 //
-// Two things live here on one process/port:
-//  1) A WebSocket presence counter (unchanged from before) — counts open
-//     tabs and broadcasts the number.
+// Three things live here on one process/port:
+//  1) A WebSocket presence counter — counts open tabs and broadcasts the number.
 //  2) A real HTTP API for registration/login, backed by a real database
-//     file on disk (lowdb — a small JSON-file database; no native
-//     compilation needed, so it deploys cleanly on free hosts).
-//
-// Passwords are never stored in plain text — they're hashed with bcrypt
-// before being written to the database.
+//     file on disk (lowdb). Passwords are hashed with bcrypt.
+//  3) A fully authoritative PVP match engine (see game-engine.js). The
+//     server holds the only copy of each match's hands, decks, boards,
+//     mana, and combat resolution — PVP clients send intents (place a
+//     card, cast a spell, sacrifice, end turn) and render whatever
+//     snapshot the server sends back. They do not compute outcomes.
 //
 // Run locally:   npm install && npm start
 // Deploy:        see README.md in this folder
@@ -21,15 +21,17 @@ import bcrypt from 'bcryptjs';
 import { WebSocketServer, WebSocket } from 'ws';
 import { LowSync } from 'lowdb';
 import { JSONFileSync } from 'lowdb/node';
+import * as engine from './game-engine.js';
 
 const PORT = process.env.PORT || 3000;
 const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], matches: [] });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [] });
 db.read();
-db.data ||= { users: [], matches: [] };
+db.data ||= { users: [], decks: {}, matches: [] };
+db.data.decks ||= {};
 db.data.matches ||= [];
 db.write();
 
@@ -40,8 +42,6 @@ function findUser(username) {
 }
 
 // In-memory session store: token -> username.
-// (Simple and fine for a small game server; sessions reset if the
-// process restarts, which just means players log in again.)
 const sessions = new Map();
 function makeToken() {
   return crypto.randomBytes(24).toString('hex');
@@ -50,6 +50,10 @@ function usernameFromRequest(req) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   return token ? sessions.get(token) : null;
+}
+
+function getDeckCounts(username) {
+  return db.data.decks[username] || engine.defaultDeckCounts();
 }
 
 // ---------- HTTP API ----------
@@ -115,6 +119,32 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+// Deck is tied to the account, not local storage, because the server
+// needs it to build a real draw pile when a PVP match starts.
+app.get('/api/deck', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  res.json({ counts: getDeckCounts(username) });
+});
+
+app.post('/api/deck', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  const counts = (req.body && req.body.counts) || {};
+  const clean = {};
+  let total = 0;
+  for (const id of Object.keys(counts)) {
+    if (!engine.cardById(id)) continue;
+    const n = Math.max(0, Math.min(4, Math.floor(Number(counts[id]) || 0)));
+    if (n > 0) clean[id] = n;
+    total += n;
+  }
+  if (total > 30) return res.status(400).json({ error: 'В колоде не может быть больше 30 карт.' });
+  db.data.decks[username] = clean;
+  db.write();
+  res.json({ ok: true });
+});
+
 app.get('/api/matches/:matchId', (req, res) => {
   const record = db.data.matches.find((m) => m.matchId === req.params.matchId);
   if (!record) return res.status(404).json({ error: 'Матч не найден.' });
@@ -137,127 +167,30 @@ function safeSend(ws, obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
 
-// ---------- Card stats mirror (for validating incoming turns) ----------
-// Keep this in sync with the client's POOL in fist-duel.html. Only the
-// fields needed to validate a submitted board/spell are duplicated here —
-// the server still doesn't run combat, it just checks that what a client
-// claims to have played is actually legal (a real card, real stats,
-// affordable with that round's mana).
-const CARD_POOL = [
-  { name: 'Забияка', cost: 1, atk: 1, hp: 2 },
-  { name: 'Щитоносец', cost: 2, atk: 1, hp: 5 },
-  { name: 'Костолом', cost: 2, atk: 3, hp: 2 },
-  { name: 'Наёмник', cost: 3, atk: 3, hp: 3 },
-  { name: 'Ветеран Ямы', cost: 3, atk: 2, hp: 6 },
-  { name: 'Берсерк', cost: 4, atk: 6, hp: 2 },
-  { name: 'Каменная Стена', cost: 4, atk: 2, hp: 9 },
-  { name: 'Чемпион Ринга', cost: 5, atk: 5, hp: 6 },
-  { name: 'Тяжеловес', cost: 6, atk: 7, hp: 8 },
-];
-const SPELL_POOL = [
-  { name: 'Удар в челюсть', cost: 2, dmg: 3 },
-  { name: 'Прямой в корпус', cost: 4, dmg: 5 },
-  { name: 'Перевязка', cost: 2, heal: 4 },
-];
-
-function findCardByName(name) {
-  return CARD_POOL.find((c) => c.name === name);
-}
-function findSpellByName(name) {
-  return SPELL_POOL.find((c) => c.name === name);
-}
-function maxManaForRound(round) {
-  return Math.min(2 + Math.max(0, round - 1), 10);
-}
-function isValidBoardShape(b) {
-  return Array.isArray(b) && b.length === 3 && b.every((lane) => Array.isArray(lane) && lane.length === 2);
-}
-
-// Checks a submitted turn against the match's last known state for that
-// player. Returns null if it's legal, or a human-readable reason if not.
-// Newly-appeared units (weren't in the same lane/slot last time) must be
-// real cards played within that round's mana budget; units that already
-// existed just get their current HP sanity-checked (can go down from
-// combat, or up from a heal, but never above their own max HP).
-function validateTurn(record, username, payload) {
-  const board = payload && payload.board;
-  const spells = (payload && payload.spells) || [];
-  if (!isValidBoardShape(board)) return 'Некорректная форма доски.';
-
-  const prevBoard = record.boards[username] || emptyBoard();
-  let spent = 0;
-
-  for (let l = 0; l < 3; l++) {
-    for (let d = 0; d < 2; d++) {
-      const unit = board[l][d];
-      if (!unit) continue;
-      if (typeof unit.name !== 'string' || typeof unit.atk !== 'number' || typeof unit.hp !== 'number') {
-        return 'Некорректные данные юнита.';
-      }
-      const card = findCardByName(unit.name);
-      if (!card) return `Неизвестная карта: ${unit.name}`;
-      if (unit.atk !== card.atk) return `Некорректная атака у ${unit.name}.`;
-      if (unit.hp < 1 || unit.hp > card.hp) return `Некорректное HP у ${unit.name}.`;
-
-      const prevUnit = prevBoard[l] && prevBoard[l][d];
-      const isSameUnit = prevUnit && prevUnit.name === unit.name;
-      if (!isSameUnit) spent += card.cost; // a freshly placed card this round
-    }
-  }
-
-  for (const sp of spells) {
-    if (!sp || typeof sp.name !== 'string') return 'Некорректное заклинание.';
-    const card = findSpellByName(sp.name);
-    if (!card) return `Неизвестное заклинание: ${sp.name}`;
-    spent += card.cost;
-  }
-
-  const allowed = maxManaForRound(record.round) + Math.max(0, Math.min(7, Math.floor(Number(payload && payload.sacrifices) || 0)));
-  if (spent > allowed) return `Потрачено ${spent} маны при лимите ${allowed} в этом раунде.`;
-  return null;
-}
-
-// ---------- PVP matchmaking + persisted match state ----------
-// Each match's game state (round, HP, last known board for each player) is
-// written to the same database file as user accounts, under db.data.matches.
-// The server still doesn't referee the game itself — clients run the same
-// deterministic engine and report their results back — but the state is
-// now durable: if the process restarts, or a player refreshes the page,
-// the match can be looked up and resumed instead of being lost.
+// ---------- PVP: live authoritative matches + matchmaking ----------
+// `liveMatches` holds the real, in-memory, authoritative engine.Match
+// objects (see game-engine.js) plus the two players' live sockets.
+// `db.data.matches` holds a durable, JSON-safe snapshot of the same data
+// for resume-after-restart — written on every state-changing action.
 const waitingQueue = []; // { ws, username }
-const activeMatches = new Map(); // matchId -> { usernames:[a,b], sockets:{ [username]: ws } }
+const liveMatches = new Map(); // matchId -> { match, sockets: { [username]: ws } }
 
-function findMatchRecord(matchId) {
-  return db.data.matches.find((m) => m.matchId === matchId);
-}
-
-function upsertMatchRecord(record) {
-  const idx = db.data.matches.findIndex((m) => m.matchId === record.matchId);
-  if (idx === -1) db.data.matches.push(record);
-  else db.data.matches[idx] = record;
+function persistMatch(mm) {
+  const snap = engine.serializeMatch(mm.match);
+  snap.updatedAt = new Date().toISOString();
+  const idx = db.data.matches.findIndex((m) => m.matchId === snap.matchId);
+  if (idx === -1) db.data.matches.push(snap);
+  else db.data.matches[idx] = snap;
   db.write();
 }
 
-function emptyBoard() {
-  // Mirrors the client's freshBoard(): 3 lanes, each [front, back] = [null, null].
-  return [[null, null], [null, null], [null, null]];
-}
-
-function createMatchRecord(matchId, nameA, nameB) {
-  const now = new Date().toISOString();
-  const record = {
-    matchId,
-    players: [nameA, nameB],
-    round: 1,
-    hp: { [nameA]: 30, [nameB]: 30 },
-    boards: { [nameA]: emptyBoard(), [nameB]: emptyBoard() },
-    status: 'active', // active | finished | abandoned
-    winner: null,
-    startedAt: now,
-    updatedAt: now,
-  };
-  upsertMatchRecord(record);
-  return record;
+function sendSnapshots(mm) {
+  for (const username of mm.match.players) {
+    safeSend(mm.sockets[username], {
+      type: 'state_update',
+      state: engine.snapshotFor(mm.match, username),
+    });
+  }
 }
 
 function removeFromQueue(ws) {
@@ -265,21 +198,27 @@ function removeFromQueue(ws) {
   if (idx !== -1) waitingQueue.splice(idx, 1);
 }
 
-// Detach a disconnected socket from any match it was part of, without
-// ending the match — the stored state stays put so the player can
-// reconnect via 'resume_match'. The opponent just gets a soft notice.
+// Detach a disconnected socket from any live match without ending it —
+// the match (and its full hidden state) stays in memory + db so the
+// player can reconnect via 'resume_match'.
 function handleSocketDisconnect(ws) {
   removeFromQueue(ws);
-  for (const [matchId, mm] of activeMatches) {
+  for (const mm of liveMatches.values()) {
     for (const username of Object.keys(mm.sockets)) {
       if (mm.sockets[username] === ws) {
         delete mm.sockets[username];
-        const otherName = mm.usernames.find((n) => n !== username);
-        const oppWs = mm.sockets[otherName];
-        safeSend(oppWs, { type: 'opponent_disconnected' });
+        const otherName = engine.otherPlayer(mm.match, username);
+        safeSend(mm.sockets[otherName], { type: 'opponent_disconnected' });
       }
     }
   }
+}
+
+function endMatch(mm, status, winner) {
+  mm.match.status = status;
+  mm.match.winner = winner || null;
+  persistMatch(mm);
+  liveMatches.delete(mm.match.matchId);
 }
 
 wss.on('connection', (ws) => {
@@ -299,21 +238,26 @@ wss.on('connection', (ws) => {
     }
     if (!msg || typeof msg.type !== 'string') return;
 
+    // ---- Matchmaking ----
     if (msg.type === 'find_match') {
-      removeFromQueue(ws); // avoid double-queueing the same socket
+      removeFromQueue(ws);
+      const myName = String(msg.username || 'Игрок').slice(0, 20);
       if (waitingQueue.length > 0) {
         const opponent = waitingQueue.shift();
         const matchId = crypto.randomBytes(8).toString('hex');
-        const myName = String(msg.username || 'Игрок').slice(0, 20);
-        activeMatches.set(matchId, {
-          usernames: [myName, opponent.username],
-          sockets: { [myName]: ws, [opponent.username]: opponent.ws },
-        });
-        createMatchRecord(matchId, myName, opponent.username);
+        const match = engine.createMatch(
+          matchId,
+          myName, getDeckCounts(myName),
+          opponent.username, getDeckCounts(opponent.username)
+        );
+        const mm = { match, sockets: { [myName]: ws, [opponent.username]: opponent.ws } };
+        liveMatches.set(matchId, mm);
+        persistMatch(mm);
         safeSend(ws, { type: 'match_found', matchId, opponent: opponent.username });
         safeSend(opponent.ws, { type: 'match_found', matchId, opponent: myName });
+        sendSnapshots(mm);
       } else {
-        waitingQueue.push({ ws, username: String(msg.username || 'Игрок').slice(0, 20) });
+        waitingQueue.push({ ws, username: myName });
         safeSend(ws, { type: 'searching' });
       }
       return;
@@ -324,99 +268,91 @@ wss.on('connection', (ws) => {
       return;
     }
 
-    if (msg.type === 'turn_data' && msg.matchId && msg.username) {
-      const mm = activeMatches.get(msg.matchId);
+    // ---- In-match actions (all validated server-side in game-engine.js) ----
+    if (msg.type === 'place_card' && msg.matchId) {
+      const mm = liveMatches.get(msg.matchId);
       if (!mm) return;
-      const record = findMatchRecord(msg.matchId);
-      if (record) {
-        const reason = validateTurn(record, msg.username, msg.payload);
-        if (reason) {
-          safeSend(ws, { type: 'turn_rejected', reason });
-          return; // don't relay or persist an illegal turn
-        }
-      }
-      const otherName = mm.usernames.find((n) => n !== msg.username);
-      safeSend(mm.sockets[otherName], { type: 'opponent_turn', payload: msg.payload });
-
-      if (record) {
-        record.boards[msg.username] = (msg.payload && msg.payload.board) || emptyBoard();
-        record.updatedAt = new Date().toISOString();
-        upsertMatchRecord(record);
-      }
+      const result = engine.placeCard(mm.match, msg.username, msg.uid, msg.lane, msg.depth);
+      if (result.error) { safeSend(ws, { type: 'action_rejected', reason: result.error }); return; }
+      persistMatch(mm);
+      sendSnapshots(mm);
       return;
     }
 
-    if (msg.type === 'state_sync' && msg.matchId && msg.username) {
-      const mm = activeMatches.get(msg.matchId);
-      const record = findMatchRecord(msg.matchId);
-      if (!record) return;
-      const otherName = mm
-        ? mm.usernames.find((n) => n !== msg.username)
-        : record.players.find((n) => n !== msg.username);
-      const clampHp = (v) => Math.max(0, Math.min(30, v));
-      record.round = msg.round || record.round;
-      if (typeof msg.myHp === 'number') record.hp[msg.username] = clampHp(msg.myHp);
-      if (typeof msg.opponentHp === 'number' && otherName) record.hp[otherName] = clampHp(msg.opponentHp);
-      record.updatedAt = new Date().toISOString();
-      upsertMatchRecord(record);
+    if (msg.type === 'cast_spell' && msg.matchId) {
+      const mm = liveMatches.get(msg.matchId);
+      if (!mm) return;
+      const result = engine.castSpell(mm.match, msg.username, msg.uid, msg.lane, msg.depth);
+      if (result.error) { safeSend(ws, { type: 'action_rejected', reason: result.error }); return; }
+      persistMatch(mm);
+      sendSnapshots(mm);
       return;
     }
 
-    if (msg.type === 'match_over' && msg.matchId && msg.username) {
-      const record = findMatchRecord(msg.matchId);
-      if (record && record.status === 'active') {
-        const otherName = record.players.find((n) => n !== msg.username);
-        record.status = 'finished';
-        record.winner = msg.result === 'win' ? msg.username : otherName;
-        record.updatedAt = new Date().toISOString();
-        upsertMatchRecord(record);
+    if (msg.type === 'sacrifice' && msg.matchId) {
+      const mm = liveMatches.get(msg.matchId);
+      if (!mm) return;
+      const result = engine.sacrifice(mm.match, msg.username, msg.uid);
+      if (result.error) { safeSend(ws, { type: 'action_rejected', reason: result.error }); return; }
+      persistMatch(mm);
+      sendSnapshots(mm);
+      return;
+    }
+
+    if (msg.type === 'end_turn' && msg.matchId) {
+      const mm = liveMatches.get(msg.matchId);
+      if (!mm) return;
+      const result = engine.tryEndTurn(mm.match, msg.username);
+      if (!result.ready) {
+        persistMatch(mm);
+        sendSnapshots(mm); // just marks this player as "ready", opponent still placing
+        return;
       }
-      activeMatches.delete(msg.matchId);
+      // Both players were ready — resolution just ran synchronously inside
+      // tryEndTurn(). Send the event log (for animation) + fresh per-player
+      // snapshots (for the settled state) to both sides.
+      for (const username of mm.match.players) {
+        safeSend(mm.sockets[username], {
+          type: 'resolution',
+          events: result.events,
+          state: engine.snapshotFor(mm.match, username),
+        });
+      }
+      persistMatch(mm);
+      if (result.gameOver) endMatch(mm, 'finished', result.winner);
       return;
     }
 
     if (msg.type === 'leave_match' && msg.matchId && msg.username) {
-      const mm = activeMatches.get(msg.matchId);
-      const record = findMatchRecord(msg.matchId);
-      const otherName = mm
-        ? mm.usernames.find((n) => n !== msg.username)
-        : record && record.players.find((n) => n !== msg.username);
-      if (mm) safeSend(mm.sockets[otherName], { type: 'opponent_left' });
-      if (record && record.status === 'active') {
-        record.status = 'abandoned';
-        record.winner = otherName || null;
-        record.updatedAt = new Date().toISOString();
-        upsertMatchRecord(record);
+      const mm = liveMatches.get(msg.matchId);
+      if (mm) {
+        const otherName = engine.otherPlayer(mm.match, msg.username);
+        safeSend(mm.sockets[otherName], { type: 'opponent_left' });
+        endMatch(mm, 'abandoned', otherName);
       }
-      activeMatches.delete(msg.matchId);
       return;
     }
 
     if (msg.type === 'resume_match' && msg.matchId && msg.username) {
-      const record = findMatchRecord(msg.matchId);
-      if (!record || record.status !== 'active' || !record.players.includes(msg.username)) {
+      let mm = liveMatches.get(msg.matchId);
+      if (!mm) {
+        // Not live (server restarted, or this player's browser reconnected
+        // to a match only the db remembers) — try to rebuild it from disk.
+        const record = db.data.matches.find((m) => m.matchId === msg.matchId);
+        if (!record || record.status !== 'active' || !record.players.includes(msg.username)) {
+          safeSend(ws, { type: 'resume_failed' });
+          return;
+        }
+        mm = { match: record, sockets: {} };
+        liveMatches.set(msg.matchId, mm);
+      }
+      if (!mm.match.players.includes(msg.username)) {
         safeSend(ws, { type: 'resume_failed' });
         return;
       }
-      let mm = activeMatches.get(msg.matchId);
-      if (!mm) {
-        mm = { usernames: record.players.slice(), sockets: {} };
-        activeMatches.set(msg.matchId, mm);
-      }
       mm.sockets[msg.username] = ws;
-      const otherName = record.players.find((n) => n !== msg.username);
-      safeSend(ws, {
-        type: 'match_state',
-        matchId: msg.matchId,
-        round: record.round,
-        myHp: record.hp[msg.username],
-        opponentHp: record.hp[otherName],
-        myBoard: record.boards[msg.username] || emptyBoard(),
-        opponentBoard: record.boards[otherName] || emptyBoard(),
-        opponentName: otherName,
-      });
-      // Let the opponent know this player is back, in case they were
-      // waiting on an 'opponent_disconnected' notice.
+      safeSend(ws, { type: 'state_update', state: engine.snapshotFor(mm.match, msg.username), resumed: true });
+      const otherName = engine.otherPlayer(mm.match, msg.username);
       safeSend(mm.sockets[otherName], { type: 'opponent_reconnected' });
       return;
     }
