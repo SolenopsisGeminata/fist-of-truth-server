@@ -312,11 +312,14 @@ wss.on('connection', (ws) => {
         return;
       }
       // Both players were ready — resolution just ran synchronously inside
-      // tryEndTurn(). Send the event log (for animation) + fresh per-player
-      // snapshots (for the settled state) to both sides.
+      // tryEndTurn(). Send each side: the pre-resolution board (so the
+      // client can reveal what was actually placed first), the event log
+      // (for spell/combat animation), and the settled final snapshot.
       for (const username of mm.match.players) {
+        const other = engine.otherPlayer(mm.match, username);
         safeSend(mm.sockets[username], {
           type: 'resolution',
+          preBoard: { myBoard: result.preBoards[username], opponentBoard: result.preBoards[other] },
           events: result.events,
           state: engine.snapshotFor(mm.match, username),
         });

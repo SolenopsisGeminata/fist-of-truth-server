@@ -305,6 +305,12 @@ export function tryEndTurn(match, username) {
   }
 
   match.phase = 'resolving';
+  // Snapshot exactly what both sides placed this round, before anything
+  // fires — the client renders this first (revealing the opponent's
+  // moves, which were hidden during placement) so units visibly appear
+  // on the field before spells or combat animate.
+  const preBoards = { [nameA]: deepClone(match.boards[nameA]), [nameB]: deepClone(match.boards[nameB]) };
+
   const events = [];
   resolveSpells(match, events);
   resolveCombat(match, events);
@@ -332,7 +338,7 @@ export function tryEndTurn(match, username) {
     captureCommitted(match); // new round's hidden baseline = the just-resolved board
   }
 
-  return { ready: true, events, gameOver: match.phase === 'over', winner };
+  return { ready: true, events, gameOver: match.phase === 'over', winner, preBoards };
 }
 
 // ---------- Snapshots (per-player perspective; hides opponent's hand) ----------
