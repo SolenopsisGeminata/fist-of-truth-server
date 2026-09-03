@@ -191,6 +191,7 @@ export function castSpell(match, username, uid, lane, depth) {
 
 export function sacrifice(match, username, uid) {
   if (match.phase !== 'placing') return { error: 'Сейчас не фаза расстановки.' };
+  if (match.sacrifices[username] >= 1) return { error: 'В этом раунде уже принесена жертва.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
   if (idx === -1) return { error: 'Такой карты нет в руке.' };
@@ -374,6 +375,7 @@ export function snapshotFor(match, username) {
     pendingSpells,
     opponentName: other,
     myReady: match.readyToEnd[username],
+    mySacrifices: match.sacrifices[username],
     opponentReady: match.readyToEnd[other],
   };
 }
