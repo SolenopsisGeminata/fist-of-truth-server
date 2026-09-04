@@ -16,8 +16,8 @@ export const MAX_MANA = 10;
 export const MAX_HAND = 7;
 
 export const CARD_POOL = [
-  { id: 'c1', name: '\u0417\u0430\u0431\u0438\u044f\u043a\u0430', type: 'creature', cost: 1, atk: 1, hp: 2 },
-  { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5 },
+  { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 1, atk: 1, hp: 3 },
+  { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1 },
   { id: 'c3', name: '\u041a\u043e\u0441\u0442\u043e\u043b\u043e\u043c', type: 'creature', cost: 2, atk: 3, hp: 2 },
   { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3 },
   { id: 'c5', name: '\u0412\u0435\u0442\u0435\u0440\u0430\u043d \u042f\u043c\u044b', type: 'creature', cost: 3, atk: 2, hp: 6 },
@@ -25,6 +25,7 @@ export const CARD_POOL = [
   { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 4, atk: 2, hp: 9 },
   { id: 'c8', name: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d \u0420\u0438\u043d\u0433\u0430', type: 'creature', cost: 5, atk: 5, hp: 6 },
   { id: 'c9', name: '\u0422\u044f\u0436\u0435\u043b\u043e\u0432\u0435\u0441', type: 'creature', cost: 6, atk: 7, hp: 8 },
+  { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1 },
   { id: 's1', name: '\u0423\u0434\u0430\u0440 \u0432 \u0447\u0435\u043b\u044e\u0441\u0442\u044c', type: 'spell', cost: 2, dmg: 3 },
   { id: 's2', name: '\u041f\u0440\u044f\u043c\u043e\u0439 \u0432 \u043a\u043e\u0440\u043f\u0443\u0441', type: 'spell', cost: 4, dmg: 5 },
   { id: 's3', name: '\u041f\u0435\u0440\u0435\u0432\u044f\u0437\u043a\u0430', type: 'spell', cost: 2, heal: 4 },
@@ -157,6 +158,7 @@ export function placeCard(match, username, uid, lane, depth) {
     atk: card.atk,
     hp: card.hp,
     maxHp: card.hp,
+    armor: card.armor || 0,
   };
   return { ok: true };
 }
@@ -225,12 +227,13 @@ function resolveSpells(match, events) {
       const board = match.boards[defenderName];
       const info = frontUnit(board, spell.laneIdx);
       if (info) {
-        info.unit.hp -= spell.dmg;
+        const applied = Math.max(0, spell.dmg - (info.unit.armor || 0));
+        info.unit.hp -= applied;
         const died = info.unit.hp <= 0;
         events.push({
           type: 'spell', kind: 'damage', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: info.depth,
-          amount: spell.dmg, died,
+          amount: applied, died,
         });
         if (died) board[spell.laneIdx][info.depth] = null;
       } else {
@@ -275,18 +278,27 @@ function resolveCombat(match, events) {
       const aTarget = aUnit ? frontUnit(match.boards[nameB], l) : null;
       const bTarget = bUnit ? frontUnit(match.boards[nameA], l) : null;
 
+      // Armor reduces incoming damage per hit (never goes negative, never
+      // consumed) — only units can have it, heroes always take the full
+      // hit. The event carries the *actual* damage applied so the client's
+      // popup number always matches the real HP change.
+      let aApplied = 0, bApplied = 0;
       if (aUnit) {
         if (aTarget) {
-          aTarget.unit.hp -= aUnit.atk;
+          aApplied = Math.max(0, aUnit.atk - (aTarget.unit.armor || 0));
+          aTarget.unit.hp -= aApplied;
         } else {
-          match.hp[nameB] -= aUnit.atk;
+          aApplied = aUnit.atk;
+          match.hp[nameB] -= aApplied;
         }
       }
       if (bUnit) {
         if (bTarget) {
-          bTarget.unit.hp -= bUnit.atk;
+          bApplied = Math.max(0, bUnit.atk - (bTarget.unit.armor || 0));
+          bTarget.unit.hp -= bApplied;
         } else {
-          match.hp[nameA] -= bUnit.atk;
+          bApplied = bUnit.atk;
+          match.hp[nameA] -= bApplied;
         }
       }
 
@@ -301,8 +313,8 @@ function resolveCombat(match, events) {
         targetBHero: !!(bUnit && !bTarget),
         targetADepth: aTarget ? aTarget.depth : null,
         targetBDepth: bTarget ? bTarget.depth : null,
-        aDamage: aUnit ? aUnit.atk : 0,
-        bDamage: bUnit ? bUnit.atk : 0,
+        aDamage: aApplied,
+        bDamage: bApplied,
         aDied, bDied,
       });
 
