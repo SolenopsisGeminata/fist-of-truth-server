@@ -241,6 +241,19 @@ wss.on('connection', (ws) => {
     }
     if (!msg || typeof msg.type !== 'string') return;
 
+    // Everything below this point is wrapped: one malformed/unexpected
+    // message must never be able to throw an uncaught exception and take
+    // the whole process (and every other player's live match) down with
+    // it. If this ever fires, the error is logged so the real cause is
+    // visible in the deploy logs instead of showing up as a bare "crash".
+    try {
+      handleMessage(ws, msg);
+    } catch (err) {
+      console.error('[ws message handler error]', msg && msg.type, err);
+    }
+  });
+
+  function handleMessage(ws, msg){
     // ---- Matchmaking ----
     if (msg.type === 'find_match') {
       removeFromQueue(ws);
@@ -386,7 +399,7 @@ wss.on('connection', (ws) => {
       safeSend(mm.sockets[otherName], { type: 'opponent_reconnected' });
       return;
     }
-  });
+  }
 
   ws.on('close', () => {
     clearInterval(heartbeat);
@@ -404,4 +417,9 @@ wss.on('connection', (ws) => {
 
 server.listen(PORT, () => {
   console.log(`Fist Duel server listening on port ${PORT}`);
+  // Build/encoding self-check: if this ever prints as "??" or "\u..." or
+  // mojibake like "??" / garbled bytes instead of "ИИ", the running code
+  // is NOT the version with the unicode-escape encoding fix — a stale
+  // deploy is the problem, not the app itself.
+  console.log(`[boot check] AI name should read as "\u0418\u0418" -> got: "${'\u0418\u0418'}"`);
 });
