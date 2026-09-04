@@ -10,7 +10,7 @@
 // looked up locally by `id`, so snapshots only need to carry ids + numbers.
 
 export const LANES = 3;
-export const DEPTH = 2;
+export const DEPTH = 3;
 export const START_HP = 30;
 export const MAX_MANA = 10;
 export const MAX_HAND = 7;
@@ -62,19 +62,21 @@ export function buildDeckFromCounts(counts) {
 }
 
 export function freshBoard() {
-  return [[null, null], [null, null], [null, null]];
+  return Array.from({ length: LANES }, () => Array(DEPTH).fill(null));
 }
 
 export function frontUnit(board, laneIdx) {
-  if (board[laneIdx][0]) return { unit: board[laneIdx][0], depth: 0 };
-  if (board[laneIdx][1]) return { unit: board[laneIdx][1], depth: 1 };
+  for (let d = 0; d < DEPTH; d++) {
+    if (board[laneIdx][d]) return { unit: board[laneIdx][d], depth: d };
+  }
   return null;
 }
 
 function actingOrder(board, laneIdx) {
   const order = [];
-  if (board[laneIdx][0]) order.push({ unit: board[laneIdx][0], depth: 0 });
-  if (board[laneIdx][1]) order.push({ unit: board[laneIdx][1], depth: 1 });
+  for (let d = 0; d < DEPTH; d++) {
+    if (board[laneIdx][d]) order.push({ unit: board[laneIdx][d], depth: d });
+  }
   return order;
 }
 
@@ -138,7 +140,7 @@ export function otherPlayer(match, username) {
 // ---------- Player actions (validated here — this IS the anti-cheat) ----------
 export function placeCard(match, username, uid, lane, depth) {
   if (match.phase !== 'placing') return { error: 'Сейчас не фаза расстановки.' };
-  if (lane < 0 || lane >= LANES || (depth !== 0 && depth !== 1)) return { error: 'Некорректная позиция.' };
+  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: 'Некорректная позиция.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
   if (idx === -1) return { error: 'Такой карты нет в руке.' };
