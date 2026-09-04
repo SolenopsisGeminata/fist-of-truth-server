@@ -206,8 +206,20 @@ export function sacrifice(match, username, uid) {
 // ---------- End turn + resolution ----------
 // Returns { events, roundOver } where events is an ordered list the client
 // replays for animation. Only called once both players are ready.
+// Both functions stop the instant either hero's HP reaches 0 — the match
+// ends immediately, so nothing after the lethal blow gets a chance to
+// apply (which also avoids accidentally dragging both players down to a
+// "draw" just because a later lane/spell still had something queued).
+function anyHeroDown(match) {
+  const [nameA, nameB] = match.players;
+  return match.hp[nameA] <= 0 || match.hp[nameB] <= 0;
+}
+
 function resolveSpells(match, events) {
-  match.pendingSpells.forEach((spell) => {
+  const queue = match.pendingSpells;
+  match.pendingSpells = [];
+  for (const spell of queue) {
+    if (anyHeroDown(match)) break; // match already decided — stop applying further spells
     if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
@@ -239,17 +251,18 @@ function resolveSpells(match, events) {
         });
       }
     }
-  });
-  match.pendingSpells = [];
+  }
 }
 
 function resolveCombat(match, events) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
+    if (anyHeroDown(match)) break; // match already decided — stop resolving further lanes
     const orderA = actingOrder(match.boards[nameA], l);
     const orderB = actingOrder(match.boards[nameB], l);
     const waves = Math.max(orderA.length, orderB.length);
     for (let w = 0; w < waves; w++) {
+      if (anyHeroDown(match)) break; // ...or further waves within this lane
       let aInfo = orderA[w] || null;
       let bInfo = orderB[w] || null;
       // Skip an actor that already died earlier this lane's combat.
