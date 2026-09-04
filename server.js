@@ -256,13 +256,31 @@ wss.on('connection', (ws) => {
         const mm = { match, sockets: { [myName]: ws, [opponent.username]: opponent.ws } };
         liveMatches.set(matchId, mm);
         persistMatch(mm);
-        safeSend(ws, { type: 'match_found', matchId, opponent: opponent.username });
-        safeSend(opponent.ws, { type: 'match_found', matchId, opponent: myName });
+        safeSend(ws, { type: 'match_found', matchId, opponent: opponent.username, mode: 'pvp' });
+        safeSend(opponent.ws, { type: 'match_found', matchId, opponent: myName, mode: 'pvp' });
         sendSnapshots(mm);
       } else {
         waitingQueue.push({ ws, username: myName });
         safeSend(ws, { type: 'searching' });
       }
+      return;
+    }
+
+    // PVE needs no queue or second socket — the bot opponent is just
+    // another "player" in the same match record, driven by aiPlaceCards()
+    // whenever the human ends their turn (see the end_turn handler below).
+    if (msg.type === 'start_pve') {
+      const myName = String(msg.username || 'Игрок').slice(0, 20);
+      const aiName = myName === 'ИИ' ? 'ИИ-Соперник' : 'ИИ'; // avoid name clash in the unlikely case someone is literally named "ИИ"
+      const matchId = crypto.randomBytes(8).toString('hex');
+      const match = engine.createMatch(matchId, myName, getDeckCounts(myName), aiName, engine.defaultDeckCounts());
+      match.isPve = true;
+      match.aiName = aiName;
+      const mm = { match, sockets: { [myName]: ws } }; // no socket for the bot side
+      liveMatches.set(matchId, mm);
+      persistMatch(mm);
+      safeSend(ws, { type: 'match_found', matchId, opponent: aiName, mode: 'pve' });
+      sendSnapshots(mm);
       return;
     }
 
@@ -305,6 +323,12 @@ wss.on('connection', (ws) => {
     if (msg.type === 'end_turn' && msg.matchId) {
       const mm = liveMatches.get(msg.matchId);
       if (!mm) return;
+      if (mm.match.isPve) {
+        // The bot plays its whole turn right now, then immediately marks
+        // itself ready — from here the flow is identical to PVP.
+        engine.aiPlaceCards(mm.match, mm.match.aiName);
+        engine.tryEndTurn(mm.match, mm.match.aiName);
+      }
       const result = engine.tryEndTurn(mm.match, msg.username);
       if (!result.ready) {
         persistMatch(mm);

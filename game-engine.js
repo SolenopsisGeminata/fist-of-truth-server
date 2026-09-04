@@ -399,3 +399,52 @@ export function snapshotFor(match, username) {
 export function serializeMatch(match) {
   return JSON.parse(JSON.stringify(match));
 }
+
+// ---------- PVE bot ----------
+// Plays the AI's whole turn in one go, right when the human ends theirs —
+// same timing as the old client-side bot, just running here instead so
+// PVE gets the exact same authoritative treatment as PVP (the human
+// can't see or influence what the bot does beyond what its own board
+// exposes as targets). Reuses placeCard/castSpell so the bot is held to
+// the same rules as everyone else — it just never fails a legal check
+// because it only ever proposes moves it already knows it can afford.
+export function aiPlaceCards(match, aiName) {
+  let guard = 0;
+  while (guard++ < 20) {
+    const hand = match.hands[aiName];
+    const mana = match.mana[aiName];
+    const affordable = hand.filter((c) => cardById(c.id).cost <= mana);
+    if (affordable.length === 0) break;
+
+    const creatures = affordable.filter((c) => cardById(c.id).type === 'creature');
+    const openSlots = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (!match.boards[aiName][l][d]) openSlots.push([l, d]);
+      }
+    }
+    if (creatures.length && openSlots.length) {
+      const pick = creatures[Math.floor(Math.random() * creatures.length)];
+      const slot = openSlots[Math.floor(Math.random() * openSlots.length)];
+      const result = placeCard(match, aiName, pick.uid, slot[0], slot[1]);
+      if (result.ok) continue;
+      break;
+    }
+
+    const dmgSpell = affordable.find((c) => cardById(c.id).dmg);
+    if (dmgSpell) {
+      const humanName = otherPlayer(match, aiName);
+      let bestLane = -1, bestAtk = -1;
+      for (let l = 0; l < LANES; l++) {
+        const info = frontUnit(match.boards[humanName], l);
+        if (info && info.unit.atk > bestAtk) { bestAtk = info.unit.atk; bestLane = l; }
+      }
+      const lane = bestLane >= 0 ? bestLane : Math.floor(Math.random() * LANES);
+      const result = castSpell(match, aiName, dmgSpell.uid, lane);
+      if (result.ok) continue;
+      break;
+    }
+
+    break; // nothing affordable left to usefully play
+  }
+}
