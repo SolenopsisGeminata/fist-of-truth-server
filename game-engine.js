@@ -21,9 +21,9 @@ export const CARD_POOL = [
   { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1 },
   { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3 },
   { id: 'c5', name: '\u0412\u0435\u0442\u0435\u0440\u0430\u043d \u042f\u043c\u044b', type: 'creature', cost: 3, atk: 2, hp: 6 },
-  { id: 'c6', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 6, hp: 2 },
+  { id: 'c6', name: '\u041c\u043e\u043b\u043e\u0442\u043e\u0431\u043e\u0435\u0446', type: 'creature', cost: 4, atk: 5, hp: 2 },
   { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 4, atk: 2, hp: 9 },
-  { id: 'c8', name: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d \u0420\u0438\u043d\u0433\u0430', type: 'creature', cost: 5, atk: 5, hp: 6 },
+  { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true },
   { id: 'c9', name: '\u0422\u044f\u0436\u0435\u043b\u043e\u0432\u0435\u0441', type: 'creature', cost: 6, atk: 7, hp: 8 },
   { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1 },
   { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true },
@@ -187,7 +187,7 @@ export function placeCard(match, username, uid, lane, depth) {
 
   match.mana[username] -= card.cost;
   hand.splice(idx, 1);
-  match.boards[username][lane][depth] = {
+  const unit = {
     id: card.id,
     uid: nextUid('unit'),
     atk: card.atk,
@@ -197,6 +197,25 @@ export function placeCard(match, username, uid, lane, depth) {
     lifesteal: !!card.lifesteal,
     synergy: !!card.synergy,
   };
+  match.boards[username][lane][depth] = unit;
+
+  // Battlecry: a one-time, permanent +2/+2 to every other allied unit
+  // already on the board at the moment this one is placed — units placed
+  // *after* it get nothing retroactively, and it never buffs itself.
+  if (card.rallyBuff) {
+    const board = match.boards[username];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const other = board[l][d];
+        if (other && other !== unit) {
+          other.atk += 2;
+          other.hp += 2;
+          other.maxHp += 2;
+        }
+      }
+    }
+  }
+
   return { ok: true };
 }
 
@@ -339,7 +358,7 @@ function resolveCombat(match, events) {
           // enemy hero heals its own owner's hero for its attack value.
           if (aUnit.lifesteal) {
             aLifesteal = aAtk;
-            match.hp[nameA] = Math.min(START_HP, match.hp[nameA] + aLifesteal);
+            match.hp[nameA] = match.hp[nameA] + aLifesteal;
           }
         }
       }
@@ -352,7 +371,7 @@ function resolveCombat(match, events) {
           match.hp[nameA] -= bApplied;
           if (bUnit.lifesteal) {
             bLifesteal = bAtk;
-            match.hp[nameB] = Math.min(START_HP, match.hp[nameB] + bLifesteal);
+            match.hp[nameB] = match.hp[nameB] + bLifesteal;
           }
         }
       }
