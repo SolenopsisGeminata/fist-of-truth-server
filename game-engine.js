@@ -16,9 +16,9 @@ export const MAX_MANA = 10;
 export const MAX_HAND = 7;
 
 export const CARD_POOL = [
-  { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 1, atk: 1, hp: 3 },
+  { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 1, hp: 3 },
   { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1 },
-  { id: 'c3', name: '\u041a\u043e\u0441\u0442\u043e\u043b\u043e\u043c', type: 'creature', cost: 2, atk: 3, hp: 2 },
+  { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1 },
   { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3 },
   { id: 'c5', name: '\u0412\u0435\u0442\u0435\u0440\u0430\u043d \u042f\u043c\u044b', type: 'creature', cost: 3, atk: 2, hp: 6 },
   { id: 'c6', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 6, hp: 2 },
@@ -26,6 +26,8 @@ export const CARD_POOL = [
   { id: 'c8', name: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d \u0420\u0438\u043d\u0433\u0430', type: 'creature', cost: 5, atk: 5, hp: 6 },
   { id: 'c9', name: '\u0422\u044f\u0436\u0435\u043b\u043e\u0432\u0435\u0441', type: 'creature', cost: 6, atk: 7, hp: 8 },
   { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1 },
+  { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true },
+  { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: true },
   { id: 's1', name: '\u0423\u0434\u0430\u0440 \u0432 \u0447\u0435\u043b\u044e\u0441\u0442\u044c', type: 'spell', cost: 2, dmg: 3 },
   { id: 's2', name: '\u041f\u0440\u044f\u043c\u043e\u0439 \u0432 \u043a\u043e\u0440\u043f\u0443\u0441', type: 'spell', cost: 4, dmg: 5 },
   { id: 's3', name: '\u041f\u0435\u0440\u0435\u0432\u044f\u0437\u043a\u0430', type: 'spell', cost: 2, heal: 4 },
@@ -81,6 +83,40 @@ function actingOrder(board, laneIdx) {
   return order;
 }
 
+// ---------- Synergy (Легионер) ----------
+// Counts allied units directly above/below/left/right of a given cell on
+// the SAME board (lane = row, depth = column of a LANES×DEPTH grid).
+// Only cardinal neighbours count — diagonals don't.
+function countAdjacentAllies(board, laneIdx, depthIdx) {
+  let count = 0;
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dl, dd] of deltas) {
+    const l = laneIdx + dl, d = depthIdx + dd;
+    if (l >= 0 && l < LANES && d >= 0 && d < DEPTH && board[l][d]) count++;
+  }
+  return count;
+}
+
+// The attack a unit actually fights with right now — base atk plus its
+// Synergy bonus (+1 per adjacent ally), recomputed fresh every time since
+// the board changes every round. Non-synergy units just return their atk.
+export function effectiveAtk(board, laneIdx, depthIdx) {
+  const unit = board[laneIdx][depthIdx];
+  if (!unit) return 0;
+  const bonus = unit.synergy ? countAdjacentAllies(board, laneIdx, depthIdx) : 0;
+  return unit.atk + bonus;
+}
+
+// A client-facing copy of a board where every synergy unit's displayed
+// atk already reflects its current bonus — always returns fresh unit
+// objects (never the live references) so it's safe to use as a snapshot.
+export function displayBoard(board) {
+  return board.map((lane, l) => lane.map((unit, d) => {
+    if (!unit) return null;
+    return { ...unit, atk: effectiveAtk(board, l, d) };
+  }));
+}
+
 function draw(deck, hand, n) {
   for (let i = 0; i < n; i++) {
     if (hand.length >= MAX_HAND) break;
@@ -125,13 +161,12 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
 // can watch the other side's moves happen in real time. Everything
 // becomes visible again the moment both players end their turn and the
 // round resolves.
-function deepClone(x) {
-  return JSON.parse(JSON.stringify(x));
-}
 function captureCommitted(match) {
   const counts = {};
   match.players.forEach((n) => { counts[n] = match.hands[n].length; });
-  match.committed = { boards: deepClone(match.boards), handCounts: counts };
+  const boards = {};
+  match.players.forEach((n) => { boards[n] = displayBoard(match.boards[n]); });
+  match.committed = { boards, handCounts: counts };
 }
 
 export function otherPlayer(match, username) {
@@ -159,6 +194,8 @@ export function placeCard(match, username, uid, lane, depth) {
     hp: card.hp,
     maxHp: card.hp,
     armor: card.armor || 0,
+    lifesteal: !!card.lifesteal,
+    synergy: !!card.synergy,
   };
   return { ok: true };
 }
@@ -278,27 +315,45 @@ function resolveCombat(match, events) {
       const aTarget = aUnit ? frontUnit(match.boards[nameB], l) : null;
       const bTarget = bUnit ? frontUnit(match.boards[nameA], l) : null;
 
+      // Synergy units fight with their live effective attack (base + 1
+      // per adjacent ally on their own board), recomputed fresh right
+      // now — the neighbours that earned this bonus might not be there
+      // by the next wave or the next round.
+      const aAtk = aUnit ? effectiveAtk(match.boards[nameA], l, aInfo.depth) : 0;
+      const bAtk = bUnit ? effectiveAtk(match.boards[nameB], l, bInfo.depth) : 0;
+
       // Armor reduces incoming damage per hit (never goes negative, never
       // consumed) — only units can have it, heroes always take the full
       // hit. The event carries the *actual* damage applied so the client's
       // popup number always matches the real HP change.
       let aApplied = 0, bApplied = 0;
+      let aLifesteal = 0, bLifesteal = 0;
       if (aUnit) {
         if (aTarget) {
-          aApplied = Math.max(0, aUnit.atk - (aTarget.unit.armor || 0));
+          aApplied = Math.max(0, aAtk - (aTarget.unit.armor || 0));
           aTarget.unit.hp -= aApplied;
         } else {
-          aApplied = aUnit.atk;
+          aApplied = aAtk;
           match.hp[nameB] -= aApplied;
+          // A unit with lifesteal that lands its hit directly on the
+          // enemy hero heals its own owner's hero for its attack value.
+          if (aUnit.lifesteal) {
+            aLifesteal = aAtk;
+            match.hp[nameA] = Math.min(START_HP, match.hp[nameA] + aLifesteal);
+          }
         }
       }
       if (bUnit) {
         if (bTarget) {
-          bApplied = Math.max(0, bUnit.atk - (bTarget.unit.armor || 0));
+          bApplied = Math.max(0, bAtk - (bTarget.unit.armor || 0));
           bTarget.unit.hp -= bApplied;
         } else {
-          bApplied = bUnit.atk;
+          bApplied = bAtk;
           match.hp[nameA] -= bApplied;
+          if (bUnit.lifesteal) {
+            bLifesteal = bAtk;
+            match.hp[nameB] = Math.min(START_HP, match.hp[nameB] + bLifesteal);
+          }
         }
       }
 
@@ -315,6 +370,8 @@ function resolveCombat(match, events) {
         targetBDepth: bTarget ? bTarget.depth : null,
         aDamage: aApplied,
         bDamage: bApplied,
+        aLifesteal,
+        bLifesteal,
         aDied, bDied,
       });
 
@@ -337,7 +394,7 @@ export function tryEndTurn(match, username) {
   // fires — the client renders this first (revealing the opponent's
   // moves, which were hidden during placement) so units visibly appear
   // on the field before spells or combat animate.
-  const preBoards = { [nameA]: deepClone(match.boards[nameA]), [nameB]: deepClone(match.boards[nameB]) };
+  const preBoards = { [nameA]: displayBoard(match.boards[nameA]), [nameB]: displayBoard(match.boards[nameB]) };
 
   const events = [];
   resolveSpells(match, events);
@@ -378,7 +435,10 @@ export function snapshotFor(match, username) {
   // see the board exactly as it looked at the start of this round.
   const stillPlacing = match.phase === 'placing';
   const committed = match.committed || { boards: {}, handCounts: {} };
-  const opponentBoard = stillPlacing ? (committed.boards[other] || freshBoard()) : match.boards[other];
+  // committed.boards[other] is already display-ready (computed once when
+  // frozen); the live match.boards[other] is not, so it needs computing
+  // fresh here — applying displayBoard twice would double-count Synergy.
+  const opponentBoard = stillPlacing ? (committed.boards[other] || freshBoard()) : displayBoard(match.boards[other]);
   const opponentHandCount = stillPlacing
     ? (typeof committed.handCounts[other] === 'number' ? committed.handCounts[other] : match.hands[other].length)
     : match.hands[other].length;
@@ -395,7 +455,7 @@ export function snapshotFor(match, username) {
     maxMana: match.maxMana,
     myHp: match.hp[username],
     opponentHp: match.hp[other],
-    myBoard: match.boards[username],
+    myBoard: displayBoard(match.boards[username]),
     opponentBoard,
     myHand: match.hands[username],
     opponentHandCount,
