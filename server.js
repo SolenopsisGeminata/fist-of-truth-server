@@ -71,13 +71,13 @@ app.post('/api/register', (req, res) => {
   const pass = typeof password === 'string' ? password : '';
 
   if (name.length < 3 || name.length > 20) {
-    return res.status(400).json({ error: 'Имя игрока — от 3 до 20 символов.' });
+    return res.status(400).json({ error: '\u0418\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 \u2014 \u043e\u0442 3 \u0434\u043e 20 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432.' });
   }
   if (pass.length < 4) {
-    return res.status(400).json({ error: 'Пароль — минимум 4 символа.' });
+    return res.status(400).json({ error: '\u041f\u0430\u0440\u043e\u043b\u044c \u2014 \u043c\u0438\u043d\u0438\u043c\u0443\u043c 4 \u0441\u0438\u043c\u0432\u043e\u043b\u0430.' });
   }
   if (findUser(name)) {
-    return res.status(409).json({ error: 'Это имя уже занято.' });
+    return res.status(409).json({ error: '\u042d\u0442\u043e \u0438\u043c\u044f \u0443\u0436\u0435 \u0437\u0430\u043d\u044f\u0442\u043e.' });
   }
 
   const passwordHash = bcrypt.hashSync(pass, 10);
@@ -101,7 +101,7 @@ app.post('/api/login', (req, res) => {
 
   const user = findUser(name);
   if (!user || !bcrypt.compareSync(pass, user.passwordHash)) {
-    return res.status(401).json({ error: 'Неверное имя игрока или пароль.' });
+    return res.status(401).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u043e\u0435 \u0438\u043c\u044f \u0438\u0433\u0440\u043e\u043a\u0430 \u0438\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c.' });
   }
 
   const token = makeToken();
@@ -111,7 +111,7 @@ app.post('/api/login', (req, res) => {
 
 app.get('/api/me', (req, res) => {
   const username = usernameFromRequest(req);
-  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   res.json({ username });
 });
 
@@ -126,13 +126,13 @@ app.post('/api/logout', (req, res) => {
 // needs it to build a real draw pile when a PVP match starts.
 app.get('/api/deck', (req, res) => {
   const username = usernameFromRequest(req);
-  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   res.json({ counts: getDeckCounts(username) });
 });
 
 app.post('/api/deck', (req, res) => {
   const username = usernameFromRequest(req);
-  if (!username) return res.status(401).json({ error: 'Не авторизован.' });
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const counts = (req.body && req.body.counts) || {};
   const clean = {};
   let total = 0;
@@ -142,7 +142,7 @@ app.post('/api/deck', (req, res) => {
     if (n > 0) clean[id] = n;
     total += n;
   }
-  if (total > 30) return res.status(400).json({ error: 'В колоде не может быть больше 30 карт.' });
+  if (total > 30) return res.status(400).json({ error: '\u0412 \u043a\u043e\u043b\u043e\u0434\u0435 \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u0431\u043e\u043b\u044c\u0448\u0435 30 \u043a\u0430\u0440\u0442.' });
   db.data.decks[username] = clean;
   db.write();
   res.json({ ok: true });
@@ -150,7 +150,7 @@ app.post('/api/deck', (req, res) => {
 
 app.get('/api/matches/:matchId', (req, res) => {
   const record = db.data.matches.find((m) => m.matchId === req.params.matchId);
-  if (!record) return res.status(404).json({ error: 'Матч не найден.' });
+  if (!record) return res.status(404).json({ error: '\u041c\u0430\u0442\u0447 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.' });
   res.json(record);
 });
 
@@ -244,7 +244,7 @@ wss.on('connection', (ws) => {
     // ---- Matchmaking ----
     if (msg.type === 'find_match') {
       removeFromQueue(ws);
-      const myName = String(msg.username || 'Игрок').slice(0, 20);
+      const myName = String(msg.username || '\u0418\u0433\u0440\u043e\u043a').slice(0, 20);
       if (waitingQueue.length > 0) {
         const opponent = waitingQueue.shift();
         const matchId = crypto.randomBytes(8).toString('hex');
@@ -270,8 +270,8 @@ wss.on('connection', (ws) => {
     // another "player" in the same match record, driven by aiPlaceCards()
     // whenever the human ends their turn (see the end_turn handler below).
     if (msg.type === 'start_pve') {
-      const myName = String(msg.username || 'Игрок').slice(0, 20);
-      const aiName = myName === 'ИИ' ? 'ИИ-Соперник' : 'ИИ'; // avoid name clash in the unlikely case someone is literally named "ИИ"
+      const myName = String(msg.username || '\u0418\u0433\u0440\u043e\u043a').slice(0, 20);
+      const aiName = myName === '\u0418\u0418' ? '\u0418\u0418-\u0421\u043e\u043f\u0435\u0440\u043d\u0438\u043a' : '\u0418\u0418'; // avoid name clash in the unlikely case someone is literally named "ИИ"
       const matchId = crypto.randomBytes(8).toString('hex');
       const match = engine.createMatch(matchId, myName, getDeckCounts(myName), aiName, engine.defaultDeckCounts());
       match.isPve = true;

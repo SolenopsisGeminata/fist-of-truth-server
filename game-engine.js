@@ -16,18 +16,18 @@ export const MAX_MANA = 10;
 export const MAX_HAND = 7;
 
 export const CARD_POOL = [
-  { id: 'c1', name: 'Забияка', type: 'creature', cost: 1, atk: 1, hp: 2 },
-  { id: 'c2', name: 'Щитоносец', type: 'creature', cost: 2, atk: 1, hp: 5 },
-  { id: 'c3', name: 'Костолом', type: 'creature', cost: 2, atk: 3, hp: 2 },
-  { id: 'c4', name: 'Наёмник', type: 'creature', cost: 3, atk: 3, hp: 3 },
-  { id: 'c5', name: 'Ветеран Ямы', type: 'creature', cost: 3, atk: 2, hp: 6 },
-  { id: 'c6', name: 'Берсерк', type: 'creature', cost: 4, atk: 6, hp: 2 },
-  { id: 'c7', name: 'Каменная Стена', type: 'creature', cost: 4, atk: 2, hp: 9 },
-  { id: 'c8', name: 'Чемпион Ринга', type: 'creature', cost: 5, atk: 5, hp: 6 },
-  { id: 'c9', name: 'Тяжеловес', type: 'creature', cost: 6, atk: 7, hp: 8 },
-  { id: 's1', name: 'Удар в челюсть', type: 'spell', cost: 2, dmg: 3 },
-  { id: 's2', name: 'Прямой в корпус', type: 'spell', cost: 4, dmg: 5 },
-  { id: 's3', name: 'Перевязка', type: 'spell', cost: 2, heal: 4 },
+  { id: 'c1', name: '\u0417\u0430\u0431\u0438\u044f\u043a\u0430', type: 'creature', cost: 1, atk: 1, hp: 2 },
+  { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5 },
+  { id: 'c3', name: '\u041a\u043e\u0441\u0442\u043e\u043b\u043e\u043c', type: 'creature', cost: 2, atk: 3, hp: 2 },
+  { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3 },
+  { id: 'c5', name: '\u0412\u0435\u0442\u0435\u0440\u0430\u043d \u042f\u043c\u044b', type: 'creature', cost: 3, atk: 2, hp: 6 },
+  { id: 'c6', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 6, hp: 2 },
+  { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 4, atk: 2, hp: 9 },
+  { id: 'c8', name: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d \u0420\u0438\u043d\u0433\u0430', type: 'creature', cost: 5, atk: 5, hp: 6 },
+  { id: 'c9', name: '\u0422\u044f\u0436\u0435\u043b\u043e\u0432\u0435\u0441', type: 'creature', cost: 6, atk: 7, hp: 8 },
+  { id: 's1', name: '\u0423\u0434\u0430\u0440 \u0432 \u0447\u0435\u043b\u044e\u0441\u0442\u044c', type: 'spell', cost: 2, dmg: 3 },
+  { id: 's2', name: '\u041f\u0440\u044f\u043c\u043e\u0439 \u0432 \u043a\u043e\u0440\u043f\u0443\u0441', type: 'spell', cost: 4, dmg: 5 },
+  { id: 's3', name: '\u041f\u0435\u0440\u0435\u0432\u044f\u0437\u043a\u0430', type: 'spell', cost: 2, heal: 4 },
 ];
 
 export function cardById(id) {
@@ -139,15 +139,15 @@ export function otherPlayer(match, username) {
 
 // ---------- Player actions (validated here — this IS the anti-cheat) ----------
 export function placeCard(match, username, uid, lane, depth) {
-  if (match.phase !== 'placing') return { error: 'Сейчас не фаза расстановки.' };
-  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: 'Некорректная позиция.' };
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
+  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
-  if (idx === -1) return { error: 'Такой карты нет в руке.' };
+  if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
   const card = cardById(hand[idx].id);
-  if (!card || card.type !== 'creature') return { error: 'Эта карта не боец.' };
-  if (match.boards[username][lane][depth]) return { error: 'Слот занят.' };
-  if (match.mana[username] < card.cost) return { error: 'Не хватает маны.' };
+  if (!card || card.type !== 'creature') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0431\u043e\u0435\u0446.' };
+  if (match.boards[username][lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
+  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
   match.mana[username] -= card.cost;
   hand.splice(idx, 1);
@@ -162,19 +162,19 @@ export function placeCard(match, username, uid, lane, depth) {
 }
 
 export function castSpell(match, username, uid, lane, depth) {
-  if (match.phase !== 'placing') return { error: 'Сейчас не фаза расстановки.' };
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
-  if (idx === -1) return { error: 'Такой карты нет в руке.' };
+  if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
   const card = cardById(hand[idx].id);
-  if (!card || card.type !== 'spell') return { error: 'Эта карта не заклинание.' };
-  if (match.mana[username] < card.cost) return { error: 'Не хватает маны.' };
+  if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
+  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
   if (card.dmg) {
-    if (lane < 0 || lane >= LANES) return { error: 'Некорректная полоса.' };
+    if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.heal) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
-    if (!unit) return { error: 'Там некого лечить.' };
+    if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u043a\u043e\u0433\u043e \u043b\u0435\u0447\u0438\u0442\u044c.' };
   }
 
   match.mana[username] -= card.cost;
@@ -192,11 +192,11 @@ export function castSpell(match, username, uid, lane, depth) {
 }
 
 export function sacrifice(match, username, uid) {
-  if (match.phase !== 'placing') return { error: 'Сейчас не фаза расстановки.' };
-  if (match.sacrifices[username] >= 1) return { error: 'В этом раунде уже принесена жертва.' };
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
+  if (match.sacrifices[username] >= 1) return { error: '\u0412 \u044d\u0442\u043e\u043c \u0440\u0430\u0443\u043d\u0434\u0435 \u0443\u0436\u0435 \u043f\u0440\u0438\u043d\u0435\u0441\u0435\u043d\u0430 \u0436\u0435\u0440\u0442\u0432\u0430.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
-  if (idx === -1) return { error: 'Такой карты нет в руке.' };
+  if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
   hand.splice(idx, 1);
   match.mana[username] += 1;
   match.sacrifices[username] += 1;
