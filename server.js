@@ -537,6 +537,16 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'move_unit' && msg.matchId) {
+      const mm = liveMatches.get(msg.matchId);
+      if (!mm) return;
+      const result = engine.moveUnit(mm.match, msg.username, msg.uid, msg.lane, msg.depth);
+      if (result.error) { safeSend(ws, { type: 'action_rejected', reason: result.error }); return; }
+      persistMatch(mm);
+      sendSnapshots(mm);
+      return;
+    }
+
     if (msg.type === 'cast_spell' && msg.matchId) {
       const mm = liveMatches.get(msg.matchId);
       if (!mm) return;

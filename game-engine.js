@@ -202,6 +202,7 @@ export function placeCard(match, username, uid, lane, depth) {
     lifesteal: !!card.lifesteal,
     synergy: !!card.synergy,
     cookHeal: !!card.cookHeal,
+    placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
   };
   match.boards[username][lane][depth] = unit;
 
@@ -245,6 +246,29 @@ export function placeCard(match, username, uid, lane, depth) {
     }
   }
 
+  return { ok: true };
+}
+
+// Repositions a unit the caller placed *this same round* to a different
+// empty slot on their own board — only while still in the placing phase,
+// and only for units not yet locked in by a resolved round.
+export function moveUnit(match, username, uid, lane, depth) {
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
+  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+  const board = match.boards[username];
+  let fromLane = -1, fromDepth = -1;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (board[l][d] && board[l][d].uid === uid) { fromLane = l; fromDepth = d; break; }
+    }
+  }
+  if (fromLane === -1) return { error: '\u0422\u0430\u043a\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430 \u043d\u0435\u0442 \u043d\u0430 \u043f\u043e\u043b\u0435.' };
+  const unit = board[fromLane][fromDepth];
+  if (!unit.placedThisRound) return { error: '\u042d\u0442\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430 \u0443\u0436\u0435 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u0435\u0440\u0435\u0441\u0442\u0430\u0432\u0438\u0442\u044c.' };
+  if (fromLane === lane && fromDepth === depth) return { ok: true };
+  if (board[lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
+  board[fromLane][fromDepth] = null;
+  board[lane][depth] = unit;
   return { ok: true };
 }
 
@@ -522,6 +546,16 @@ export function tryEndTurn(match, username) {
     match.readyToEnd[nameB] = false;
     draw(match.decks[nameA], match.hands[nameA], 1);
     draw(match.decks[nameB], match.hands[nameB], 1);
+    // This round is locked in now — survivors are no longer "just placed",
+    // so they stop being dimmed/repositionable client-side.
+    for (const name of match.players) {
+      const board = match.boards[name];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          if (board[l][d]) board[l][d].placedThisRound = false;
+        }
+      }
+    }
     match.phase = 'placing';
     captureCommitted(match); // new round's hidden baseline = the just-resolved board
   }
