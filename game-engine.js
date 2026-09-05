@@ -20,17 +20,14 @@ export const CARD_POOL = [
   { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1 },
   { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1 },
   { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3 },
-  { id: 'c5', name: '\u0412\u0435\u0442\u0435\u0440\u0430\u043d \u042f\u043c\u044b', type: 'creature', cost: 3, atk: 2, hp: 6 },
   { id: 'c6', name: '\u041c\u043e\u043b\u043e\u0442\u043e\u0431\u043e\u0435\u0446', type: 'creature', cost: 4, atk: 5, hp: 2 },
   { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 4, atk: 2, hp: 9 },
   { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true },
-  { id: 'c9', name: '\u0422\u044f\u0436\u0435\u043b\u043e\u0432\u0435\u0441', type: 'creature', cost: 6, atk: 7, hp: 8 },
   { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1 },
   { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true },
   { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: true },
-  { id: 's1', name: '\u0423\u0434\u0430\u0440 \u0432 \u0447\u0435\u043b\u044e\u0441\u0442\u044c', type: 'spell', cost: 2, dmg: 3 },
-  { id: 's2', name: '\u041f\u0440\u044f\u043c\u043e\u0439 \u0432 \u043a\u043e\u0440\u043f\u0443\u0441', type: 'spell', cost: 4, dmg: 5 },
-  { id: 's3', name: '\u041f\u0435\u0440\u0435\u0432\u044f\u0437\u043a\u0430', type: 'spell', cost: 2, heal: 4 },
+  { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1 },
+  { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true },
 ];
 
 export function cardById(id) {
@@ -38,9 +35,10 @@ export function cardById(id) {
 }
 
 export function defaultDeckCounts() {
-  // A full 30-card starting deck (max 4 copies of any single card),
-  // given to every new account from the moment it's registered.
-  return { c1: 4, c2: 3, c3: 3, c4: 2, c5: 2, c6: 2, c7: 2, c8: 2, c9: 2, s1: 3, s2: 2, s3: 3 };
+  // A full 30-card starting deck (max 4 copies of any single card), given
+  // to every new account. The 7 creature cards are maxed at 4 copies each
+  // (28), plus 2 copies of Кольчуга (the one basic spell) — 30 total.
+  return { c1: 4, c2: 4, c3: 4, c4: 4, c6: 4, c7: 4, c8: 4, s1: 2 };
 }
 
 let uidCounter = 1;
@@ -196,6 +194,7 @@ export function placeCard(match, username, uid, lane, depth) {
     armor: card.armor || 0,
     lifesteal: !!card.lifesteal,
     synergy: !!card.synergy,
+    cookHeal: !!card.cookHeal,
   };
   match.boards[username][lane][depth] = unit;
 
@@ -230,9 +229,9 @@ export function castSpell(match, username, uid, lane, depth) {
 
   if (card.dmg) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
-  } else if (card.heal) {
+  } else if (card.heal || card.buffHp || card.buffAtk) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
-    if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u043a\u043e\u0433\u043e \u043b\u0435\u0447\u0438\u0442\u044c.' };
+    if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   }
 
   match.mana[username] -= card.cost;
@@ -240,11 +239,13 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.dmg ? 'damage' : 'heal',
+    kind: card.dmg ? 'damage' : (card.heal ? 'heal' : 'buff'),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
     heal: card.heal,
+    buffHp: card.buffHp,
+    buffAtk: card.buffAtk,
   });
   return { ok: true };
 }
@@ -307,6 +308,21 @@ function resolveSpells(match, events) {
         events.push({
           type: 'spell', kind: 'heal', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx, amount: spell.heal,
+        });
+      }
+    } else if (spell.kind === 'buff') {
+      // Permanent stat increase (e.g. Кольчуга) — unlike heal, this raises
+      // the ceiling itself: both current and max HP go up, not just a
+      // refill up to the old cap.
+      const board = match.boards[spell.side];
+      const unit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
+      if (unit) {
+        if (spell.buffAtk) unit.atk += spell.buffAtk;
+        if (spell.buffHp) { unit.hp += spell.buffHp; unit.maxHp += spell.buffHp; }
+        events.push({
+          type: 'spell', kind: 'buff', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
+          buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0,
         });
       }
     }
@@ -428,6 +444,24 @@ export function tryEndTurn(match, username) {
     else winner = match.hp[nameA] > 0 ? nameA : nameB;
     match.winner = winner;
   } else {
+    // End-of-round triggers (e.g. Повар) — fire after combat has fully
+    // settled but before anything about the *next* round starts. Only
+    // reachable here because both heroes are confirmed still alive (the
+    // branch above already caught anyone at 0 or below) — nothing here
+    // can retroactively undo a match that's already decided.
+    for (const name of match.players) {
+      const board = match.boards[name];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          const unit = board[l][d];
+          if (unit && unit.cookHeal) {
+            match.hp[name] += unit.atk;
+            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.atk });
+          }
+        }
+      }
+    }
+
     match.round += 1;
     match.maxMana = Math.min(MAX_MANA, match.maxMana + 1);
     match.mana[nameA] = match.maxMana;
