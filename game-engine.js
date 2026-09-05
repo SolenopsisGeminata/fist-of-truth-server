@@ -228,19 +228,20 @@ export function placeCard(match, username, uid, lane, depth) {
   // (at random — she can't play favourites with more than one at a time)
   // and gives it a permanent +1/+1. Does nothing if she's placed alone.
   if (card.auntBuff) {
+    // Same deferred-queue mechanism as Паладин's rallyBuff (see above) —
+    // the random pick happens now, at placement, but the actual stat
+    // change (and its animation) waits until resolution starts.
     const board = match.boards[username];
     const others = [];
     for (let l = 0; l < LANES; l++) {
       for (let d = 0; d < DEPTH; d++) {
         const other = board[l][d];
-        if (other && other !== unit) others.push(other);
+        if (other && other !== unit) others.push({ laneIdx: l, depthIdx: d });
       }
     }
     if (others.length > 0) {
       const chosen = others[Math.floor(Math.random() * others.length)];
-      chosen.atk += 1;
-      chosen.hp += 1;
-      chosen.maxHp += 1;
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1 });
     }
   }
 
