@@ -28,12 +28,70 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [] });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [] };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
+db.data.tournament ||= {};
 db.write();
+
+// ---------- Tournament ladder ----------
+// Ordered lowest-to-highest. Король (king) has no stars/progress bar —
+// it's ranked purely by an accumulating point total instead.
+const LEAGUE_ORDER = ['squire', 'warrior', 'gladiator', 'elite', 'warlord', 'champion', 'king'];
+const LEAGUE_STARS = { squire: 3, warrior: 3, gladiator: 4, elite: 4, warlord: 5, champion: 5, king: 0 };
+
+function getTournamentRecord(username) {
+  let rec = db.data.tournament[username];
+  if (!rec) {
+    rec = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
+    db.data.tournament[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Applies win/loss rating changes once a tournament match ends. Draws
+// change nothing. `match.botStandIn`, if set, is a real player's username
+// borrowed only for its name + deck — that account did not actually play,
+// so its own ladder record is never touched.
+function applyTournamentResult(match) {
+  if (!match.winner) return;
+  for (const name of match.players) {
+    if (match.botStandIn && match.botStandIn === name) continue;
+    const record = getTournamentRecord(name);
+    if (match.winner === name) {
+      record.streak = (record.streak || 0) + 1;
+      const bonus = Math.min(20, 10 + 2 * (record.streak - 1));
+      if (record.league === 'king') {
+        record.kingPoints = (record.kingPoints || 0) + bonus;
+      } else {
+        record.progress = (record.progress || 0) + bonus;
+        const maxStars = LEAGUE_STARS[record.league];
+        while (record.progress >= 30) {
+          record.progress -= 30;
+          record.stars += 1;
+          if (record.stars >= maxStars) {
+            const idx = LEAGUE_ORDER.indexOf(record.league);
+            record.league = LEAGUE_ORDER[idx + 1];
+            record.stars = 0;
+            record.progress = 0;
+            break; // fresh bar in the new league — no cross-league carry
+          }
+        }
+      }
+    } else {
+      record.streak = 0;
+      if (record.league === 'king') {
+        record.kingPoints = Math.max(0, (record.kingPoints || 0) - 10);
+      } else {
+        record.progress = Math.max(0, (record.progress || 0) - 10);
+      }
+    }
+  }
+  db.write();
+}
 
 function findUser(username) {
   return db.data.users.find(
@@ -89,6 +147,7 @@ app.post('/api/register', (req, res) => {
   // Every new account starts with a full 30-card deck already saved,
   // not just falling back to a default at read time.
   db.data.decks[name] = engine.defaultDeckCounts();
+  db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.write();
 
   res.status(201).json({ ok: true });
@@ -148,6 +207,26 @@ app.post('/api/deck', (req, res) => {
   res.json({ ok: true });
 });
 
+// Current ladder standing for the logged-in account. Read-only — all
+// progress changes happen server-side when a tournament match ends.
+app.get('/api/tournament', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const record = getTournamentRecord(username);
+  const maxStars = LEAGUE_STARS[record.league];
+  let kingRank = null;
+  if (record.league === 'king') {
+    const myPoints = record.kingPoints || 0;
+    const higherCount = db.data.users
+      .map((u) => u.username)
+      .filter((u) => u !== username)
+      .map((u) => getTournamentRecord(u))
+      .filter((r) => r.league === 'king' && (r.kingPoints || 0) > myPoints).length;
+    kingRank = higherCount + 1;
+  }
+  res.json({ league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank });
+});
+
 app.get('/api/matches/:matchId', (req, res) => {
   const record = db.data.matches.find((m) => m.matchId === req.params.matchId);
   if (!record) return res.status(404).json({ error: '\u041c\u0430\u0442\u0447 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.' });
@@ -176,6 +255,7 @@ function safeSend(ws, obj) {
 // `db.data.matches` holds a durable, JSON-safe snapshot of the same data
 // for resume-after-restart — written on every state-changing action.
 const waitingQueue = []; // { ws, username }
+const tournamentQueue = []; // { ws, username, timeout }
 const liveMatches = new Map(); // matchId -> { match, sockets: { [username]: ws } }
 
 function persistMatch(mm) {
@@ -201,11 +281,74 @@ function removeFromQueue(ws) {
   if (idx !== -1) waitingQueue.splice(idx, 1);
 }
 
+function removeFromTournamentQueue(ws) {
+  const idx = tournamentQueue.findIndex((w) => w.ws === ws);
+  if (idx !== -1) {
+    clearTimeout(tournamentQueue[idx].timeout);
+    tournamentQueue.splice(idx, 1);
+  }
+}
+
+// A tournament match against a real opponent is presented to the client
+// exactly like ordinary PVP — 'mode: pvp' — since from the human player's
+// side there is nothing different about it.
+function startTournamentMatch(nameA, wsA, nameB, wsB) {
+  const matchId = crypto.randomBytes(8).toString('hex');
+  const match = engine.createMatch(matchId, nameA, getDeckCounts(nameA), nameB, getDeckCounts(nameB));
+  match.isTournament = true;
+  const mm = { match, sockets: { [nameA]: wsA, [nameB]: wsB } };
+  liveMatches.set(matchId, mm);
+  persistMatch(mm);
+  safeSend(wsA, { type: 'match_found', matchId, opponent: nameB, mode: 'pvp' });
+  safeSend(wsB, { type: 'match_found', matchId, opponent: nameA, mode: 'pvp' });
+  sendSnapshots(mm);
+}
+
+// No real opponent showed up in time — borrow a real account's name and
+// deck from the same league (or one league up/down) so the match still
+// feels like it's against another person, and quietly drive that side
+// with the same bot AI used for plain PVE.
+function startTournamentBotMatch(myName, ws) {
+  const myRecord = getTournamentRecord(myName);
+  const myIdx = LEAGUE_ORDER.indexOf(myRecord.league);
+  const eligibleLeagues = new Set([myRecord.league]);
+  if (myIdx > 0) eligibleLeagues.add(LEAGUE_ORDER[myIdx - 1]);
+  if (myIdx < LEAGUE_ORDER.length - 1) eligibleLeagues.add(LEAGUE_ORDER[myIdx + 1]);
+
+  const candidates = db.data.users
+    .map((u) => u.username)
+    .filter((u) => u !== myName && eligibleLeagues.has(getTournamentRecord(u).league));
+
+  let botName, botDeck;
+  if (candidates.length > 0) {
+    botName = candidates[Math.floor(Math.random() * candidates.length)];
+    botDeck = getDeckCounts(botName);
+  } else {
+    // No eligible real account to borrow (very few registered players) —
+    // fall back to a plain, clearly-generic opponent rather than failing.
+    botName = myName === '\u0418\u0418' ? '\u0418\u0418-\u0421\u043e\u043f\u0435\u0440\u043d\u0438\u043a' : '\u0418\u0418';
+    botDeck = engine.defaultDeckCounts();
+  }
+
+  const matchId = crypto.randomBytes(8).toString('hex');
+  const match = engine.createMatch(matchId, myName, getDeckCounts(myName), botName, botDeck);
+  match.isTournament = true;
+  match.isPve = true; // reuses the existing "server auto-plays this side" turn logic
+  match.aiName = botName;
+  match.botStandIn = botName; // borrowed identity — never update its own ladder record
+  const mm = { match, sockets: { [myName]: ws } };
+  liveMatches.set(matchId, mm);
+  persistMatch(mm);
+  safeSend(ws, { type: 'match_found', matchId, opponent: botName, mode: 'pvp' });
+  sendSnapshots(mm);
+}
+
 // Detach a disconnected socket from any live match without ending it —
 // the match (and its full hidden state) stays in memory + db so the
 // player can reconnect via 'resume_match'.
 function handleSocketDisconnect(ws) {
   removeFromQueue(ws);
+  removeFromTournamentQueue(ws);
   for (const mm of liveMatches.values()) {
     for (const username of Object.keys(mm.sockets)) {
       if (mm.sockets[username] === ws) {
@@ -302,6 +445,33 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // ---- Tournament matchmaking ----
+    if (msg.type === 'start_tournament_search') {
+      removeFromTournamentQueue(ws);
+      const myName = String(msg.username || '\u0418\u0433\u0440\u043e\u043a').slice(0, 20);
+      if (tournamentQueue.length > 0) {
+        const opponent = tournamentQueue.shift();
+        clearTimeout(opponent.timeout);
+        startTournamentMatch(myName, ws, opponent.username, opponent.ws);
+      } else {
+        const entry = { ws, username: myName };
+        entry.timeout = setTimeout(() => {
+          const idx = tournamentQueue.indexOf(entry);
+          if (idx === -1) return; // matched with a real opponent in the meantime
+          tournamentQueue.splice(idx, 1);
+          startTournamentBotMatch(myName, ws);
+        }, 10000);
+        tournamentQueue.push(entry);
+        safeSend(ws, { type: 'searching' });
+      }
+      return;
+    }
+
+    if (msg.type === 'cancel_tournament_search') {
+      removeFromTournamentQueue(ws);
+      return;
+    }
+
     // ---- In-match actions (all validated server-side in game-engine.js) ----
     if (msg.type === 'place_card' && msg.matchId) {
       const mm = liveMatches.get(msg.matchId);
@@ -362,7 +532,10 @@ wss.on('connection', (ws) => {
         });
       }
       persistMatch(mm);
-      if (result.gameOver) endMatch(mm, 'finished', result.winner);
+      if (result.gameOver) {
+        endMatch(mm, 'finished', result.winner);
+        if (mm.match.isTournament) applyTournamentResult(mm.match);
+      }
       return;
     }
 
@@ -372,6 +545,7 @@ wss.on('connection', (ws) => {
         const otherName = engine.otherPlayer(mm.match, msg.username);
         safeSend(mm.sockets[otherName], { type: 'opponent_left' });
         endMatch(mm, 'abandoned', otherName);
+        if (mm.match.isTournament) applyTournamentResult(mm.match);
       }
       return;
     }
