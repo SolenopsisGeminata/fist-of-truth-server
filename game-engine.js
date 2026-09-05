@@ -28,6 +28,9 @@ export const CARD_POOL = [
   { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: true },
   { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1 },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true },
+  { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1 },
+  { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4 },
+  { id: 'c16', name: '\u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 1, hp: 2, auntBuff: true },
 ];
 
 export function cardById(id) {
@@ -35,13 +38,13 @@ export function cardById(id) {
 }
 
 export function defaultDeckCounts() {
-  // A starting deck given to every new account, respecting the max-3-
-  // copies-per-card rule. The 7 original default cards at 3 copies each
-  // (21) plus 2 copies of Кольчуга (23) — short of the 30-card cap, since
-  // capping copies at 3 instead of 4 lowers what these same 8 cards can
-  // reach on their own; reaching 30 again would mean drawing in more of
-  // the newer cards as defaults, which wasn't asked for here.
-  return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2 };
+  // A starting deck given to every new account, respecting both the
+  // max-3-copies-per-card rule and the 30-card deck cap. 21 (original 7
+  // creatures ×3) + 2 (Кольчуга) + 3 (Ополченец с дубиной) + 3 (Крепкий
+  // работяга) + 1 (Родная тетушка) = 30 exactly — she gets only 1 copy
+  // here (not 3) specifically because 3 would have pushed the total past
+  // the cap.
+  return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2, c14: 3, c15: 3, c16: 1 };
 }
 
 let uidCounter = 1;
@@ -215,6 +218,26 @@ export function placeCard(match, username, uid, lane, depth) {
           other.maxHp += 2;
         }
       }
+    }
+  }
+
+  // Родная тетушка: picks exactly one other ally already on the board
+  // (at random — she can't play favourites with more than one at a time)
+  // and gives it a permanent +1/+1. Does nothing if she's placed alone.
+  if (card.auntBuff) {
+    const board = match.boards[username];
+    const others = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const other = board[l][d];
+        if (other && other !== unit) others.push(other);
+      }
+    }
+    if (others.length > 0) {
+      const chosen = others[Math.floor(Math.random() * others.length)];
+      chosen.atk += 1;
+      chosen.hp += 1;
+      chosen.maxHp += 1;
     }
   }
 
