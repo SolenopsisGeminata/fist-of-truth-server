@@ -52,6 +52,18 @@ function getTournamentRecord(username) {
   return rec;
 }
 
+// How long to wait for a real opponent before falling back to a bot —
+// the window widens in higher leagues, where fewer real players are
+// likely to be queued at the same moment.
+function randomBotWaitMs(league) {
+  let minSec, maxSec;
+  if (league === 'squire' || league === 'warrior') { minSec = 10; maxSec = 30; }
+  else if (league === 'gladiator' || league === 'elite') { minSec = 10; maxSec = 60; }
+  else { minSec = 30; maxSec = 90; } // warlord, champion, king
+  const sec = minSec + Math.random() * (maxSec - minSec);
+  return Math.round(sec * 1000);
+}
+
 // Applies win/loss rating changes once a tournament match ends. Draws
 // change nothing. `match.botStandIn`, if set, is a real player's username
 // borrowed only for its name + deck — that account did not actually play,
@@ -454,13 +466,15 @@ wss.on('connection', (ws) => {
         clearTimeout(opponent.timeout);
         startTournamentMatch(myName, ws, opponent.username, opponent.ws);
       } else {
+        const record = getTournamentRecord(myName);
+        const waitMs = randomBotWaitMs(record.league);
         const entry = { ws, username: myName };
         entry.timeout = setTimeout(() => {
           const idx = tournamentQueue.indexOf(entry);
           if (idx === -1) return; // matched with a real opponent in the meantime
           tournamentQueue.splice(idx, 1);
           startTournamentBotMatch(myName, ws);
-        }, 10000);
+        }, waitMs);
         tournamentQueue.push(entry);
         safeSend(ws, { type: 'searching' });
       }
