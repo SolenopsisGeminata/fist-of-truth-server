@@ -35,10 +35,13 @@ export function cardById(id) {
 }
 
 export function defaultDeckCounts() {
-  // A full 30-card starting deck (max 4 copies of any single card), given
-  // to every new account. The 7 creature cards are maxed at 4 copies each
-  // (28), plus 2 copies of Кольчуга (the one basic spell) — 30 total.
-  return { c1: 4, c2: 4, c3: 4, c4: 4, c6: 4, c7: 4, c8: 4, s1: 2 };
+  // A starting deck given to every new account, respecting the max-3-
+  // copies-per-card rule. The 7 original default cards at 3 copies each
+  // (21) plus 2 copies of Кольчуга (23) — short of the 30-card cap, since
+  // capping copies at 3 instead of 4 lowers what these same 8 cards can
+  // reach on their own; reaching 30 again would mean drawing in more of
+  // the newer cards as defaults, which wasn't asked for here.
+  return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2 };
 }
 
 let uidCounter = 1;

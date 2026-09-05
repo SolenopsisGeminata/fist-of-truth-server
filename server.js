@@ -138,7 +138,7 @@ app.post('/api/deck', (req, res) => {
   let total = 0;
   for (const id of Object.keys(counts)) {
     if (!engine.cardById(id)) continue;
-    const n = Math.max(0, Math.min(4, Math.floor(Number(counts[id]) || 0)));
+    const n = Math.max(0, Math.min(3, Math.floor(Number(counts[id]) || 0)));
     if (n > 0) clean[id] = n;
     total += n;
   }
