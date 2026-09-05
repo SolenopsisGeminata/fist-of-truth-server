@@ -290,7 +290,10 @@ function sendSnapshots(mm) {
 
 function removeFromQueue(ws) {
   const idx = waitingQueue.findIndex((w) => w.ws === ws);
-  if (idx !== -1) waitingQueue.splice(idx, 1);
+  if (idx !== -1) {
+    clearTimeout(waitingQueue[idx].timeout);
+    waitingQueue.splice(idx, 1);
+  }
 }
 
 function removeFromTournamentQueue(ws) {
@@ -314,6 +317,35 @@ function startTournamentMatch(nameA, wsA, nameB, wsB) {
   safeSend(wsA, { type: 'match_found', matchId, opponent: nameB, mode: 'pvp' });
   safeSend(wsB, { type: 'match_found', matchId, opponent: nameA, mode: 'pvp' });
   sendSnapshots(mm);
+}
+
+// Plain-PVP equivalent of the tournament bot fallback below — no league
+// concept here, so the borrowed account is picked from the whole player
+// base rather than a league-adjacent slice.
+function startPvpBotMatch(myName, ws) {
+  const candidates = db.data.users.map((u) => u.username).filter((u) => u !== myName);
+  let botName, botDeck;
+  if (candidates.length > 0) {
+    botName = candidates[Math.floor(Math.random() * candidates.length)];
+    botDeck = getDeckCounts(botName);
+  } else {
+    botName = myName === '\u0418\u0418' ? '\u0418\u0418-\u0421\u043e\u043f\u0435\u0440\u043d\u0438\u043a' : '\u0418\u0418';
+    botDeck = engine.defaultDeckCounts();
+  }
+  const matchId = crypto.randomBytes(8).toString('hex');
+  const match = engine.createMatch(matchId, myName, getDeckCounts(myName), botName, botDeck);
+  match.isPve = true; // reuses the existing "server auto-plays this side" turn logic
+  match.aiName = botName;
+  match.botStandIn = botName; // borrowed identity — not a real participant
+  const mm = { match, sockets: { [myName]: ws } };
+  liveMatches.set(matchId, mm);
+  persistMatch(mm);
+  safeSend(ws, { type: 'match_found', matchId, opponent: botName, mode: 'pvp' });
+  sendSnapshots(mm);
+}
+
+function randomPvpBotWaitMs() {
+  return Math.round((30 + Math.random() * 60) * 1000); // 30–90s, uniformly
 }
 
 // No real opponent showed up in time — borrow a real account's name and
@@ -415,6 +447,7 @@ wss.on('connection', (ws) => {
       const myName = String(msg.username || '\u0418\u0433\u0440\u043e\u043a').slice(0, 20);
       if (waitingQueue.length > 0) {
         const opponent = waitingQueue.shift();
+        clearTimeout(opponent.timeout);
         const matchId = crypto.randomBytes(8).toString('hex');
         const match = engine.createMatch(
           matchId,
@@ -428,7 +461,14 @@ wss.on('connection', (ws) => {
         safeSend(opponent.ws, { type: 'match_found', matchId, opponent: myName, mode: 'pvp' });
         sendSnapshots(mm);
       } else {
-        waitingQueue.push({ ws, username: myName });
+        const entry = { ws, username: myName };
+        entry.timeout = setTimeout(() => {
+          const idx = waitingQueue.indexOf(entry);
+          if (idx === -1) return; // matched with a real opponent in the meantime
+          waitingQueue.splice(idx, 1);
+          startPvpBotMatch(myName, ws);
+        }, randomPvpBotWaitMs());
+        waitingQueue.push(entry);
         safeSend(ws, { type: 'searching' });
       }
       return;
