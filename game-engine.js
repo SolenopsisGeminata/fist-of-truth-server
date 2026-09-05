@@ -145,6 +145,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     maxMana: 2,
     round: 1,
     pendingSpells: [],
+    pendingRallyBuffs: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -208,14 +209,16 @@ export function placeCard(match, username, uid, lane, depth) {
   // already on the board at the moment this one is placed — units placed
   // *after* it get nothing retroactively, and it never buffs itself.
   if (card.rallyBuff) {
+    // Queued, not applied immediately: the client needs to reveal the
+    // *pre*-buff board first (so it can animate the increase), which
+    // means the actual stat change has to wait until resolution starts
+    // — see tryEndTurn(), where match.pendingRallyBuffs is drained.
     const board = match.boards[username];
     for (let l = 0; l < LANES; l++) {
       for (let d = 0; d < DEPTH; d++) {
         const other = board[l][d];
         if (other && other !== unit) {
-          other.atk += 2;
-          other.hp += 2;
-          other.maxHp += 2;
+          match.pendingRallyBuffs.push({ side: username, laneIdx: l, depthIdx: d, buffAtk: 2, buffHp: 2 });
         }
       }
     }
@@ -458,6 +461,26 @@ export function tryEndTurn(match, username) {
   const preBoards = { [nameA]: displayBoard(match.boards[nameA]), [nameB]: displayBoard(match.boards[nameB]) };
 
   const events = [];
+
+  // Rally buffs (e.g. Паладин) apply right at the very start of
+  // resolution — before spells or combat — using preBoards (just
+  // captured above) as the "before" picture the client reveals first,
+  // so the stat increase can be animated rather than appearing already
+  // baked in.
+  const rallyQueue = match.pendingRallyBuffs;
+  match.pendingRallyBuffs = [];
+  for (const buff of rallyQueue) {
+    const unit = match.boards[buff.side][buff.laneIdx] && match.boards[buff.side][buff.laneIdx][buff.depthIdx];
+    if (!unit) continue;
+    unit.atk += buff.buffAtk;
+    unit.hp += buff.buffHp;
+    unit.maxHp += buff.buffHp;
+    events.push({
+      type: 'rallyBuff', side: buff.side, laneIdx: buff.laneIdx,
+      targetDepth: buff.depthIdx, buffAtk: buff.buffAtk, buffHp: buff.buffHp,
+    });
+  }
+
   resolveSpells(match, events);
   resolveCombat(match, events);
 
