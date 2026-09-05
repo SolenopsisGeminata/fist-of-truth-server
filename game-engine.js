@@ -479,6 +479,24 @@ export function tryEndTurn(match, username) {
   }
 
   match.phase = 'resolving';
+
+  // Both sides' placements are locked in the instant resolution starts —
+  // units placed this round stop being "provisional" (dimmed and
+  // repositionable client-side) right now, even though combat hasn't
+  // actually played out yet. This has to happen *before* preBoards is
+  // captured below, since that's the snapshot the client reveals first:
+  // my own units should already read as solid, and the opponent's newly
+  // revealed units should play their entrance animation (which is
+  // suppressed for anything still flagged as mid-placement).
+  for (const name of match.players) {
+    const board = match.boards[name];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (board[l][d]) board[l][d].placedThisRound = false;
+      }
+    }
+  }
+
   // Snapshot exactly what both sides placed this round, before anything
   // fires — the client renders this first (revealing the opponent's
   // moves, which were hidden during placement) so units visibly appear
@@ -546,16 +564,6 @@ export function tryEndTurn(match, username) {
     match.readyToEnd[nameB] = false;
     draw(match.decks[nameA], match.hands[nameA], 1);
     draw(match.decks[nameB], match.hands[nameB], 1);
-    // This round is locked in now — survivors are no longer "just placed",
-    // so they stop being dimmed/repositionable client-side.
-    for (const name of match.players) {
-      const board = match.boards[name];
-      for (let l = 0; l < LANES; l++) {
-        for (let d = 0; d < DEPTH; d++) {
-          if (board[l][d]) board[l][d].placedThisRound = false;
-        }
-      }
-    }
     match.phase = 'placing';
     captureCommitted(match); // new round's hidden baseline = the just-resolved board
   }
