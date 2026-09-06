@@ -101,6 +101,19 @@ function countAdjacentAllies(board, laneIdx, depthIdx) {
   return count;
 }
 
+// Same cardinal-neighbour rule as Synergy, but returns the actual
+// coordinates of each occupied neighbour instead of just a count — used
+// by Родная тетушка to pick which adjacent ally to bless.
+function adjacentAllyPositions(board, laneIdx, depthIdx) {
+  const positions = [];
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dl, dd] of deltas) {
+    const l = laneIdx + dl, d = depthIdx + dd;
+    if (l >= 0 && l < LANES && d >= 0 && d < DEPTH && board[l][d]) positions.push({ laneIdx: l, depthIdx: d });
+  }
+  return positions;
+}
+
 // The attack a unit actually fights with right now — base atk plus its
 // Synergy bonus (+1 per adjacent ally), recomputed fresh every time since
 // the board changes every round. Non-synergy units just return their atk.
@@ -225,23 +238,17 @@ export function placeCard(match, username, uid, lane, depth) {
     }
   }
 
-  // Родная тетушка: picks exactly one other ally already on the board
-  // (at random — she can't play favourites with more than one at a time)
-  // and gives it a permanent +1/+1. Does nothing if she's placed alone.
+  // Родная тетушка: picks exactly one ADJACENT ally (same cardinal-neighbour
+  // rule as Synergy — directly above/below/left/right, no diagonals) and
+  // gives it a permanent +1/+1. Does nothing if she has no neighbour yet.
   if (card.auntBuff) {
     // Same deferred-queue mechanism as Паладин's rallyBuff (see above) —
     // the random pick happens now, at placement, but the actual stat
     // change (and its animation) waits until resolution starts.
     const board = match.boards[username];
-    const others = [];
-    for (let l = 0; l < LANES; l++) {
-      for (let d = 0; d < DEPTH; d++) {
-        const other = board[l][d];
-        if (other && other !== unit) others.push({ laneIdx: l, depthIdx: d });
-      }
-    }
-    if (others.length > 0) {
-      const chosen = others[Math.floor(Math.random() * others.length)];
+    const neighbours = adjacentAllyPositions(board, lane, depth);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
     }
   }
