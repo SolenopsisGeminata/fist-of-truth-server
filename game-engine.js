@@ -41,6 +41,16 @@ export function cardById(id) {
   return CARD_POOL.find((c) => c.id === id);
 }
 
+// Max copies of a single card allowed in a deck, by rarity: Common/Rare/
+// Epic can go up to 3 copies each; Legendary and Mythic are singles (at
+// most 1 copy) — no card uses those two tiers yet, but the rule is ready
+// for when one does. Unknown/missing rarity falls back to the common
+// case (3) rather than silently allowing something looser.
+export function maxCopiesForCard(card) {
+  if (card && (card.rarity === 'legendary' || card.rarity === 'mythic')) return 1;
+  return 3;
+}
+
 export function defaultDeckCounts() {
   // A starting deck given to every new account, respecting both the
   // max-3-copies-per-card rule and the 30-card deck cap. 21 (original 7
@@ -62,7 +72,7 @@ export function buildDeckFromCounts(counts) {
   Object.keys(counts || {}).forEach((id) => {
     const base = cardById(id);
     if (!base) return;
-    const n = Math.max(0, Math.min(4, Math.floor(counts[id]) || 0));
+    const n = Math.max(0, Math.min(maxCopiesForCard(base), Math.floor(counts[id]) || 0));
     for (let i = 0; i < n; i++) deck.push({ id, uid: nextUid('card') });
   });
   for (let i = deck.length - 1; i > 0; i--) {
