@@ -219,7 +219,7 @@ export function placeCard(match, username, uid, lane, depth) {
       for (let d = 0; d < DEPTH; d++) {
         const other = board[l][d];
         if (other && other !== unit) {
-          match.pendingRallyBuffs.push({ side: username, laneIdx: l, depthIdx: d, buffAtk: 2, buffHp: 2 });
+          match.pendingRallyBuffs.push({ side: username, laneIdx: l, depthIdx: d, buffAtk: 2, buffHp: 2, sourceUid: unit.uid });
         }
       }
     }
@@ -242,7 +242,7 @@ export function placeCard(match, username, uid, lane, depth) {
     }
     if (others.length > 0) {
       const chosen = others[Math.floor(Math.random() * others.length)];
-      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1 });
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
     }
   }
 
@@ -269,6 +269,44 @@ export function moveUnit(match, username, uid, lane, depth) {
   if (board[lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
   board[fromLane][fromDepth] = null;
   board[lane][depth] = unit;
+  return { ok: true };
+}
+
+// Pulls a unit the caller placed *this same round* back off the board and
+// into their hand, refunding its mana cost and undoing anything it hadn't
+// actually resolved yet — so it's as if the card was never played this
+// turn. Only legal while still in the placing phase and only for units
+// still flagged placedThisRound (same restriction as moveUnit — once a
+// round resolves, a unit is locked in for good).
+export function returnToHand(match, username, uid) {
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
+  const board = match.boards[username];
+  let foundLane = -1, foundDepth = -1;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (board[l][d] && board[l][d].uid === uid) { foundLane = l; foundDepth = d; break; }
+    }
+  }
+  if (foundLane === -1) return { error: '\u0422\u0430\u043a\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430 \u043d\u0435\u0442 \u043d\u0430 \u043f\u043e\u043b\u0435.' };
+  const unit = board[foundLane][foundDepth];
+  if (!unit.placedThisRound) return { error: '\u042d\u0442\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430 \u0443\u0436\u0435 \u043d\u0435\u043b\u044c\u0437\u044f \u0432\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u0440\u0443\u043a\u0443.' };
+  const hand = match.hands[username];
+  if (hand.length >= MAX_HAND) return { error: '\u0420\u0443\u043a\u0430 \u0443\u0436\u0435 \u043f\u043e\u043b\u043d\u0430.' };
+
+  const card = cardById(unit.id);
+  board[foundLane][foundDepth] = null;
+  match.mana[username] += card ? card.cost : 0;
+
+  // Any rally/aunt buff this specific placement queued for OTHER units
+  // (Паладин, Родная тетушка) is undone too — the unit granting it is
+  // being un-played, so it never should have gone out in the first place.
+  // Buffs still queued that were meant to land ON this unit are left
+  // alone: they already no-op safely once their target slot comes up
+  // empty at resolution time (see the `if (!unit) continue;` guard in
+  // tryEndTurn's rally-buff drain).
+  match.pendingRallyBuffs = match.pendingRallyBuffs.filter((b) => b.sourceUid !== uid);
+
+  hand.push({ id: unit.id, uid: nextUid('card') });
   return { ok: true };
 }
 
