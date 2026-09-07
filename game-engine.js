@@ -85,6 +85,53 @@ export function defaultOwnedCardIds() {
   return Object.keys(defaultDeckCounts());
 }
 
+// ---------- Shop ----------
+// Only Rare/Epic/Legendary cards are ever sold — Common has no defined
+// shop price (every account already starts owning most Commons anyway),
+// and Mythic is priced by whichever rarity it's a skin of, same
+// convention as maxCopiesForCard's baseRarity fallback.
+function shopRarityOf(card) {
+  return card.rarity === 'mythic' ? (card.baseRarity || 'rare') : card.rarity;
+}
+
+export const SHOP_PRICES = {
+  gold: { rare: 60, epic: 400, legendary: 1500 },
+  dust: { rare: 120, epic: 600, legendary: 3000 },
+  crystals: { rare: 12, epic: 60, legendary: 300 },
+};
+
+export function shopPriceForCard(card, currency) {
+  const table = SHOP_PRICES[currency];
+  if (!table || !card) return null;
+  const price = table[shopRarityOf(card)];
+  return price == null ? null : price;
+}
+
+// Cards a shop list can ever draw from: sellable rarity tier, and not
+// already owned by this account. NOTE: right now this pool is small (only
+// 3 cards — Страж дворца, Легионер, Повар — qualify; c10 Ополченец is
+// excluded for being Common) — until more Rare+ cards exist, the 6-slot
+// daily lists below necessarily repeat cards. That's expected, not a bug.
+export function shoppableCards(ownedIds) {
+  const owned = new Set(ownedIds || []);
+  return CARD_POOL.filter((c) => {
+    const r = shopRarityOf(c);
+    return (r === 'rare' || r === 'epic' || r === 'legendary') && !owned.has(c.id);
+  });
+}
+
+// Picks `count` card ids at random from `pool`, WITH replacement — so it
+// always returns exactly `count` ids even if the pool has fewer distinct
+// cards than that (see shoppableCards' note above).
+export function pickRandomShopCards(pool, count) {
+  const result = [];
+  if (!pool.length) return result;
+  for (let i = 0; i < count; i++) {
+    result.push(pool[Math.floor(Math.random() * pool.length)].id);
+  }
+  return result;
+}
+
 let uidCounter = 1;
 function nextUid(prefix) {
   uidCounter += 1;

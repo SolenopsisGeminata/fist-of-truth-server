@@ -28,15 +28,16 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
 db.data.resources ||= {};
 db.data.pveProgress ||= {};
 db.data.ownedCards ||= {};
+db.data.shop ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -82,6 +83,47 @@ function getOwnedCards(username) {
   }
   return rec;
 }
+
+// ---------- Shop ----------
+// The daily card lists reset at 00:00 Moscow time — computed via the
+// IANA timezone (not the server's own local time or a fixed UTC offset),
+// so it stays correct even if the server itself runs in another region.
+function moscowDateString(d) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d || new Date());
+}
+
+const SHOP_TABS = ['gold', 'dust', 'crystals'];
+const SHOP_LIST_SIZE = 6;
+const SHOP_REFRESH_COST = 12; // crystals — same cost regardless of which tab is being refreshed
+
+function regenerateShopTab(username, tab) {
+  const pool = engine.shoppableCards(getOwnedCards(username));
+  const cardIds = engine.pickRandomShopCards(pool, SHOP_LIST_SIZE);
+  if (!db.data.shop[username]) db.data.shop[username] = {};
+  db.data.shop[username][tab] = { day: moscowDateString(), cardIds };
+}
+
+// Ensures all three tabs have a list generated for "today" (Moscow date)
+// — lazily regenerating any that are missing or stale from a previous
+// day, exactly once per day per account, with no separate cron/scheduler
+// needed. Same account, same day => same list every time this is called.
+function getShopState(username) {
+  if (!db.data.shop[username]) db.data.shop[username] = {};
+  const rec = db.data.shop[username];
+  const today = moscowDateString();
+  let changed = false;
+  for (const tab of SHOP_TABS) {
+    if (!rec[tab] || rec[tab].day !== today) {
+      regenerateShopTab(username, tab);
+      changed = true;
+    }
+  }
+  if (changed) db.write();
+  return rec;
+}
+
 
 // ---------- PVE progress ladder ----------
 // A simple "play N matches, get gold" track shown on the PVE screen.
@@ -313,6 +355,43 @@ app.get('/api/owned-cards', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   res.json({ cardIds: getOwnedCards(username) });
+});
+
+// Today's shop lists (all 3 currency tabs at once) — auto-regenerates any
+// tab that's stale from a previous Moscow calendar day. Buying a card
+// isn't wired up yet (a later step, like the rest of card acquisition);
+// this only exposes what's on offer and lets it be paid-refreshed.
+app.get('/api/shop', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const rec = getShopState(username);
+  res.json({
+    gold: { cardIds: rec.gold.cardIds },
+    dust: { cardIds: rec.dust.cardIds },
+    crystals: { cardIds: rec.crystals.cardIds },
+  });
+});
+
+// Pays SHOP_REFRESH_COST crystals to re-roll one tab's list early, ahead
+// of its natural daily reset. Costs crystals regardless of which tab
+// (gold/dust/crystals) is being refreshed — crystals are the "premium"
+// currency used for this kind of action across the shop.
+app.post('/api/shop/refresh', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const tab = req.body && req.body.tab;
+  if (!SHOP_TABS.includes(tab)) {
+    return res.status(400).json({ error: '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0432\u043a\u043b\u0430\u0434\u043a\u0430 \u043c\u0430\u0433\u0430\u0437\u0438\u043d\u0430.' });
+  }
+  getShopState(username); // make sure today's lists exist first, so a refresh right at day-rollover behaves predictably
+  const resources = getResources(username);
+  if ((resources.crystals || 0) < SHOP_REFRESH_COST) {
+    return res.status(400).json({ error: '\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u043b\u043e\u0432.' });
+  }
+  resources.crystals -= SHOP_REFRESH_COST;
+  regenerateShopTab(username, tab);
+  db.write();
+  res.json({ cardIds: db.data.shop[username][tab].cardIds, crystals: resources.crystals });
 });
 
 // Account-bound currencies (пыль/золото/кристаллы). Read-only for now —
