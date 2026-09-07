@@ -28,13 +28,14 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
 db.data.resources ||= {};
+db.data.pveProgress ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -64,6 +65,56 @@ function getResources(username) {
     db.write();
   }
   return rec;
+}
+
+// ---------- PVE progress ladder ----------
+// A simple "play N matches, get gold" track shown on the PVE screen.
+// `n` is the 1-based iteration number. Purely a formula — no state here,
+// state lives in db.data.pveProgress. Schedule, exactly as specced:
+//  iteration 1: 1 match  -> 100 gold
+//  iteration 2: 3 matches -> 200 gold
+//  iteration 3: 5 matches -> 300 gold
+//  iterations 4-8  (5 of them): 5 matches each -> 400 gold each
+//  iterations 9-15 (7 of them): 7 matches each -> 500 gold each
+//  iteration 16 onward (forever): 10 matches each -> 800 gold each
+function pveIterationInfo(n) {
+  if (n === 1) return { required: 1, reward: 100 };
+  if (n === 2) return { required: 3, reward: 200 };
+  if (n === 3) return { required: 5, reward: 300 };
+  if (n >= 4 && n <= 8) return { required: 5, reward: 400 };
+  if (n >= 9 && n <= 15) return { required: 7, reward: 500 };
+  return { required: 10, reward: 800 };
+}
+
+function getPveProgress(username) {
+  let rec = db.data.pveProgress[username];
+  if (!rec) {
+    rec = { iteration: 1, matchesPlayed: 0 };
+    db.data.pveProgress[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Counts one WON PVE match (losses don't advance the bar) toward the
+// human player's progress, and grants + advances to the next iteration
+// once it fills. There's no bot-stand-in concept in PVE (that's a
+// tournament/PVP-only mechanic for covering a missing opponent), so
+// `match.players` always has exactly one real account plus `match.aiName`.
+function applyPveProgress(match) {
+  const username = match.players.find((p) => p !== match.aiName);
+  if (!username) return;
+  if (match.winner !== username) return; // loss — no progress toward the bar
+  const progress = getPveProgress(username);
+  progress.matchesPlayed = (progress.matchesPlayed || 0) + 1;
+  const info = pveIterationInfo(progress.iteration);
+  if (progress.matchesPlayed >= info.required) {
+    const resources = getResources(username);
+    resources.gold = (resources.gold || 0) + info.reward;
+    progress.iteration += 1;
+    progress.matchesPlayed = 0;
+  }
+  db.write();
 }
 
 // How long to wait for a real opponent before falling back to a bot —
@@ -175,6 +226,7 @@ app.post('/api/register', (req, res) => {
   db.data.decks[name] = engine.defaultDeckCounts();
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
+  db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
   db.write();
 
   res.status(201).json({ ok: true });
@@ -242,6 +294,24 @@ app.get('/api/resources', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   res.json(getResources(username));
+});
+
+// Current standing on the PVE match-count reward ladder. Read-only —
+// progress only advances server-side, when a PVE match actually finishes
+// (see applyPveProgress). Includes the current iteration's target/reward
+// alongside the raw counters so the client doesn't need its own copy of
+// the reward schedule.
+app.get('/api/pve-progress', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const progress = getPveProgress(username);
+  const info = pveIterationInfo(progress.iteration);
+  res.json({
+    iteration: progress.iteration,
+    matchesPlayed: progress.matchesPlayed,
+    matchesRequired: info.required,
+    reward: info.reward,
+  });
 });
 
 // Current ladder standing for the logged-in account. Read-only — all
@@ -634,6 +704,7 @@ wss.on('connection', (ws) => {
       if (result.gameOver) {
         endMatch(mm, 'finished', result.winner);
         if (mm.match.isTournament) applyTournamentResult(mm.match);
+        if (mm.match.isPve) applyPveProgress(mm.match);
       }
       return;
     }
