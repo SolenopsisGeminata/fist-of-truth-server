@@ -73,6 +73,18 @@ export function defaultDeckCounts() {
   return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2, c14: 3, c15: 3, c16: 1 };
 }
 
+// Which cards a brand-new account already owns and can build a deck
+// from. Deliberately kept as exactly the card ids that make up the
+// starter deck above (not a separately-curated list) — those are the
+// cards new players already have in hand from day one, so it would be
+// inconsistent to call any of them "not owned yet". Everything else
+// (c10 Ополченец, c11 Страж дворца, c12 Легионер, c13 Повар) is locked
+// until acquired — the acquisition mechanic itself is a later step; for
+// now this just draws the line between "starts owned" and "doesn't".
+export function defaultOwnedCardIds() {
+  return Object.keys(defaultDeckCounts());
+}
+
 let uidCounter = 1;
 function nextUid(prefix) {
   uidCounter += 1;

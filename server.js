@@ -28,14 +28,15 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
 db.data.resources ||= {};
 db.data.pveProgress ||= {};
+db.data.ownedCards ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -62,6 +63,21 @@ function getResources(username) {
   if (!rec) {
     rec = { dust: 0, gold: 0, crystals: 0 };
     db.data.resources[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Which cards this account actually owns and can put in a deck. Every
+// new account starts with exactly the starter-deck cards (see
+// engine.defaultOwnedCardIds) — everything else is locked until bought,
+// which is a later step; this just tracks and enforces the ownership
+// boundary itself.
+function getOwnedCards(username) {
+  let rec = db.data.ownedCards[username];
+  if (!rec) {
+    rec = engine.defaultOwnedCardIds();
+    db.data.ownedCards[username] = rec;
     db.write();
   }
   return rec;
@@ -227,6 +243,7 @@ app.post('/api/register', (req, res) => {
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
+  db.data.ownedCards[name] = engine.defaultOwnedCardIds();
   db.write();
 
   res.status(201).json({ ok: true });
@@ -272,11 +289,13 @@ app.post('/api/deck', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const counts = (req.body && req.body.counts) || {};
+  const owned = new Set(getOwnedCards(username));
   const clean = {};
   let total = 0;
   for (const id of Object.keys(counts)) {
     const card = engine.cardById(id);
     if (!card) continue;
+    if (!owned.has(id)) continue; // not bought yet — can't go in a deck
     const n = Math.max(0, Math.min(engine.maxCopiesForCard(card), Math.floor(Number(counts[id]) || 0)));
     if (n > 0) clean[id] = n;
     total += n;
@@ -285,6 +304,15 @@ app.post('/api/deck', (req, res) => {
   db.data.decks[username] = clean;
   db.write();
   res.json({ ok: true });
+});
+
+// Which card ids this account owns and can put in a deck. Read-only for
+// now — there's no purchase mechanic yet (that's a later step), so this
+// always reflects the starter set until one exists.
+app.get('/api/owned-cards', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  res.json({ cardIds: getOwnedCards(username) });
 });
 
 // Account-bound currencies (пыль/золото/кристаллы). Read-only for now —
