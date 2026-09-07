@@ -15,10 +15,16 @@ export const START_HP = 30;
 export const MAX_MANA = 10;
 export const MAX_HAND = 7;
 
-// Rarity is purely descriptive right now (no gameplay effect, no deck-
-// building restriction) — it only informs display. Two tiers above Epic
-// exist in the game's design (Legendary, Mythic) but no card uses them
-// yet, so 'legendary'/'mythic' are valid values with nothing assigned.
+// Rarity is purely descriptive right now (no gameplay effect beyond the
+// deck copy limit below) — it mainly informs display. Legendary is a
+// genuine top rarity tier (no card uses it yet). Mythic is different: it
+// isn't its own independent tier but a *skin* — a reskinned, slightly
+// re-tuned variant of an existing Rare/Epic/Legendary card. A mythic
+// card therefore carries both `rarity: 'mythic'` (for display/color) AND
+// `baseRarity` naming which tier's card it's a skin of ('rare' | 'epic'
+// | 'legendary') — the deck copy limit always comes from `baseRarity`,
+// never a fixed mythic-specific number. No skins exist yet, so no card
+// currently sets `baseRarity`; this is scaffolding for when one does.
 export const CARD_POOL = [
   { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 1, hp: 3, rarity: 'common' },
   { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1, rarity: 'common' },
@@ -42,13 +48,19 @@ export function cardById(id) {
 }
 
 // Max copies of a single card allowed in a deck, by rarity: Common/Rare/
-// Epic can go up to 3 copies each; Legendary and Mythic are singles (at
-// most 1 copy) — no card uses those two tiers yet, but the rule is ready
-// for when one does. Unknown/missing rarity falls back to the common
+// Epic can go up to 3 copies each; Legendary is a single (at most 1
+// copy) — no card uses that tier yet, but the rule is ready for when one
+// does. Mythic is NOT an independent tier here: a mythic card is a skin
+// of a Rare/Epic/Legendary card, so its limit is whatever `baseRarity`
+// says (falling back to 'rare' — the loosest of the three skinnable
+// tiers — only as a defensive default if a future mythic card somehow
+// omits it). Unknown/missing rarity altogether falls back to the common
 // case (3) rather than silently allowing something looser.
 export function maxCopiesForCard(card) {
-  if (card && (card.rarity === 'legendary' || card.rarity === 'mythic')) return 1;
-  return 3;
+  if (!card) return 3;
+  const effectiveRarity = card.rarity === 'mythic' ? (card.baseRarity || 'rare') : card.rarity;
+  if (effectiveRarity === 'legendary') return 1;
+  return 3; // common, rare, epic (and mythic skinning any of those)
 }
 
 export function defaultDeckCounts() {
