@@ -80,6 +80,22 @@ function getOwnedCounts(username) {
     rec = engine.defaultOwnedCounts();
     db.data.ownedCards[username] = rec;
     db.write();
+  } else if (Array.isArray(rec)) {
+    // One-time migration for accounts created before per-card counts
+    // existed, back when ownedCards was just a boolean array of ids
+    // ("do I have this card at all"). Starter cards get their known
+    // starter-deck count back; anything else in the old array (bought
+    // under the old one-copy-only shop rule) becomes exactly 1 copy —
+    // the old format never recorded quantity, so 1 is the accurate
+    // floor of what "owned" meant back then.
+    const defaults = engine.defaultOwnedCounts();
+    const migrated = {};
+    for (const id of rec) {
+      migrated[id] = defaults[id] || 1;
+    }
+    rec = migrated;
+    db.data.ownedCards[username] = rec;
+    db.write();
   }
   return rec;
 }
