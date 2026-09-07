@@ -394,6 +394,48 @@ app.post('/api/shop/refresh', (req, res) => {
   res.json({ cardIds: db.data.shop[username][tab].cardIds, crystals: resources.crystals });
 });
 
+// Buys one specific slot from a tab's currently-listed cards, paying in
+// that tab's own currency (gold tab charges gold, etc. — SHOP_TABS names
+// double as the matching resources keys). `index` (not cardId) identifies
+// the slot, since the same card can legitimately appear more than once in
+// a 6-slot list drawn with replacement — buying slot 2 shouldn't silently
+// also consume slot 5 just because they're the same card. The purchased
+// card is added to the account's owned cards; the list itself is left
+// as-is (any other slot showing the same card simply becomes "already
+// owned" from the client's perspective, since ownership is per-card, not
+// per-slot).
+app.post('/api/shop/buy', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const tab = req.body && req.body.tab;
+  const index = req.body && req.body.index;
+  if (!SHOP_TABS.includes(tab)) {
+    return res.status(400).json({ error: '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0432\u043a\u043b\u0430\u0434\u043a\u0430 \u043c\u0430\u0433\u0430\u0437\u0438\u043d\u0430.' });
+  }
+  const rec = getShopState(username);
+  const list = rec[tab].cardIds;
+  if (!Number.isInteger(index) || index < 0 || index >= list.length) {
+    return res.status(400).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u043a\u0430\u0440\u0442\u0430.' });
+  }
+  const cardId = list[index];
+  const card = engine.cardById(cardId);
+  if (!card) return res.status(400).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u043a\u0430\u0440\u0442\u0430.' });
+  const owned = getOwnedCards(username);
+  if (owned.includes(cardId)) {
+    return res.status(400).json({ error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u0443\u0436\u0435 \u043a\u0443\u043f\u043b\u0435\u043d\u0430.' });
+  }
+  const price = engine.shopPriceForCard(card, tab);
+  if (price == null) return res.status(400).json({ error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u043f\u0440\u043e\u0434\u0430\u0451\u0442\u0441\u044f.' });
+  const resources2 = getResources(username);
+  if ((resources2[tab] || 0) < price) {
+    return res.status(400).json({ error: '\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0441\u0440\u0435\u0434\u0441\u0442\u0432.' });
+  }
+  resources2[tab] -= price;
+  owned.push(cardId);
+  db.write();
+  res.json({ ok: true, cardId, resources: resources2 });
+});
+
 // Account-bound currencies (пыль/золото/кристаллы). Read-only for now —
 // nothing awards them yet, that's a later step. Every account starts at
 // 0 and this just exposes the persisted balance.
