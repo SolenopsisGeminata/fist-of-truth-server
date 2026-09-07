@@ -75,13 +75,12 @@ export function deckSlotCapForCard(card, ownedCount) {
 }
 
 export function defaultDeckCounts() {
-  // A starting deck given to every new account, respecting both the
-  // max-3-copies-per-card rule and the 30-card deck cap. 21 (original 7
-  // creatures ×3) + 2 (Кольчуга) + 3 (Ополченец с дубиной) + 3 (Крепкий
-  // работяга) + 1 (Родная тетушка) = 30 exactly — she gets only 1 copy
-  // here (not 3) specifically because 3 would have pushed the total past
-  // the cap.
-  return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2, c14: 3, c15: 3, c16: 1 };
+  // A starting deck given to every new account: exactly 3 copies each of
+  // 10 cards — every Common creature, Кольчуга, and Родная тетушка. 10×3
+  // = 30 exactly. Паладин (Rare) is deliberately NOT part of the
+  // starter set — new accounts start without him and can buy him later
+  // through the shop, same as any other non-starter card.
+  return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, s1: 3, c14: 3, c15: 3, c16: 3 };
 }
 
 // How many copies of each card a brand-new account already owns.
