@@ -28,12 +28,13 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
+db.data.resources ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -47,6 +48,19 @@ function getTournamentRecord(username) {
   if (!rec) {
     rec = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
     db.data.tournament[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Account-bound currencies. Nothing awards them yet — that's a later
+// step — this just gives every account a real, persisted balance
+// (starting at 0) so the client has something honest to display.
+function getResources(username) {
+  let rec = db.data.resources[username];
+  if (!rec) {
+    rec = { dust: 0, gold: 0, crystals: 0 };
+    db.data.resources[username] = rec;
     db.write();
   }
   return rec;
@@ -160,6 +174,7 @@ app.post('/api/register', (req, res) => {
   // not just falling back to a default at read time.
   db.data.decks[name] = engine.defaultDeckCounts();
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
+  db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.write();
 
   res.status(201).json({ ok: true });
@@ -218,6 +233,15 @@ app.post('/api/deck', (req, res) => {
   db.data.decks[username] = clean;
   db.write();
   res.json({ ok: true });
+});
+
+// Account-bound currencies (пыль/золото/кристаллы). Read-only for now —
+// nothing awards them yet, that's a later step. Every account starts at
+// 0 and this just exposes the persisted balance.
+app.get('/api/resources', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  res.json(getResources(username));
 });
 
 // Current ladder standing for the logged-in account. Read-only — all
