@@ -69,15 +69,15 @@ function getResources(username) {
   return rec;
 }
 
-// Which cards this account actually owns and can put in a deck. Every
-// new account starts with exactly the starter-deck cards (see
-// engine.defaultOwnedCardIds) — everything else is locked until bought,
-// which is a later step; this just tracks and enforces the ownership
-// boundary itself.
-function getOwnedCards(username) {
+// How many copies of each card this account owns — a map of cardId to
+// count. Every new account starts with exactly the starter deck's own
+// counts (see engine.defaultOwnedCounts); everything else starts at 0
+// copies until bought in the shop. There's no upper limit on copies —
+// buying a card you already have just increments its count.
+function getOwnedCounts(username) {
   let rec = db.data.ownedCards[username];
   if (!rec) {
-    rec = engine.defaultOwnedCardIds();
+    rec = engine.defaultOwnedCounts();
     db.data.ownedCards[username] = rec;
     db.write();
   }
@@ -99,7 +99,7 @@ const SHOP_LIST_SIZE = 6;
 const SHOP_REFRESH_COST = 12; // crystals — same cost regardless of which tab is being refreshed
 
 function regenerateShopTab(username, tab) {
-  const pool = engine.shoppableCards(getOwnedCards(username));
+  const pool = engine.shoppableCards();
   const cardIds = engine.pickRandomShopCards(pool, SHOP_LIST_SIZE);
   if (!db.data.shop[username]) db.data.shop[username] = {};
   db.data.shop[username][tab] = { day: moscowDateString(), cardIds };
@@ -285,7 +285,7 @@ app.post('/api/register', (req, res) => {
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
-  db.data.ownedCards[name] = engine.defaultOwnedCardIds();
+  db.data.ownedCards[name] = engine.defaultOwnedCounts();
   db.write();
 
   res.status(201).json({ ok: true });
@@ -331,14 +331,14 @@ app.post('/api/deck', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const counts = (req.body && req.body.counts) || {};
-  const owned = new Set(getOwnedCards(username));
+  const owned = getOwnedCounts(username);
   const clean = {};
   let total = 0;
   for (const id of Object.keys(counts)) {
     const card = engine.cardById(id);
     if (!card) continue;
-    if (!owned.has(id)) continue; // not bought yet — can't go in a deck
-    const n = Math.max(0, Math.min(engine.maxCopiesForCard(card), Math.floor(Number(counts[id]) || 0)));
+    if (!(owned[id] > 0)) continue; // not owned (0 copies) — can't go in a deck
+    const n = Math.max(0, Math.min(engine.deckSlotCapForCard(card, owned[id]), Math.floor(Number(counts[id]) || 0)));
     if (n > 0) clean[id] = n;
     total += n;
   }
@@ -348,19 +348,17 @@ app.post('/api/deck', (req, res) => {
   res.json({ ok: true });
 });
 
-// Which card ids this account owns and can put in a deck. Read-only for
-// now — there's no purchase mechanic yet (that's a later step), so this
-// always reflects the starter set until one exists.
+// How many copies of each card this account owns (cardId -> count).
+// Read-only here — the only way this changes is buying more copies via
+// POST /api/shop/buy.
 app.get('/api/owned-cards', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  res.json({ cardIds: getOwnedCards(username) });
+  res.json({ counts: getOwnedCounts(username) });
 });
 
 // Today's shop lists (all 3 currency tabs at once) — auto-regenerates any
-// tab that's stale from a previous Moscow calendar day. Buying a card
-// isn't wired up yet (a later step, like the rest of card acquisition);
-// this only exposes what's on offer and lets it be paid-refreshed.
+// tab that's stale from a previous Moscow calendar day.
 app.get('/api/shop', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
@@ -404,6 +402,15 @@ app.post('/api/shop/refresh', (req, res) => {
 // as-is (any other slot showing the same card simply becomes "already
 // owned" from the client's perspective, since ownership is per-card, not
 // per-slot).
+// Buys one specific slot from a tab's currently-listed cards, paying in
+// that tab's own currency (gold tab charges gold, etc. — SHOP_TABS names
+// double as the matching resources keys). `index` (not cardId) identifies
+// the slot, since the same card can legitimately appear more than once in
+// a 6-slot list drawn with replacement — buying slot 2 shouldn't silently
+// also consume slot 5 just because they're the same card. Each purchase
+// adds exactly one MORE copy to the account's owned count — there's no
+// cap, and buying a card you already own is fully expected (that's how
+// you stack up copies), not blocked.
 app.post('/api/shop/buy', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
@@ -420,20 +427,17 @@ app.post('/api/shop/buy', (req, res) => {
   const cardId = list[index];
   const card = engine.cardById(cardId);
   if (!card) return res.status(400).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u043a\u0430\u0440\u0442\u0430.' });
-  const owned = getOwnedCards(username);
-  if (owned.includes(cardId)) {
-    return res.status(400).json({ error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u0443\u0436\u0435 \u043a\u0443\u043f\u043b\u0435\u043d\u0430.' });
-  }
   const price = engine.shopPriceForCard(card, tab);
   if (price == null) return res.status(400).json({ error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u043f\u0440\u043e\u0434\u0430\u0451\u0442\u0441\u044f.' });
-  const resources2 = getResources(username);
-  if ((resources2[tab] || 0) < price) {
+  const resources = getResources(username);
+  if ((resources[tab] || 0) < price) {
     return res.status(400).json({ error: '\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0441\u0440\u0435\u0434\u0441\u0442\u0432.' });
   }
-  resources2[tab] -= price;
-  owned.push(cardId);
+  resources[tab] -= price;
+  const owned = getOwnedCounts(username);
+  owned[cardId] = (owned[cardId] || 0) + 1;
   db.write();
-  res.json({ ok: true, cardId, resources: resources2 });
+  res.json({ ok: true, cardId, ownedCount: owned[cardId], resources });
 });
 
 // Account-bound currencies (пыль/золото/кристаллы). Read-only for now —

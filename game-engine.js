@@ -63,6 +63,17 @@ export function maxCopiesForCard(card) {
   return 3; // common, rare, epic (and mythic skinning any of those)
 }
 
+// The actual number of copies of this card a deck can use right now:
+// never more than the rarity ceiling (maxCopiesForCard), and never more
+// than however many copies the account has actually bought. Owning 1
+// Повар caps its deck slot at 1, owning 2 caps it at 2, owning 3+ caps
+// it at the rarity ceiling (3, since Повар is Rare) — buying more past
+// that ceiling doesn't raise the deck cap further, it just banks extra
+// copies (useful for a future dust-conversion/crafting sink, say).
+export function deckSlotCapForCard(card, ownedCount) {
+  return Math.min(maxCopiesForCard(card), Math.max(0, ownedCount || 0));
+}
+
 export function defaultDeckCounts() {
   // A starting deck given to every new account, respecting both the
   // max-3-copies-per-card rule and the 30-card deck cap. 21 (original 7
@@ -73,16 +84,14 @@ export function defaultDeckCounts() {
   return { c1: 3, c2: 3, c3: 3, c4: 3, c6: 3, c7: 3, c8: 3, s1: 2, c14: 3, c15: 3, c16: 1 };
 }
 
-// Which cards a brand-new account already owns and can build a deck
-// from. Deliberately kept as exactly the card ids that make up the
-// starter deck above (not a separately-curated list) — those are the
-// cards new players already have in hand from day one, so it would be
+// How many copies of each card a brand-new account already owns.
+// Deliberately kept as exactly the starter deck's own counts (not a
+// separately-curated table) — those are the cards (and quantities)
+// new players already have in hand from day one, so it would be
 // inconsistent to call any of them "not owned yet". Everything else
-// (c10 Ополченец, c11 Страж дворца, c12 Легионер, c13 Повар) is locked
-// until acquired — the acquisition mechanic itself is a later step; for
-// now this just draws the line between "starts owned" and "doesn't".
-export function defaultOwnedCardIds() {
-  return Object.keys(defaultDeckCounts());
+// starts at 0 copies, until bought in the shop.
+export function defaultOwnedCounts() {
+  return { ...defaultDeckCounts() };
 }
 
 // ---------- Shop ----------
@@ -107,16 +116,18 @@ export function shopPriceForCard(card, currency) {
   return price == null ? null : price;
 }
 
-// Cards a shop list can ever draw from: sellable rarity tier, and not
-// already owned by this account. NOTE: right now this pool is small (only
-// 3 cards — Страж дворца, Легионер, Повар — qualify; c10 Ополченец is
-// excluded for being Common) — until more Rare+ cards exist, the 6-slot
-// daily lists below necessarily repeat cards. That's expected, not a bug.
-export function shoppableCards(ownedIds) {
-  const owned = new Set(ownedIds || []);
+// Cards a shop list can ever draw from: any sellable rarity tier. Owning
+// a card already (even several copies) does NOT remove it from the pool
+// — accounts can hold unlimited copies of the same card, so the shop
+// keeps offering it. NOTE: right now this pool is only 5 cards (Каменная
+// Стена, Паладин, Страж дворца, Легионер, Повар qualify; Common cards
+// like Ополченец are excluded, having no defined shop price) — until
+// more Rare+ cards exist, the 6-slot daily lists below necessarily
+// repeat cards. That's expected, not a bug.
+export function shoppableCards() {
   return CARD_POOL.filter((c) => {
     const r = shopRarityOf(c);
-    return (r === 'rare' || r === 'epic' || r === 'legendary') && !owned.has(c.id);
+    return r === 'rare' || r === 'epic' || r === 'legendary';
   });
 }
 
