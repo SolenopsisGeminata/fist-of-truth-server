@@ -465,6 +465,23 @@ app.get('/api/resources', (req, res) => {
   res.json(getResources(username));
 });
 
+// TEMPORARY — dev/test helper only, remove after use. Only ever acts on
+// the account literally named "admin" (checked against its own session
+// token, not settable for any other account), setting its resources to
+// a large fixed amount so it can be used for testing without running
+// into resource limits. Not a general "give myself resources" endpoint.
+app.post('/api/admin/grant-test-resources', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  if (username !== 'admin') return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
+  const resources = getResources(username);
+  resources.gold = 999999;
+  resources.dust = 999999;
+  resources.crystals = 999999;
+  db.write();
+  res.json({ ok: true, resources });
+});
+
 // Current standing on the PVE match-count reward ladder. Read-only —
 // progress only advances server-side, when a PVE match actually finishes
 // (see applyPveProgress). Includes the current iteration's target/reward
