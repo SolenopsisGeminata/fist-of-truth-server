@@ -177,20 +177,42 @@ function getPveProgress(username) {
 // once it fills. There's no bot-stand-in concept in PVE (that's a
 // tournament/PVP-only mechanic for covering a missing opponent), so
 // `match.players` always has exactly one real account plus `match.aiName`.
+// Counts one completed PVE match toward the human player's progress
+// (only WINS advance the bar — losses don't), and pays a per-match
+// reward regardless of outcome:
+//   win  -> 20 gold + 20 dust
+//   lose -> 10 gold (no dust)
+// On top of that, a win that fills the bar also grants the ladder tier's
+// gold reward (same schedule as before — gold only, no dust, unlike
+// PVP's tier reward). Returns a { [username]: {...} } summary matching
+// applyPvpRewards' shape, so the caller can embed it in that specific
+// player's resolution message the same way.
 function applyPveProgress(match) {
   const username = match.players.find((p) => p !== match.aiName);
-  if (!username) return;
-  if (match.winner !== username) return; // loss — no progress toward the bar
-  const progress = getPveProgress(username);
-  progress.matchesPlayed = (progress.matchesPlayed || 0) + 1;
-  const info = pveIterationInfo(progress.iteration);
-  if (progress.matchesPlayed >= info.required) {
-    const resources = getResources(username);
-    resources.gold = (resources.gold || 0) + info.reward;
-    progress.iteration += 1;
-    progress.matchesPlayed = 0;
+  if (!username) return null;
+  const won = match.winner === username;
+  const resources = getResources(username);
+  const matchGold = won ? 20 : 10;
+  const matchDust = won ? 20 : 0;
+  resources.gold = (resources.gold || 0) + matchGold;
+  resources.dust = (resources.dust || 0) + matchDust;
+  let tierGold = 0;
+  const tierDust = 0; // PVE's ladder tier reward is gold-only, unlike PVP's
+  let tierCompleted = false;
+  if (won) {
+    const progress = getPveProgress(username);
+    progress.matchesPlayed = (progress.matchesPlayed || 0) + 1;
+    const info = pveIterationInfo(progress.iteration);
+    if (progress.matchesPlayed >= info.required) {
+      tierGold = info.reward;
+      resources.gold += tierGold;
+      progress.iteration += 1;
+      progress.matchesPlayed = 0;
+      tierCompleted = true;
+    }
   }
   db.write();
+  return { [username]: { matchGold, matchDust, tierGold, tierDust, tierCompleted } };
 }
 
 // ---------- PVP progress ladder ----------
@@ -1053,10 +1075,11 @@ wss.on('connection', (ws) => {
       // directly in the message the client uses to show the post-match
       // overlay — no separate round-trip needed for that.
       let pvpRewards = null;
+      let pveRewards = null;
       if (result.gameOver) {
         endMatch(mm, 'finished', result.winner);
         if (mm.match.isTournament) applyTournamentResult(mm.match);
-        if (mm.match.rewardMode === 'pve') applyPveProgress(mm.match);
+        if (mm.match.rewardMode === 'pve') pveRewards = applyPveProgress(mm.match);
         if (mm.match.rewardMode === 'pvp') pvpRewards = applyPvpRewards(mm.match);
       }
       // Both players were ready — resolution just ran synchronously inside
@@ -1072,6 +1095,7 @@ wss.on('connection', (ws) => {
           state: engine.snapshotFor(mm.match, username),
         };
         if (pvpRewards && pvpRewards[username]) payload.reward = pvpRewards[username];
+        if (pveRewards && pveRewards[username]) payload.reward = pveRewards[username];
         safeSend(mm.sockets[username], payload);
       }
       persistMatch(mm);
