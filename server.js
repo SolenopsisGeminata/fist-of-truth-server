@@ -28,9 +28,9 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
@@ -38,6 +38,7 @@ db.data.resources ||= {};
 db.data.pveProgress ||= {};
 db.data.ownedCards ||= {};
 db.data.shop ||= {};
+db.data.activeDeck ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -307,14 +308,18 @@ function makeDeckId() {
   return 'deck_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-// Which deck a match is actually played with — always the account's
-// "Базовая колода" for now. Other decks the player builds are just for
-// theorycrafting until a "pick your active deck for battle" feature
-// exists on top of this.
+// Which deck a match is actually played with. Defaults to "Базовая
+// колода" until the player has explicitly picked a different one (see
+// POST /api/decks/set-active) — covers both brand-new accounts and ones
+// that existed before this concept did.
+function getActiveDeckId(username) {
+  return db.data.activeDeck[username] || 'basic';
+}
+
 function getDeckCounts(username) {
   const decks = getDecks(username);
-  const basic = findDeck(decks, 'basic');
-  return (basic && basic.counts) || engine.defaultDeckCounts();
+  const active = findDeck(decks, getActiveDeckId(username)) || findDeck(decks, 'basic');
+  return (active && active.counts) || engine.defaultDeckCounts();
 }
 
 // ---------- HTTP API ----------
@@ -351,6 +356,7 @@ app.post('/api/register', (req, res) => {
   // saved as "Базовая колода" — the first entry in what's now an array
   // of decks (multiple decks per account).
   db.data.decks[name] = [{ id: 'basic', name: '\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u043a\u043e\u043b\u043e\u0434\u0430', counts: engine.defaultDeckCounts() }];
+  db.data.activeDeck[name] = 'basic';
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
@@ -394,7 +400,20 @@ app.post('/api/logout', (req, res) => {
 app.get('/api/decks', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  res.json({ decks: getDecks(username) });
+  res.json({ decks: getDecks(username), activeDeckId: getActiveDeckId(username) });
+});
+
+// Marks one of the account's decks as the one matches are actually
+// played with (PVE/PVP/tournament alike) — takes effect immediately.
+app.post('/api/decks/set-active', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { id } = req.body || {};
+  const decks = getDecks(username);
+  if (!findDeck(decks, id)) return res.status(404).json({ error: '\u041a\u043e\u043b\u043e\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.' });
+  db.data.activeDeck[username] = id;
+  db.write();
+  res.json({ ok: true, activeDeckId: id });
 });
 
 // Creates a new, empty deck (auto-named "Колода N") the player can then
