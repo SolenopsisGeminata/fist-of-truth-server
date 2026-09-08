@@ -261,8 +261,60 @@ function usernameFromRequest(req) {
   return token ? sessions.get(token) : null;
 }
 
+function getDecks(username) {
+  let rec = db.data.decks[username];
+  if (!rec) {
+    rec = [{ id: 'basic', name: '\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u043a\u043e\u043b\u043e\u0434\u0430', counts: engine.defaultDeckCounts() }];
+    db.data.decks[username] = rec;
+    db.write();
+    return rec;
+  }
+  if (!Array.isArray(rec)) {
+    // One-time migration for accounts created before multiple decks
+    // existed, back when db.data.decks[username] was just a single
+    // counts object. Wraps that deck as "Базовая колода" — and, since
+    // those accounts could carry inconsistent/partial ownership from
+    // earlier iterations of the shop, grants a clean baseline of exactly
+    // 3 copies of every non-starter card, so "Доступные карты" has
+    // something consistent to show right away.
+    const migrated = { id: 'basic', name: '\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u043a\u043e\u043b\u043e\u0434\u0430', counts: rec };
+    rec = [migrated];
+    db.data.decks[username] = rec;
+    const owned = getOwnedCounts(username);
+    const starterIds = new Set(Object.keys(engine.defaultDeckCounts()));
+    engine.CARD_POOL.forEach((c) => {
+      if (!starterIds.has(c.id)) owned[c.id] = 3;
+    });
+    db.write();
+  }
+  return rec;
+}
+
+function findDeck(decks, id) {
+  return decks.find((d) => d.id === id);
+}
+
+// "Колода 2", "Колода 3", ... — picks the first name not already in use,
+// so it stays unique even if decks are ever deleted/renamed later.
+function nextDeckName(decks) {
+  const names = new Set(decks.map((d) => d.name));
+  let n = decks.length + 1;
+  while (names.has(`\u041a\u043e\u043b\u043e\u0434\u0430 ${n}`)) n++;
+  return `\u041a\u043e\u043b\u043e\u0434\u0430 ${n}`;
+}
+
+function makeDeckId() {
+  return 'deck_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+// Which deck a match is actually played with — always the account's
+// "Базовая колода" for now. Other decks the player builds are just for
+// theorycrafting until a "pick your active deck for battle" feature
+// exists on top of this.
 function getDeckCounts(username) {
-  return db.data.decks[username] || engine.defaultDeckCounts();
+  const decks = getDecks(username);
+  const basic = findDeck(decks, 'basic');
+  return (basic && basic.counts) || engine.defaultDeckCounts();
 }
 
 // ---------- HTTP API ----------
@@ -295,9 +347,10 @@ app.post('/api/register', (req, res) => {
     passwordHash,
     createdAt: new Date().toISOString(),
   });
-  // Every new account starts with a full 30-card deck already saved,
-  // not just falling back to a default at read time.
-  db.data.decks[name] = engine.defaultDeckCounts();
+  // Every new account starts with a full 30-card starter deck already
+  // saved as "Базовая колода" — the first entry in what's now an array
+  // of decks (multiple decks per account).
+  db.data.decks[name] = [{ id: 'basic', name: '\u0411\u0430\u0437\u043e\u0432\u0430\u044f \u043a\u043e\u043b\u043e\u0434\u0430', counts: engine.defaultDeckCounts() }];
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
@@ -337,29 +390,48 @@ app.post('/api/logout', (req, res) => {
 
 // Deck is tied to the account, not local storage, because the server
 // needs it to build a real draw pile when a PVP match starts.
-app.get('/api/deck', (req, res) => {
+// All of this account's decks (id, name, and card counts each).
+app.get('/api/decks', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  res.json({ counts: getDeckCounts(username) });
+  res.json({ decks: getDecks(username) });
 });
 
-app.post('/api/deck', (req, res) => {
+// Creates a new, empty deck (auto-named "Колода N") the player can then
+// build out. There's no limit on how many decks an account can have.
+app.post('/api/decks/create', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  const counts = (req.body && req.body.counts) || {};
+  const decks = getDecks(username);
+  const deck = { id: makeDeckId(), name: nextDeckName(decks), counts: {} };
+  decks.push(deck);
+  db.write();
+  res.json({ deck });
+});
+
+// Saves one specific deck's card counts (identified by id — every
+// account can have several decks now). Same ownership/rarity/legendary
+// cap and 30-card validation as before, just scoped to the one deck.
+app.post('/api/decks/save', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { id, counts } = req.body || {};
+  const decks = getDecks(username);
+  const deck = findDeck(decks, id);
+  if (!deck) return res.status(404).json({ error: '\u041a\u043e\u043b\u043e\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.' });
   const owned = getOwnedCounts(username);
   const clean = {};
   let total = 0;
-  for (const id of Object.keys(counts)) {
-    const card = engine.cardById(id);
+  for (const cardId of Object.keys(counts || {})) {
+    const card = engine.cardById(cardId);
     if (!card) continue;
-    if (!(owned[id] > 0)) continue; // not owned (0 copies) — can't go in a deck
-    const n = Math.max(0, Math.min(engine.deckSlotCapForCard(card, owned[id]), Math.floor(Number(counts[id]) || 0)));
-    if (n > 0) clean[id] = n;
+    if (!(owned[cardId] > 0)) continue; // not owned (0 copies) — can't go in a deck
+    const n = Math.max(0, Math.min(engine.deckSlotCapForCard(card, owned[cardId]), Math.floor(Number(counts[cardId]) || 0)));
+    if (n > 0) clean[cardId] = n;
     total += n;
   }
   if (total > 30) return res.status(400).json({ error: '\u0412 \u043a\u043e\u043b\u043e\u0434\u0435 \u043d\u0435 \u043c\u043e\u0436\u0435\u0442 \u0431\u044b\u0442\u044c \u0431\u043e\u043b\u044c\u0448\u0435 30 \u043a\u0430\u0440\u0442.' });
-  db.data.decks[username] = clean;
+  deck.counts = clean;
   db.write();
   res.json({ ok: true });
 });
