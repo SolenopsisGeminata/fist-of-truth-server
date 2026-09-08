@@ -616,8 +616,6 @@ function resolveCombat(match, events) {
 
       const aUnit = aInfo && aInfo.unit;
       const bUnit = bInfo && bInfo.unit;
-      const aTarget = aUnit ? frontUnit(match.boards[nameB], l) : null;
-      const bTarget = bUnit ? frontUnit(match.boards[nameA], l) : null;
 
       if (aUnit && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
       if (bUnit && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
@@ -629,13 +627,24 @@ function resolveCombat(match, events) {
       const aAtk = aUnit ? effectiveAtk(match.boards[nameA], l, aInfo.depth) : 0;
       const bAtk = bUnit ? effectiveAtk(match.boards[nameB], l, bInfo.depth) : 0;
 
+      // A unit whose current effective attack is 0 or less (e.g. Корова,
+      // base 0 attack) doesn't attack this wave at all — it picks no
+      // target and deals no damage, and doesn't show up as an attacker
+      // in the event below. It can still BE attacked/blocked normally by
+      // the other side, same as always — this only ever stops it from
+      // acting, never from being acted upon.
+      const aAttacks = !!(aUnit && aAtk > 0);
+      const bAttacks = !!(bUnit && bAtk > 0);
+      const aTarget = aAttacks ? frontUnit(match.boards[nameB], l) : null;
+      const bTarget = bAttacks ? frontUnit(match.boards[nameA], l) : null;
+
       // Armor reduces incoming damage per hit (never goes negative, never
       // consumed) — only units can have it, heroes always take the full
       // hit. The event carries the *actual* damage applied so the client's
       // popup number always matches the real HP change.
       let aApplied = 0, bApplied = 0;
       let aLifesteal = 0, bLifesteal = 0;
-      if (aUnit) {
+      if (aAttacks) {
         if (aTarget) {
           aApplied = Math.max(0, aAtk - (aTarget.unit.armor || 0));
           aTarget.unit.hp -= aApplied;
@@ -650,7 +659,7 @@ function resolveCombat(match, events) {
           }
         }
       }
-      if (bUnit) {
+      if (bAttacks) {
         if (bTarget) {
           bApplied = Math.max(0, bAtk - (bTarget.unit.armor || 0));
           bTarget.unit.hp -= bApplied;
@@ -669,10 +678,10 @@ function resolveCombat(match, events) {
 
       events.push({
         type: 'wave', lane: l, waveIndex: w,
-        attackerA: aUnit ? { side: nameA, uid: aUnit.uid, depth: aInfo.depth } : null,
-        attackerB: bUnit ? { side: nameB, uid: bUnit.uid, depth: bInfo.depth } : null,
-        targetAHero: !!(aUnit && !aTarget),
-        targetBHero: !!(bUnit && !bTarget),
+        attackerA: aAttacks ? { side: nameA, uid: aUnit.uid, depth: aInfo.depth } : null,
+        attackerB: bAttacks ? { side: nameB, uid: bUnit.uid, depth: bInfo.depth } : null,
+        targetAHero: !!(aAttacks && !aTarget),
+        targetBHero: !!(bAttacks && !bTarget),
         targetADepth: aTarget ? aTarget.depth : null,
         targetBDepth: bTarget ? bTarget.depth : null,
         aDamage: aApplied,
