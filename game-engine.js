@@ -264,6 +264,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     round: 1,
     pendingSpells: [],
     pendingRallyBuffs: [],
+    pendingHeals: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -359,13 +360,13 @@ export function placeCard(match, username, uid, lane, depth) {
     }
   }
 
-  // Монахиня: heals her owner's hero immediately, right when she's
-  // placed — not deferred, unlike the buffs above, since a hero's own HP
-  // change is already visible to its owner during their own placing
-  // phase (there's no hidden "before" picture to reveal here the way the
-  // opponent's board is hidden). Uncapped, same convention as lifesteal.
+  // Монахиня: heals her owner's hero — queued, not applied immediately,
+  // so BOTH players see it happen as a revealed, animated event at the
+  // very start of resolution (same moment as rallyBuff/auntBuff below),
+  // instead of silently changing HP during placing while the opponent's
+  // board (and this placement) is still hidden from them.
   if (card.healOnPlay) {
-    match.hp[username] += card.healOnPlay;
+    match.pendingHeals.push({ side: username, amount: card.healOnPlay, sourceUid: unit.uid });
   }
 
   return { ok: true };
@@ -427,6 +428,7 @@ export function returnToHand(match, username, uid) {
   // empty at resolution time (see the `if (!unit) continue;` guard in
   // tryEndTurn's rally-buff drain).
   match.pendingRallyBuffs = match.pendingRallyBuffs.filter((b) => b.sourceUid !== uid);
+  match.pendingHeals = match.pendingHeals.filter((h) => h.sourceUid !== uid);
 
   hand.push({ id: unit.id, uid: nextUid('card') });
   return { ok: true };
@@ -708,6 +710,16 @@ export function tryEndTurn(match, username) {
       type: 'rallyBuff', side: buff.side, laneIdx: buff.laneIdx,
       targetDepth: buff.depthIdx, buffAtk: buff.buffAtk, buffHp: buff.buffHp,
     });
+  }
+
+  // Монахиня's heal lands here too — same moment as rally buffs above,
+  // right at the start of resolution, so both players see it as a
+  // revealed event instead of a silent HP change during placing.
+  const healQueue = match.pendingHeals;
+  match.pendingHeals = [];
+  for (const heal of healQueue) {
+    match.hp[heal.side] += heal.amount;
+    events.push({ type: 'heroHeal', side: heal.side, amount: heal.amount, sourceUid: heal.sourceUid });
   }
 
   resolveSpells(match, events);
