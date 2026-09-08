@@ -46,6 +46,11 @@ export const CARD_POOL = [
   // resolveCombat() ниже. Эффект накопительный: чем дольше она остаётся
   // в бою, тем сильнее становится вся команда.
   { id: 'c17', name: '\u0410\u043d\u043d\u0430\u0431\u044d\u043b\u044c \u0420\u0430\u0441\u0441\u0432\u0435\u0442\u043d\u0430\u044f', type: 'creature', cost: 2, atk: 1, hp: 1, dawnBuff: true, rarity: 'legendary' },
+  // Battlecry: heals her owner's hero by a fixed amount the instant she's
+  // placed (see placeCard() below) — immediate, not deferred like
+  // rallyBuff/auntBuff, since the hero's own HP is already visible to its
+  // owner during their own placing phase (nothing dramatic to reveal).
+  { id: 'c18', name: '\u041c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, healOnPlay: 2, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -352,6 +357,15 @@ export function placeCard(match, username, uid, lane, depth) {
       const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
     }
+  }
+
+  // Монахиня: heals her owner's hero immediately, right when she's
+  // placed — not deferred, unlike the buffs above, since a hero's own HP
+  // change is already visible to its owner during their own placing
+  // phase (there's no hidden "before" picture to reveal here the way the
+  // opponent's board is hidden). Uncapped, same convention as lifesteal.
+  if (card.healOnPlay) {
+    match.hp[username] += card.healOnPlay;
   }
 
   return { ok: true };
