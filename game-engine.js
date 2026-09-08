@@ -41,6 +41,11 @@ export const CARD_POOL = [
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
   { id: 'c16', name: '\u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 1, hp: 2, auntBuff: true, rarity: 'common' },
+  // Перед своей атакой в бою (каждый раунд, пока жива) навсегда даёт +1/+1
+  // всем союзным юнитам на поле, включая себя — см. applyDawnBuff() в
+  // resolveCombat() ниже. Эффект накопительный: чем дольше она остаётся
+  // в бою, тем сильнее становится вся команда.
+  { id: 'c17', name: '\u0410\u043d\u043d\u0430\u0431\u044d\u043b\u044c \u0420\u0430\u0441\u0441\u0432\u0435\u0442\u043d\u0430\u044f', type: 'creature', cost: 2, atk: 1, hp: 1, dawnBuff: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -310,6 +315,7 @@ export function placeCard(match, username, uid, lane, depth) {
     lifesteal: !!card.lifesteal,
     synergy: !!card.synergy,
     cookHeal: !!card.cookHeal,
+    dawnBuff: !!card.dawnBuff,
     placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
   };
   match.boards[username][lane][depth] = unit;
@@ -523,6 +529,29 @@ function resolveSpells(match, events) {
   }
 }
 
+// Аннабэль Рассветная: right before HER OWN attack in a given wave,
+// permanently buffs every allied unit currently alive (anywhere on the
+// board, not just her lane) by +1/+1 — including herself. Reuses the
+// exact 'rallyBuff' event shape (one event per target) so the client's
+// existing rally-buff animation just works here too, no new client code
+// needed — and since it's pushed to `events` right before this wave's
+// own 'wave' event, her own hit this same round already reflects the
+// fresh buff (aAtk/bAtk below are computed *after* this runs).
+function applyDawnBuff(match, side, events, sourceUid) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u) {
+        u.atk += 1;
+        u.hp += 1;
+        u.maxHp += 1;
+        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid });
+      }
+    }
+  }
+}
+
 function resolveCombat(match, events) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
@@ -543,6 +572,9 @@ function resolveCombat(match, events) {
       const bUnit = bInfo && bInfo.unit;
       const aTarget = aUnit ? frontUnit(match.boards[nameB], l) : null;
       const bTarget = bUnit ? frontUnit(match.boards[nameA], l) : null;
+
+      if (aUnit && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
+      if (bUnit && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
