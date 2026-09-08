@@ -56,6 +56,7 @@ export const CARD_POOL = [
   // fixed number, and not attack like Повар's cookHeal) — see the
   // cowHeal check alongside cookHeal's, further down.
   { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' },
+  { id: 'c20', name: '\u0421\u0442\u0440\u0430\u0436 \u0432\u043e\u0440\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, armor: 1, rarity: 'rare' },
 ];
 
 export function cardById(id) {
