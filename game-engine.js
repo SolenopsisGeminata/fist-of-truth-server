@@ -35,7 +35,7 @@ export const CARD_POOL = [
   { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true, rarity: 'rare' },
   { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1, rarity: 'common' },
   { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true, rarity: 'rare' },
-  { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: true, rarity: 'epic' },
+  { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: 1, rarity: 'epic' },
   { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1, rarity: 'common' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
@@ -57,6 +57,15 @@ export const CARD_POOL = [
   // cowHeal check alongside cookHeal's, further down.
   { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' },
   { id: 'c20', name: '\u0421\u0442\u0440\u0430\u0436 \u0432\u043e\u0440\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, armor: 1, rarity: 'rare' },
+  // Synergy 1 = +1 atk per adjacent ally, same rule as Легионер. On top
+  // of that, shootHero fires TWICE per lifetime-in-a-round-cycle: once as
+  // a battlecry the instant she's placed (queued via match.pendingShots,
+  // revealed at the start of resolution so the opponent sees it), and
+  // again at the end of every round she survives (alongside cookHeal/
+  // cowHeal, further down) — both times hitting the enemy hero for
+  // damage equal to her CURRENT effective attack (base + synergy) at
+  // that exact moment.
+  { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHero: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -226,12 +235,14 @@ function adjacentAllyPositions(board, laneIdx, depthIdx) {
 }
 
 // The attack a unit actually fights with right now — base atk plus its
-// Synergy bonus (+1 per adjacent ally), recomputed fresh every time since
-// the board changes every round. Non-synergy units just return their atk.
+// Synergy bonus (a per-adjacent-ally multiplier, e.g. Synergy 1 = +1 atk
+// per neighbour, Synergy 2 would be +2, etc.), recomputed fresh every
+// time since the board changes every round. Non-synergy units (synergy
+// falsy/0) just return their atk.
 export function effectiveAtk(board, laneIdx, depthIdx) {
   const unit = board[laneIdx][depthIdx];
   if (!unit) return 0;
-  const bonus = unit.synergy ? countAdjacentAllies(board, laneIdx, depthIdx) : 0;
+  const bonus = unit.synergy ? countAdjacentAllies(board, laneIdx, depthIdx) * unit.synergy : 0;
   return unit.atk + bonus;
 }
 
@@ -271,6 +282,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingSpells: [],
     pendingRallyBuffs: [],
     pendingHeals: [],
+    pendingShots: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -325,7 +337,8 @@ export function placeCard(match, username, uid, lane, depth) {
     maxHp: card.hp,
     armor: card.armor || 0,
     lifesteal: !!card.lifesteal,
-    synergy: !!card.synergy,
+    synergy: card.synergy || 0,
+    shootHero: !!card.shootHero,
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     dawnBuff: !!card.dawnBuff,
@@ -374,6 +387,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // board (and this placement) is still hidden from them.
   if (card.healOnPlay) {
     match.pendingHeals.push({ side: username, amount: card.healOnPlay, sourceUid: unit.uid });
+  }
+
+  // Арбалетчик: battlecry shot at the enemy hero — same deferred
+  // reasoning as Монахиня's heal above (opponent needs to actually see
+  // it fire). The damage amount itself isn't computed until resolution
+  // starts, since her Synergy bonus could still change between now and
+  // then (more allies might get placed this same round).
+  if (card.shootHero) {
+    match.pendingShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   return { ok: true };
@@ -436,6 +458,7 @@ export function returnToHand(match, username, uid) {
   // tryEndTurn's rally-buff drain).
   match.pendingRallyBuffs = match.pendingRallyBuffs.filter((b) => b.sourceUid !== uid);
   match.pendingHeals = match.pendingHeals.filter((h) => h.sourceUid !== uid);
+  match.pendingShots = match.pendingShots.filter((s) => s.sourceUid !== uid);
 
   hand.push({ id: unit.id, uid: nextUid('card') });
   return { ok: true };
@@ -729,6 +752,23 @@ export function tryEndTurn(match, username) {
     events.push({ type: 'heroHeal', side: heal.side, amount: heal.amount, sourceUid: heal.sourceUid });
   }
 
+  // Арбалетчик's battlecry shot — also right here, using the board as it
+  // stands right now (both sides fully revealed for this round) to work
+  // out her live Synergy-boosted attack.
+  const shotQueue = match.pendingShots;
+  match.pendingShots = [];
+  for (const shot of shotQueue) {
+    const unit = match.boards[shot.side][shot.laneIdx] && match.boards[shot.side][shot.laneIdx][shot.depthIdx];
+    if (!unit) continue;
+    const targetSide = match.players.find((p) => p !== shot.side);
+    const amount = effectiveAtk(match.boards[shot.side], shot.laneIdx, shot.depthIdx);
+    match.hp[targetSide] -= amount;
+    events.push({
+      type: 'heroShot', side: shot.side, targetSide, amount,
+      laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
+    });
+  }
+
   resolveSpells(match, events);
   resolveCombat(match, events);
 
@@ -762,22 +802,47 @@ export function tryEndTurn(match, username) {
             match.hp[name] += unit.hp;
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.hp });
           }
+          // Арбалетчик: fires again at the end of every round she
+          // survives, same as her battlecry — enemy hero takes damage
+          // equal to her live (Synergy-boosted) attack right now.
+          if (unit && unit.shootHero) {
+            const targetSide = match.players.find((p) => p !== name);
+            const amount = effectiveAtk(board, l, d);
+            match.hp[targetSide] -= amount;
+            events.push({
+              type: 'heroShot', side: name, targetSide, amount,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+            });
+          }
         }
       }
     }
 
-    match.round += 1;
-    match.maxMana = Math.min(MAX_MANA, match.maxMana + 1);
-    match.mana[nameA] = match.maxMana;
-    match.mana[nameB] = match.maxMana;
-    match.sacrifices[nameA] = 0;
-    match.sacrifices[nameB] = 0;
-    match.readyToEnd[nameA] = false;
-    match.readyToEnd[nameB] = false;
-    draw(match.decks[nameA], match.hands[nameA], 1);
-    draw(match.decks[nameB], match.hands[nameB], 1);
-    match.phase = 'placing';
-    captureCommitted(match); // new round's hidden baseline = the just-resolved board
+    // An end-of-round shot (Арбалетчик) can itself bring a hero to 0 —
+    // something none of the OTHER end-of-round triggers could ever do
+    // (they only ever add HP to their own owner's hero). Re-check for a
+    // decided match here, same logic as the pre-loop check above, before
+    // letting the round actually advance.
+    if (match.hp[nameA] <= 0 || match.hp[nameB] <= 0) {
+      match.phase = 'over';
+      match.status = 'finished';
+      if (match.hp[nameA] <= 0 && match.hp[nameB] <= 0) winner = null;
+      else winner = match.hp[nameA] > 0 ? nameA : nameB;
+      match.winner = winner;
+    } else {
+      match.round += 1;
+      match.maxMana = Math.min(MAX_MANA, match.maxMana + 1);
+      match.mana[nameA] = match.maxMana;
+      match.mana[nameB] = match.maxMana;
+      match.sacrifices[nameA] = 0;
+      match.sacrifices[nameB] = 0;
+      match.readyToEnd[nameA] = false;
+      match.readyToEnd[nameB] = false;
+      draw(match.decks[nameA], match.hands[nameA], 1);
+      draw(match.decks[nameB], match.hands[nameB], 1);
+      match.phase = 'placing';
+      captureCommitted(match); // new round's hidden baseline = the just-resolved board
+    }
   }
 
   return { ready: true, events, gameOver: match.phase === 'over', winner, preBoards };
