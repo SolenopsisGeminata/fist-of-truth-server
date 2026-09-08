@@ -28,14 +28,15 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
 db.data.resources ||= {};
 db.data.pveProgress ||= {};
+db.data.pvpProgress ||= {};
 db.data.ownedCards ||= {};
 db.data.shop ||= {};
 db.data.activeDeck ||= {};
@@ -190,6 +191,66 @@ function applyPveProgress(match) {
     progress.matchesPlayed = 0;
   }
   db.write();
+}
+
+// ---------- PVP progress ladder ----------
+// Same shape as the PVE screen, tracked completely separately
+// (db.data.pvpProgress) — but PVP has its own reward rules on top:
+//  - every PLAYED match pays out immediately, win or lose:
+//      win  -> 30 gold + 30 dust
+//      lose -> 20 gold (no dust)
+//  - the progress bar itself only advances on wins (same rule as PVE),
+//    using the exact same required-matches/gold schedule as PVE
+//    (pveIterationInfo) — except the tier reward pays that amount in
+//    BOTH gold and dust, not gold alone.
+function getPvpProgress(username) {
+  let rec = db.data.pvpProgress[username];
+  if (!rec) {
+    rec = { iteration: 1, matchesPlayed: 0 };
+    db.data.pvpProgress[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Pays out per-match PVP rewards and, on a win, advances the PVP ladder
+// (granting a tier reward if that fills the bar). Returns a per-username
+// summary of exactly what was paid out, so the caller can hand it back
+// to that specific player's client for the post-match reward display.
+// Skips `match.botStandIn` (a real account's identity borrowed to cover
+// a missing opponent) — that account never actually played, so it's
+// never rewarded.
+function applyPvpRewards(match) {
+  const rewards = {};
+  for (const username of match.players) {
+    if (username === match.botStandIn) continue;
+    const won = match.winner === username;
+    const resources = getResources(username);
+    const matchGold = won ? 30 : 20;
+    const matchDust = won ? 30 : 0;
+    resources.gold = (resources.gold || 0) + matchGold;
+    resources.dust = (resources.dust || 0) + matchDust;
+    let tierGold = 0;
+    let tierDust = 0;
+    let tierCompleted = false;
+    if (won) {
+      const progress = getPvpProgress(username);
+      progress.matchesPlayed = (progress.matchesPlayed || 0) + 1;
+      const info = pveIterationInfo(progress.iteration);
+      if (progress.matchesPlayed >= info.required) {
+        tierGold = info.reward;
+        tierDust = info.reward;
+        resources.gold += tierGold;
+        resources.dust += tierDust;
+        progress.iteration += 1;
+        progress.matchesPlayed = 0;
+        tierCompleted = true;
+      }
+    }
+    rewards[username] = { matchGold, matchDust, tierGold, tierDust, tierCompleted };
+  }
+  db.write();
+  return rewards;
 }
 
 // How long to wait for a real opponent before falling back to a bot —
@@ -360,6 +421,7 @@ app.post('/api/register', (req, res) => {
   db.data.tournament[name] = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
   db.data.resources[name] = { dust: 0, gold: 0, crystals: 0 };
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
+  db.data.pvpProgress[name] = { iteration: 1, matchesPlayed: 0 };
   db.data.ownedCards[name] = engine.defaultOwnedCounts();
   db.write();
 
@@ -591,6 +653,23 @@ app.get('/api/pve-progress', (req, res) => {
   });
 });
 
+// Same shape as /api/pve-progress, but for the PVP ladder — the tier
+// reward pays out in gold AND dust (equal amounts), unlike PVE's
+// gold-only tier reward, so both are included here.
+app.get('/api/pvp-progress', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const progress = getPvpProgress(username);
+  const info = pveIterationInfo(progress.iteration);
+  res.json({
+    iteration: progress.iteration,
+    matchesPlayed: progress.matchesPlayed,
+    matchesRequired: info.required,
+    rewardGold: info.reward,
+    rewardDust: info.reward,
+  });
+});
+
 // Current ladder standing for the logged-in account. Read-only — all
 // progress changes happen server-side when a tournament match ends.
 app.get('/api/tournament', (req, res) => {
@@ -683,6 +762,7 @@ function startTournamentMatch(nameA, wsA, nameB, wsB) {
   const matchId = crypto.randomBytes(8).toString('hex');
   const match = engine.createMatch(matchId, nameA, getDeckCounts(nameA), nameB, getDeckCounts(nameB));
   match.isTournament = true;
+  match.rewardMode = 'tournament';
   const mm = { match, sockets: { [nameA]: wsA, [nameB]: wsB } };
   liveMatches.set(matchId, mm);
   persistMatch(mm);
@@ -707,6 +787,7 @@ function startPvpBotMatch(myName, ws) {
   const matchId = crypto.randomBytes(8).toString('hex');
   const match = engine.createMatch(matchId, myName, getDeckCounts(myName), botName, botDeck);
   match.isPve = true; // reuses the existing "server auto-plays this side" turn logic
+  match.rewardMode = 'pvp'; // the human still experiences and is rewarded as PVP — only the AI-fill mechanics are borrowed from PVE
   match.aiName = botName;
   match.botStandIn = botName; // borrowed identity — not a real participant
   const mm = { match, sockets: { [myName]: ws } };
@@ -750,6 +831,7 @@ function startTournamentBotMatch(myName, ws) {
   const match = engine.createMatch(matchId, myName, getDeckCounts(myName), botName, botDeck);
   match.isTournament = true;
   match.isPve = true; // reuses the existing "server auto-plays this side" turn logic
+  match.rewardMode = 'tournament';
   match.aiName = botName;
   match.botStandIn = botName; // borrowed identity — never update its own ladder record
   const mm = { match, sockets: { [myName]: ws } };
@@ -826,6 +908,7 @@ wss.on('connection', (ws) => {
           myName, getDeckCounts(myName),
           opponent.username, getDeckCounts(opponent.username)
         );
+        match.rewardMode = 'pvp';
         const mm = { match, sockets: { [myName]: ws, [opponent.username]: opponent.ws } };
         liveMatches.set(matchId, mm);
         persistMatch(mm);
@@ -855,6 +938,7 @@ wss.on('connection', (ws) => {
       const matchId = crypto.randomBytes(8).toString('hex');
       const match = engine.createMatch(matchId, myName, getDeckCounts(myName), aiName, engine.defaultDeckCounts());
       match.isPve = true;
+      match.rewardMode = 'pve';
       match.aiName = aiName;
       const mm = { match, sockets: { [myName]: ws } }; // no socket for the bot side
       liveMatches.set(matchId, mm);
@@ -964,25 +1048,33 @@ wss.on('connection', (ws) => {
         sendSnapshots(mm); // just marks this player as "ready", opponent still placing
         return;
       }
+      // Rewards (if any) are computed BEFORE sending the resolution
+      // messages below, so each side's own reward can be embedded
+      // directly in the message the client uses to show the post-match
+      // overlay — no separate round-trip needed for that.
+      let pvpRewards = null;
+      if (result.gameOver) {
+        endMatch(mm, 'finished', result.winner);
+        if (mm.match.isTournament) applyTournamentResult(mm.match);
+        if (mm.match.rewardMode === 'pve') applyPveProgress(mm.match);
+        if (mm.match.rewardMode === 'pvp') pvpRewards = applyPvpRewards(mm.match);
+      }
       // Both players were ready — resolution just ran synchronously inside
       // tryEndTurn(). Send each side: the pre-resolution board (so the
       // client can reveal what was actually placed first), the event log
       // (for spell/combat animation), and the settled final snapshot.
       for (const username of mm.match.players) {
         const other = engine.otherPlayer(mm.match, username);
-        safeSend(mm.sockets[username], {
+        const payload = {
           type: 'resolution',
           preBoard: { myBoard: result.preBoards[username], opponentBoard: result.preBoards[other] },
           events: result.events,
           state: engine.snapshotFor(mm.match, username),
-        });
+        };
+        if (pvpRewards && pvpRewards[username]) payload.reward = pvpRewards[username];
+        safeSend(mm.sockets[username], payload);
       }
       persistMatch(mm);
-      if (result.gameOver) {
-        endMatch(mm, 'finished', result.winner);
-        if (mm.match.isTournament) applyTournamentResult(mm.match);
-        if (mm.match.isPve) applyPveProgress(mm.match);
-      }
       return;
     }
 
