@@ -51,6 +51,11 @@ export const CARD_POOL = [
   // rallyBuff/auntBuff, since the hero's own HP is already visible to its
   // owner during their own placing phase (nothing dramatic to reveal).
   { id: 'c18', name: '\u041c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, healOnPlay: 2, rarity: 'rare' },
+  // End-of-round trigger, 50% chance per round: heals her owner's hero by
+  // an amount equal to HER OWN current HP at that exact moment (not a
+  // fixed number, and not attack like Повар's cookHeal) — see the
+  // cowHeal check alongside cookHeal's, further down.
+  { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -321,6 +326,7 @@ export function placeCard(match, username, uid, lane, depth) {
     lifesteal: !!card.lifesteal,
     synergy: !!card.synergy,
     cookHeal: !!card.cookHeal,
+    cowHeal: !!card.cowHeal,
     dawnBuff: !!card.dawnBuff,
     placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
   };
@@ -747,6 +753,13 @@ export function tryEndTurn(match, username) {
           if (unit && unit.cookHeal) {
             match.hp[name] += unit.atk;
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.atk });
+          }
+          // Корова: 50/50 per round — heals for her own CURRENT hp at
+          // this exact moment (not a fixed number, not attack), so a
+          // heavily-damaged Корова gives back much less than a fresh one.
+          if (unit && unit.cowHeal && Math.random() < 0.5) {
+            match.hp[name] += unit.hp;
+            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.hp });
           }
         }
       }
