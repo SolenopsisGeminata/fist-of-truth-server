@@ -99,6 +99,25 @@ function getOwnedCounts(username) {
     db.data.ownedCards[username] = rec;
     db.write();
   }
+  // Кольчуга (s1) and Родная тетушка (c16) are core starter-deck cards —
+  // every account must own at least 3 copies of each, always. This
+  // backfills any account whose ownedCards record predates their
+  // addition to the starter set (or otherwise ended up short), no matter
+  // which branch above ran or whether one ran at all — old accounts
+  // created before these two were part of defaultOwnedCounts() would
+  // otherwise stay permanently missing or short on them.
+  const GUARANTEED_MIN_OWNED = { s1: 3, c16: 3 };
+  let backfilled = false;
+  for (const [id, min] of Object.entries(GUARANTEED_MIN_OWNED)) {
+    if (!rec[id] || rec[id] < min) {
+      rec[id] = min;
+      backfilled = true;
+    }
+  }
+  if (backfilled) {
+    db.data.ownedCards[username] = rec;
+    db.write();
+  }
   return rec;
 }
 
