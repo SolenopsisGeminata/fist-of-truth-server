@@ -386,7 +386,7 @@ export function placeCard(match, username, uid, lane, depth) {
   // instead of silently changing HP during placing while the opponent's
   // board (and this placement) is still hidden from them.
   if (card.healOnPlay) {
-    match.pendingHeals.push({ side: username, amount: card.healOnPlay, sourceUid: unit.uid });
+    match.pendingHeals.push({ side: username, amount: card.healOnPlay, sourceUid: unit.uid, laneIdx: lane, depthIdx: depth });
   }
 
   // Арбалетчик: battlecry shot at the enemy hero — same deferred
@@ -758,7 +758,7 @@ export function tryEndTurn(match, username) {
   match.pendingHeals = [];
   for (const heal of healQueue) {
     match.hp[heal.side] += heal.amount;
-    events.push({ type: 'heroHeal', side: heal.side, amount: heal.amount, sourceUid: heal.sourceUid });
+    events.push({ type: 'heroHeal', side: heal.side, amount: heal.amount, sourceUid: heal.sourceUid, laneIdx: heal.laneIdx, depthIdx: heal.depthIdx });
   }
 
   // Арбалетчик's battlecry shot — also right here, using the board as it
@@ -802,14 +802,14 @@ export function tryEndTurn(match, username) {
           const unit = board[l][d];
           if (unit && unit.cookHeal) {
             match.hp[name] += unit.atk;
-            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.atk });
+            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.atk, laneIdx: l, depthIdx: d });
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
           // heavily-damaged Корова gives back much less than a fresh one.
           if (unit && unit.cowHeal && Math.random() < 0.5) {
             match.hp[name] += unit.hp;
-            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.hp });
+            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.hp, laneIdx: l, depthIdx: d });
           }
           // Арбалетчик: fires again at the end of every round she
           // survives, same as her battlecry — enemy hero takes damage
