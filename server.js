@@ -122,12 +122,14 @@ function getOwnedCounts(username) {
 }
 
 // ---------- Shop ----------
-// The daily card lists reset at 00:00 Moscow time — computed via the
-// IANA timezone (not the server's own local time or a fixed UTC offset),
-// so it stays correct even if the server itself runs in another region.
-function moscowDateString(d) {
+// The daily card lists reset at 00:00 UTC — every account's shop tabs
+// regenerate the first time they're read after the UTC calendar day has
+// rolled over (see getShopState below), so this needs no separate cron
+// job: whichever request happens to be the first one after midnight UTC
+// triggers the regeneration for that account, transparently.
+function utcDateString(d) {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: 'UTC', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(d || new Date());
 }
 
@@ -139,17 +141,17 @@ function regenerateShopTab(username, tab) {
   const pool = engine.shoppableCards();
   const cardIds = engine.pickRandomShopCards(pool, SHOP_LIST_SIZE);
   if (!db.data.shop[username]) db.data.shop[username] = {};
-  db.data.shop[username][tab] = { day: moscowDateString(), cardIds };
+  db.data.shop[username][tab] = { day: utcDateString(), cardIds };
 }
 
-// Ensures all three tabs have a list generated for "today" (Moscow date)
-// — lazily regenerating any that are missing or stale from a previous
-// day, exactly once per day per account, with no separate cron/scheduler
+// Ensures all three tabs have a list generated for "today" (UTC date) —
+// lazily regenerating any that are missing or stale from a previous day,
+// exactly once per day per account, with no separate cron/scheduler
 // needed. Same account, same day => same list every time this is called.
 function getShopState(username) {
   if (!db.data.shop[username]) db.data.shop[username] = {};
   const rec = db.data.shop[username];
-  const today = moscowDateString();
+  const today = utcDateString();
   let changed = false;
   for (const tab of SHOP_TABS) {
     if (!rec[tab] || rec[tab].day !== today) {
@@ -607,7 +609,7 @@ app.get('/api/owned-cards', (req, res) => {
 });
 
 // Today's shop lists (all 3 currency tabs at once) — auto-regenerates any
-// tab that's stale from a previous Moscow calendar day.
+// tab that's stale from a previous UTC calendar day.
 app.get('/api/shop', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
