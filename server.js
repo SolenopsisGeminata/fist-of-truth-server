@@ -28,9 +28,9 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
@@ -41,6 +41,9 @@ db.data.ownedCards ||= {};
 db.data.shop ||= {};
 db.data.activeDeck ||= {};
 db.data.treasureRace ||= {};
+db.data.pveStats ||= {};
+db.data.pvpStats ||= {};
+db.data.treasureRaceBoard ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -48,6 +51,31 @@ db.write();
 // it's ranked purely by an accumulating point total instead.
 const LEAGUE_ORDER = ['squire', 'warrior', 'gladiator', 'elite', 'warlord', 'champion', 'king'];
 const LEAGUE_STARS = { squire: 3, warrior: 3, gladiator: 4, elite: 4, warlord: 5, champion: 5, king: 0 };
+// A single monotonically-increasing "total rating points" number, used to
+// rank the leaderboard and shown to the player as their overall score.
+// Climbing a league (30 points per star × however many stars that league
+// has) always outweighs any amount of progress within a lower league, and
+// reaching King jumps to a fixed baseline well above the maximum possible
+// sub-King total (720) before kingPoints add on top of that — so any King
+// always outranks any non-King, and among Kings it's kingPoints that
+// break the tie. A brand-new Оруженосец (squire, 0 stars, 0 progress)
+// scores exactly 0 — the "must be > 0 to appear" leaderboard rule reads
+// directly off this number.
+const TOURNAMENT_KING_BASELINE = 100000;
+function tournamentTotalPoints(record) {
+  if (record.league === 'king') {
+    return TOURNAMENT_KING_BASELINE + (record.kingPoints || 0);
+  }
+  let points = 0;
+  for (const league of LEAGUE_ORDER) {
+    if (league === record.league) {
+      points += (record.stars || 0) * 30 + (record.progress || 0);
+      break;
+    }
+    points += LEAGUE_STARS[league] * 30;
+  }
+  return points;
+}
 
 function getTournamentRecord(username) {
   let rec = db.data.tournament[username];
@@ -124,11 +152,32 @@ function nextTreasureRaceWindowStart(now) {
 //   run can start.
 // - Returns null only for an account that has never played this mode
 //   and isn't inside an open window right now — nothing to show yet.
+// Whenever an account's Treasure Race record is about to be left behind
+// (its window has ended, or a newer window is starting), its final win
+// count is folded into the shared "last completed window" leaderboard —
+// this is the only leaderboard we keep, so contributing here is what
+// keeps GET /api/leaderboard/treasure-race showing the right window.
+// Idempotent (safe to call more than once for the same record) and
+// self-resetting: the moment a record from a NEWER window than whatever
+// the board currently holds shows up, the board starts over for it —
+// this is exactly the "clears and rebuilds after each window" rule.
+function contributeToTreasureRaceBoard(username, rec) {
+  if (!rec || !(rec.wins > 0)) return;
+  const board = db.data.treasureRaceBoard;
+  if (board.windowKey !== rec.windowKey) {
+    board.windowKey = rec.windowKey;
+    board.entries = {};
+  }
+  const prev = board.entries[username];
+  if (prev == null || rec.wins > prev) board.entries[username] = rec.wins;
+}
+
 function getTreasureRaceRecord(username) {
   const now = new Date();
   let rec = db.data.treasureRace[username];
   if (rec && rec.status === 'active' && now.getTime() >= Date.parse(rec.windowKey) + TREASURE_RACE_WINDOW_MS) {
     rec.status = 'ended'; // window elapsed while still alive — bank what's earned
+    contributeToTreasureRaceBoard(username, rec);
     db.write();
   }
   const win = currentTreasureRaceWindow(now);
@@ -139,6 +188,7 @@ function getTreasureRaceRecord(username) {
     // there's nothing pending.
     const hasUnclaimedReward = rec && rec.status !== 'active' && !rec.claimed;
     if (!hasUnclaimedReward) {
+      if (rec) contributeToTreasureRaceBoard(username, rec); // capture the outgoing record's final wins before it's replaced
       rec = { windowKey: win.key, wins: 0, lives: 3, gold: 0, status: 'active', claimed: false };
       db.data.treasureRace[username] = rec;
       db.write();
@@ -363,6 +413,9 @@ function applyPveProgress(match) {
   const username = match.players.find((p) => p !== match.aiName);
   if (!username) return null;
   const won = match.winner === username;
+  const stats = db.data.pveStats[username] || (db.data.pveStats[username] = { played: 0, won: 0 });
+  stats.played += 1;
+  if (won) stats.won += 1;
   const resources = getResources(username);
   const matchGold = won ? 20 : 10;
   const matchDust = won ? 20 : 0;
@@ -419,6 +472,9 @@ function applyPvpRewards(match) {
   for (const username of match.players) {
     if (username === match.botStandIn) continue;
     const won = match.winner === username;
+    const stats = db.data.pvpStats[username] || (db.data.pvpStats[username] = { played: 0, won: 0 });
+    stats.played += 1;
+    if (won) stats.won += 1;
     const resources = getResources(username);
     const matchGold = won ? 30 : 20;
     const matchDust = won ? 30 : 0;
@@ -921,6 +977,73 @@ app.get('/api/tournament', (req, res) => {
     kingRank = higherCount + 1;
   }
   res.json({ league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank });
+});
+
+// ---------- Leaderboards ----------
+// Shared cap so no single leaderboard response can grow unbounded as the
+// player base grows — highest-ranked entries first, so truncating here
+// just drops the bottom of the table, never the top.
+const LEADERBOARD_LIMIT = 100;
+
+// PVE/PVP: ranked by total wins ever in that mode. Eligibility is having
+// played at least one match in it (ever) — not having won one; a 0-win
+// account that's actually played still appears, just at the bottom.
+app.get('/api/leaderboard/pve', (req, res) => {
+  if (!usernameFromRequest(req)) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const entries = Object.entries(db.data.pveStats)
+    .filter(([, s]) => s.played > 0)
+    .map(([username, s]) => ({ username, wins: s.won }))
+    .sort((a, b) => b.wins - a.wins)
+    .slice(0, LEADERBOARD_LIMIT);
+  res.json({ entries });
+});
+
+app.get('/api/leaderboard/pvp', (req, res) => {
+  if (!usernameFromRequest(req)) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const entries = Object.entries(db.data.pvpStats)
+    .filter(([, s]) => s.played > 0)
+    .map(([username, s]) => ({ username, wins: s.won }))
+    .sort((a, b) => b.wins - a.wins)
+    .slice(0, LEADERBOARD_LIMIT);
+  res.json({ entries });
+});
+
+// Tournament: ranked by tournamentTotalPoints() (see its own comment for
+// how league+stars+progress+kingPoints combine into one number).
+// Eligibility is scoring above 0 — a fresh Оруженосец (0 stars, 0
+// progress) scores exactly 0 and is excluded, matching the spec exactly.
+app.get('/api/leaderboard/tournament', (req, res) => {
+  if (!usernameFromRequest(req)) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const entries = Object.entries(db.data.tournament)
+    .map(([username, record]) => ({
+      username,
+      league: record.league,
+      stars: record.stars || 0,
+      points: tournamentTotalPoints(record),
+    }))
+    .filter((e) => e.points > 0)
+    .sort((a, b) => b.points - a.points)
+    .slice(0, LEADERBOARD_LIMIT);
+  res.json({ entries });
+});
+
+// Treasure Race: the single shared board (see contributeToTreasureRaceBoard)
+// always reflects whichever window most recently finished — it's rebuilt
+// from scratch the moment a later window's data first arrives. Calling
+// getTreasureRaceRecord for the requesting account first ensures their
+// own just-finished run (if any) is already folded in before we read the
+// board, rather than possibly missing by one request.
+app.get('/api/leaderboard/treasure-race', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  getTreasureRaceRecord(username); // side effect: folds this account's own finished run into the board if due
+  const board = db.data.treasureRaceBoard;
+  const entries = Object.entries(board.entries || {})
+    .map(([u, wins]) => ({ username: u, wins }))
+    .filter((e) => e.wins > 0)
+    .sort((a, b) => b.wins - a.wins)
+    .slice(0, LEADERBOARD_LIMIT);
+  res.json({ entries, windowKey: board.windowKey || null });
 });
 
 // Current Treasure Race status for the logged-in account: whether the
