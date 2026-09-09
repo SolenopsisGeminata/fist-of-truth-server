@@ -14,6 +14,11 @@ export const DEPTH = 3;
 export const START_HP = 30;
 export const MAX_MANA = 10;
 export const MAX_HAND = 7;
+// A match that reaches this many completed rounds with both heroes still
+// alive ends immediately — whoever has more HP wins (tied HP is a draw),
+// same as any other match-over check. See tryEndTurn()'s round-advance
+// branch, where this is checked right before a new round would start.
+export const MAX_ROUNDS = 15;
 
 // Rarity is purely descriptive right now (no gameplay effect beyond the
 // deck copy limit below) — it mainly informs display. Legendary is a
@@ -927,6 +932,16 @@ export function tryEndTurn(match, username) {
       match.status = 'finished';
       if (match.hp[nameA] <= 0 && match.hp[nameB] <= 0) winner = null;
       else winner = match.hp[nameA] > 0 ? nameA : nameB;
+      match.winner = winner;
+    } else if (match.round >= MAX_ROUNDS) {
+      // Round limit reached and both heroes still standing — whoever has
+      // more HP right now wins; exactly equal HP is a draw. No new round
+      // starts (phase goes straight to 'over', same as any other
+      // match-ending branch).
+      match.phase = 'over';
+      match.status = 'finished';
+      if (match.hp[nameA] === match.hp[nameB]) winner = null;
+      else winner = match.hp[nameA] > match.hp[nameB] ? nameA : nameB;
       match.winner = winner;
     } else {
       match.round += 1;
