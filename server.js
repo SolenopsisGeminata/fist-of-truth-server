@@ -28,9 +28,9 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
@@ -40,6 +40,7 @@ db.data.pvpProgress ||= {};
 db.data.ownedCards ||= {};
 db.data.shop ||= {};
 db.data.activeDeck ||= {};
+db.data.treasureRace ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -56,6 +57,156 @@ function getTournamentRecord(username) {
     db.write();
   }
   return rec;
+}
+
+// ---------- Treasure Race (Гонка за сокровищами) ----------
+// A limited-time event mode: open for 1 hour starting at 03:00, 07:00,
+// 11:00, 15:00, 19:00 and 23:00 UTC ("server time" — this server's own
+// clock, which runs UTC). Within one open window, a player plays a
+// string of matches along a 13-node ladder, 3 lives total, banking gold
+// per win — see TREASURE_RACE_REWARDS. Nothing here runs on a
+// cron/scheduler: every check below is computed fresh from the current
+// clock time whenever it's actually needed (same lazy-evaluation
+// convention as the shop's own daily UTC reset).
+const TREASURE_RACE_OPEN_HOURS = [3, 7, 11, 15, 19, 23];
+const TREASURE_RACE_WINDOW_MS = 60 * 60 * 1000;
+// Reward for the Nth win (1-indexed): rewards[0] is the 1st win's gold.
+const TREASURE_RACE_REWARDS = [50, 35, 35, 100, 75, 75, 200, 125, 125, 300, 150, 150, 500];
+const TREASURE_RACE_MAX_WINS = TREASURE_RACE_REWARDS.length; // 13
+const TREASURE_RACE_BONUS_MULTIPLIER = 1.5; // applied to the running total once the 13th win lands
+const TREASURE_RACE_HUNTER_NAME = '\u041e\u0445\u043e\u0442\u043d\u0438\u043a \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438';
+
+// The window `now` currently falls inside, or null if it's between
+// windows. `key` uniquely identifies this specific occurrence (its own
+// start instant) — a fresh per-window player record is keyed on this.
+function currentTreasureRaceWindow(now) {
+  now = now || new Date();
+  const h = now.getUTCHours();
+  if (!TREASURE_RACE_OPEN_HOURS.includes(h)) return null;
+  const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, 0, 0, 0);
+  return { key: new Date(startMs).toISOString(), startMs, endMs: startMs + TREASURE_RACE_WINDOW_MS };
+}
+
+// The next time (epoch ms) a window will open, strictly after `now` —
+// used so the client can show a countdown/label when the mode is closed.
+function nextTreasureRaceWindowStart(now) {
+  now = now || new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dayStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0);
+  for (let dayOffset = 0; dayOffset < 2; dayOffset++) {
+    for (const h of TREASURE_RACE_OPEN_HOURS) {
+      const t = dayStart + dayOffset * dayMs + h * 60 * 60 * 1000;
+      if (t > now.getTime()) return t;
+    }
+  }
+  return dayStart + 2 * dayMs; // unreachable in practice — safety net only
+}
+
+// This account's record for whichever window is relevant right now.
+// - If a window is currently open and the stored record is from an
+//   older window (or doesn't exist), a fresh 13-node run starts: 0 wins,
+//   3 lives, 0 gold, status 'active' — UNLESS the old record still has
+//   an unclaimed reward sitting on it, in which case that one is kept
+//   as-is (see below) instead of being silently discarded.
+// - If a window is open and the stored record already belongs to it,
+//   that record is returned as-is (mid-run).
+// - If no window is open right now, whatever record is already stored
+//   (from the last window this account played) is returned untouched —
+//   including a still-'active' one, which gets lazily closed out below
+//   the moment its own hour has elapsed, banking whatever gold was
+//   earned so far (see the spec: "если жизни у игрока остались и
+//   закончился временной интервал события, то он получает то, что
+//   заработал").
+// - An unclaimed reward from a finished run is never overwritten by a
+//   fresh run, even once a later window opens — otherwise a player who
+//   simply didn't see the reward notification in time would silently
+//   lose that gold. They must claim it (POST .../claim) before a new
+//   run can start.
+// - Returns null only for an account that has never played this mode
+//   and isn't inside an open window right now — nothing to show yet.
+function getTreasureRaceRecord(username) {
+  const now = new Date();
+  let rec = db.data.treasureRace[username];
+  if (rec && rec.status === 'active' && now.getTime() >= Date.parse(rec.windowKey) + TREASURE_RACE_WINDOW_MS) {
+    rec.status = 'ended'; // window elapsed while still alive — bank what's earned
+    db.write();
+  }
+  const win = currentTreasureRaceWindow(now);
+  if (win && (!rec || rec.windowKey !== win.key)) {
+    // An unclaimed reward from an earlier window must survive until the
+    // player actually claims it — even once a later window has opened
+    // and a new run could otherwise start. Only start a fresh run once
+    // there's nothing pending.
+    const hasUnclaimedReward = rec && rec.status !== 'active' && !rec.claimed;
+    if (!hasUnclaimedReward) {
+      rec = { windowKey: win.key, wins: 0, lives: 3, gold: 0, status: 'active', claimed: false };
+      db.data.treasureRace[username] = rec;
+      db.write();
+    }
+  }
+  return rec || null;
+}
+
+// Which of the 4 matchmaking brackets a win count belongs to (0-3, 4-6,
+// 7-9, 10-12) — or -1 once 13 wins is reached, meaning this account is
+// done for the window (win or otherwise) and can't queue for more.
+function treasureRaceBucket(wins) {
+  if (wins >= TREASURE_RACE_MAX_WINS) return -1;
+  if (wins <= 3) return 0;
+  if (wins <= 6) return 1;
+  if (wins <= 9) return 2;
+  return 3;
+}
+
+// A genuinely randomly-assembled 30-card deck (respecting each card's
+// normal copy cap) — used only for the last-resort "Охотник за
+// сокровищами" bot, when no real account exists at all to borrow a deck
+// from. Not the same as engine.defaultDeckCounts(): every card in the
+// pool is a candidate, not just the common starter set.
+function buildRandomTreasureHunterDeck() {
+  const pool = engine.CARD_POOL.slice();
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const counts = {};
+  let total = 0;
+  for (const card of pool) {
+    if (total >= 30) break;
+    const cap = engine.maxCopiesForCard(card);
+    const n = Math.min(cap, 30 - total, 1 + Math.floor(Math.random() * cap));
+    if (n > 0) { counts[card.id] = n; total += n; }
+  }
+  return counts;
+}
+
+// Applies a finished Treasure Race match's outcome to both real players'
+// records (never to match.botStandIn — a borrowed identity that never
+// actually played). A win advances the ladder and banks that node's
+// gold, and the 13th win additionally multiplies the whole run's gold by
+// TREASURE_RACE_BONUS_MULTIPLIER. A loss costs one life. Either can end
+// the run (status leaves 'active') — the earned gold stays *pending*
+// (not yet in the account's real balance) until the client's own
+// acknowledgement claims it via POST /api/treasure-race/claim.
+function applyTreasureRaceResult(match) {
+  if (!match.winner) return; // a draw changes nothing here
+  for (const name of match.players) {
+    if (match.botStandIn && match.botStandIn === name) continue;
+    const rec = getTreasureRaceRecord(name);
+    if (!rec || rec.status !== 'active') continue; // shouldn't happen, but never touch a finished run
+    if (match.winner === name) {
+      rec.wins += 1;
+      rec.gold += TREASURE_RACE_REWARDS[rec.wins - 1] || 0;
+      if (rec.wins >= TREASURE_RACE_MAX_WINS) {
+        rec.gold = Math.round(rec.gold * TREASURE_RACE_BONUS_MULTIPLIER);
+        rec.status = 'won';
+      }
+    } else {
+      rec.lives -= 1;
+      if (rec.lives <= 0) rec.status = 'eliminated';
+    }
+  }
+  db.write();
 }
 
 // Account-bound currencies. Nothing awards them yet — that's a later
@@ -772,6 +923,50 @@ app.get('/api/tournament', (req, res) => {
   res.json({ league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank });
 });
 
+// Current Treasure Race status for the logged-in account: whether the
+// mode is open right now, this run's progress along the 13-node ladder,
+// remaining lives, gold banked so far, and whether there's a finished
+// run sitting unclaimed (rewardPending) — the client shows the "Ваша
+// награда..." notification exactly when rewardPending is true, and only
+// that notification's own acknowledgement (POST .../claim) actually
+// credits the gold to the account's real balance.
+app.get('/api/treasure-race', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const now = new Date();
+  const win = currentTreasureRaceWindow(now);
+  const rec = getTreasureRaceRecord(username);
+  res.json({
+    windowOpen: !!win,
+    windowEndsAt: win ? new Date(win.endMs).toISOString() : null,
+    nextWindowStart: new Date(nextTreasureRaceWindowStart(now)).toISOString(),
+    wins: rec ? rec.wins : 0,
+    lives: rec ? rec.lives : 3,
+    gold: rec ? rec.gold : 0,
+    status: rec ? rec.status : 'active',
+    rewardPending: !!(rec && rec.status !== 'active' && !rec.claimed),
+  });
+});
+
+// Banks a finished run's pending gold into the account's real balance.
+// A no-op (not an error) if there's nothing to claim right now — makes
+// this safe for the client to call speculatively without first checking
+// rewardPending itself.
+app.post('/api/treasure-race/claim', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const rec = db.data.treasureRace[username];
+  if (!rec || rec.status === 'active' || rec.claimed) {
+    return res.json({ ok: true, credited: 0 });
+  }
+  const resources = getResources(username);
+  resources.gold = (resources.gold || 0) + rec.gold;
+  const credited = rec.gold;
+  rec.claimed = true;
+  db.write();
+  res.json({ ok: true, credited, resources });
+});
+
 app.get('/api/matches/:matchId', (req, res) => {
   const record = db.data.matches.find((m) => m.matchId === req.params.matchId);
   if (!record) return res.status(404).json({ error: '\u041c\u0430\u0442\u0447 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d.' });
@@ -801,6 +996,7 @@ function safeSend(ws, obj) {
 // for resume-after-restart — written on every state-changing action.
 const waitingQueue = []; // { ws, username }
 const tournamentQueue = []; // { ws, username, timeout }
+const treasureRaceQueues = [[], [], [], []]; // one FIFO queue per bucket (0-3, 4-6, 7-9, 10-12 wins)
 const liveMatches = new Map(); // matchId -> { match, sockets: { [username]: ws } }
 
 function persistMatch(mm) {
@@ -834,6 +1030,16 @@ function removeFromTournamentQueue(ws) {
   if (idx !== -1) {
     clearTimeout(tournamentQueue[idx].timeout);
     tournamentQueue.splice(idx, 1);
+  }
+}
+
+function removeFromTreasureRaceQueues(ws) {
+  for (const q of treasureRaceQueues) {
+    const idx = q.findIndex((w) => w.ws === ws);
+    if (idx !== -1) {
+      clearTimeout(q[idx].timeout);
+      q.splice(idx, 1);
+    }
   }
 }
 
@@ -883,6 +1089,63 @@ function randomPvpBotWaitMs() {
   return Math.round((30 + Math.random() * 60) * 1000); // 30–90s, uniformly
 }
 
+// Same idea as startTournamentMatch — a real-opponent Treasure Race
+// match is just ordinary PVP from the client's point of view.
+function startTreasureRaceMatch(nameA, wsA, nameB, wsB) {
+  const matchId = crypto.randomBytes(8).toString('hex');
+  const match = engine.createMatch(matchId, nameA, getDeckCounts(nameA), nameB, getDeckCounts(nameB));
+  match.isTreasureRace = true;
+  match.rewardMode = 'treasureRace';
+  const mm = { match, sockets: { [nameA]: wsA, [nameB]: wsB } };
+  liveMatches.set(matchId, mm);
+  persistMatch(mm);
+  safeSend(wsA, { type: 'match_found', matchId, opponent: nameB, mode: 'pvp' });
+  safeSend(wsB, { type: 'match_found', matchId, opponent: nameA, mode: 'pvp' });
+  sendSnapshots(mm);
+}
+
+// No real opponent queued up in time — borrow a real account's deck
+// (preferring one currently in the same win-bucket, same "same league
+// first" spirit as the tournament fallback) and quietly drive that side
+// with the same bot AI used for plain PVE. If literally no other
+// account exists to borrow from, fall back to a fully random deck under
+// the generic "Охотник за сокровищами" name instead of failing.
+function startTreasureRaceBotMatch(myName, ws, bucket) {
+  const sameBucket = db.data.users
+    .map((u) => u.username)
+    .filter((u) => {
+      if (u === myName) return false;
+      const rec = db.data.treasureRace[u];
+      return rec && rec.status === 'active' && treasureRaceBucket(rec.wins) === bucket;
+    });
+  const anyOther = db.data.users.map((u) => u.username).filter((u) => u !== myName);
+
+  let botName, botDeck;
+  if (sameBucket.length > 0) {
+    botName = sameBucket[Math.floor(Math.random() * sameBucket.length)];
+    botDeck = getDeckCounts(botName);
+  } else if (anyOther.length > 0) {
+    botName = anyOther[Math.floor(Math.random() * anyOther.length)];
+    botDeck = getDeckCounts(botName);
+  } else {
+    botName = TREASURE_RACE_HUNTER_NAME;
+    botDeck = buildRandomTreasureHunterDeck();
+  }
+
+  const matchId = crypto.randomBytes(8).toString('hex');
+  const match = engine.createMatch(matchId, myName, getDeckCounts(myName), botName, botDeck);
+  match.isTreasureRace = true;
+  match.isPve = true; // reuses the existing "server auto-plays this side" turn logic
+  match.rewardMode = 'treasureRace';
+  match.aiName = botName;
+  match.botStandIn = botName; // borrowed (or synthetic) identity — never a real participant
+  const mm = { match, sockets: { [myName]: ws } };
+  liveMatches.set(matchId, mm);
+  persistMatch(mm);
+  safeSend(ws, { type: 'match_found', matchId, opponent: botName, mode: 'pvp' });
+  sendSnapshots(mm);
+}
+
 // No real opponent showed up in time — borrow a real account's name and
 // deck from the same league (or one league up/down) so the match still
 // feels like it's against another person, and quietly drive that side
@@ -929,6 +1192,7 @@ function startTournamentBotMatch(myName, ws) {
 function handleSocketDisconnect(ws) {
   removeFromQueue(ws);
   removeFromTournamentQueue(ws);
+  removeFromTreasureRaceQueues(ws);
   for (const mm of liveMatches.values()) {
     for (const username of Object.keys(mm.sockets)) {
       if (mm.sockets[username] === ws) {
@@ -1064,6 +1328,39 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    // ---- Treasure Race matchmaking ----
+    if (msg.type === 'start_treasure_race_search') {
+      removeFromTreasureRaceQueues(ws);
+      const myName = String(msg.username || '\u0418\u0433\u0440\u043e\u043a').slice(0, 20);
+      if (!currentTreasureRaceWindow()) { safeSend(ws, { type: 'treasure_race_closed' }); return; }
+      const rec = getTreasureRaceRecord(myName);
+      const bucket = rec ? treasureRaceBucket(rec.wins) : -1;
+      if (!rec || rec.status !== 'active' || bucket === -1) { safeSend(ws, { type: 'treasure_race_closed' }); return; }
+      const queue = treasureRaceQueues[bucket];
+      if (queue.length > 0) {
+        const opponent = queue.shift();
+        clearTimeout(opponent.timeout);
+        startTreasureRaceMatch(myName, ws, opponent.username, opponent.ws);
+      } else {
+        const waitMs = randomPvpBotWaitMs();
+        const entry = { ws, username: myName };
+        entry.timeout = setTimeout(() => {
+          const idx = queue.indexOf(entry);
+          if (idx === -1) return; // matched with a real opponent in the meantime
+          queue.splice(idx, 1);
+          startTreasureRaceBotMatch(myName, ws, bucket);
+        }, waitMs);
+        queue.push(entry);
+        safeSend(ws, { type: 'searching' });
+      }
+      return;
+    }
+
+    if (msg.type === 'cancel_treasure_race_search') {
+      removeFromTreasureRaceQueues(ws);
+      return;
+    }
+
     // ---- In-match actions (all validated server-side in game-engine.js) ----
     if (msg.type === 'place_card' && msg.matchId) {
       const mm = liveMatches.get(msg.matchId);
@@ -1139,6 +1436,7 @@ wss.on('connection', (ws) => {
       if (result.gameOver) {
         endMatch(mm, 'finished', result.winner);
         if (mm.match.isTournament) applyTournamentResult(mm.match);
+        if (mm.match.isTreasureRace) applyTreasureRaceResult(mm.match);
         if (mm.match.rewardMode === 'pve') pveRewards = applyPveProgress(mm.match);
         if (mm.match.rewardMode === 'pvp') pvpRewards = applyPvpRewards(mm.match);
       }
@@ -1169,6 +1467,7 @@ wss.on('connection', (ws) => {
         safeSend(mm.sockets[otherName], { type: 'opponent_left' });
         endMatch(mm, 'abandoned', otherName);
         if (mm.match.isTournament) applyTournamentResult(mm.match);
+        if (mm.match.isTreasureRace) applyTreasureRaceResult(mm.match);
       }
       return;
     }
