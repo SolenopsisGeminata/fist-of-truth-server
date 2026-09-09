@@ -99,7 +99,12 @@ function getTournamentRecord(username) {
 const TREASURE_RACE_OPEN_HOURS = [3, 7, 11, 15, 19, 23];
 const TREASURE_RACE_WINDOW_MS = 60 * 60 * 1000;
 // Reward for the Nth win (1-indexed): rewards[0] is the 1st win's gold.
-const TREASURE_RACE_REWARDS = [50, 35, 35, 100, 75, 75, 200, 125, 125, 300, 150, 150, 500];
+// Each of the big milestone nodes (4/7/10/13) folds in its own bonus on
+// top of that tier's regular per-win amount — e.g. node 4 is the regular
+// 35 (same as nodes 2-3) plus a 100 bonus = 135 total. See the client's
+// TREASURE_RACE_REGULAR/TREASURE_RACE_BONUS for how these two parts are
+// shown as separate labels; here only the combined total matters.
+const TREASURE_RACE_REWARDS = [50, 35, 35, 135, 75, 75, 275, 125, 125, 425, 150, 150, 650];
 const TREASURE_RACE_MAX_WINS = TREASURE_RACE_REWARDS.length; // 13
 const TREASURE_RACE_BONUS_MULTIPLIER = 1.5; // applied to the running total once the 13th win lands
 const TREASURE_RACE_HUNTER_NAME = '\u041e\u0445\u043e\u0442\u043d\u0438\u043a \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438';
