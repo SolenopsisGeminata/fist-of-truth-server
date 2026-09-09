@@ -31,7 +31,7 @@ export const CARD_POOL = [
   { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1, rarity: 'common' },
   { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, rarity: 'common' },
   { id: 'c6', name: '\u041c\u043e\u043b\u043e\u0442\u043e\u0431\u043e\u0435\u0446', type: 'creature', cost: 4, atk: 5, hp: 2, rarity: 'common' },
-  { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 4, atk: 2, hp: 9, rarity: 'rare' },
+  { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, wallGrow: true, rarity: 'rare' },
   { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true, rarity: 'rare' },
   { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1, rarity: 'common' },
   { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true, rarity: 'rare' },
@@ -355,6 +355,7 @@ export function placeCard(match, username, uid, lane, depth) {
     shootHero: !!card.shootHero,
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
+    wallGrow: !!card.wallGrow,
     dawnBuff: !!card.dawnBuff,
     bishopBuff: !!card.bishopBuff,
     placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
@@ -898,6 +899,18 @@ export function tryEndTurn(match, username) {
             events.push({
               type: 'heroShot', side: name, targetSide, amount,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+            });
+          }
+          // Каменная Стена: grows sturdier at the end of every round she
+          // survives — permanently +2 to her OWN hp (and maxHp). Reuses
+          // the rallyBuff event/animation, targeting her own cell, with
+          // buffAtk:0 since only her hp changes.
+          if (unit && unit.wallGrow) {
+            unit.hp += 2;
+            unit.maxHp += 2;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
             });
           }
         }
