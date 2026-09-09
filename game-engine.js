@@ -37,6 +37,13 @@ export const CARD_POOL = [
   { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true, rarity: 'rare' },
   { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: 1, rarity: 'epic' },
   { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1, rarity: 'common' },
+  // Unlike every other spell, this one can target ANY cell — empty or
+  // occupied by anyone — because it doesn't actually touch whatever's
+  // there; the cell is just where the player points it. Heals the
+  // caster's own hero and draws them a card from their own deck. See
+  // castSpell()'s `card.healHero` branch and resolveSpells()'s
+  // 'wellspring' kind further down.
+  { id: 's2', name: '\u0420\u043e\u0434\u043d\u0438\u043a', type: 'spell', cost: 2, healHero: 2, drawCard: 1, rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -475,6 +482,13 @@ export function castSpell(match, username, uid, lane, depth) {
 
   if (card.dmg) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
+  } else if (card.healHero) {
+    // Родник: any cell works, occupied or empty, friendly or not — the
+    // cell is purely where the player points it, not something the
+    // spell reads or changes.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.heal || card.buffHp || card.buffAtk) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
@@ -485,11 +499,13 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.dmg ? 'damage' : (card.heal ? 'heal' : 'buff'),
+    kind: card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : 'buff')),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
     heal: card.heal,
+    healHero: card.healHero,
+    drawCard: card.drawCard,
     buffHp: card.buffHp,
     buffAtk: card.buffAtk,
   });
@@ -556,6 +572,19 @@ function resolveSpells(match, events) {
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx, amount: spell.heal,
         });
       }
+    } else if (spell.kind === 'wellspring') {
+      // Родник: heals the caster's own hero and draws them a card from
+      // their own deck — the targeted cell itself is never touched.
+      match.hp[spell.side] += spell.healHero;
+      const hand = match.hands[spell.side];
+      const beforeLen = hand.length;
+      if (spell.drawCard) draw(match.decks[spell.side], hand, spell.drawCard);
+      const drew = hand.length > beforeLen;
+      events.push({
+        type: 'spell', kind: 'wellspring', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: spell.side,
+        healAmount: spell.healHero, drew,
+      });
     } else if (spell.kind === 'buff') {
       // Permanent stat increase (e.g. Кольчуга) — unlike heal, this raises
       // the ceiling itself: both current and max HP go up, not just a
