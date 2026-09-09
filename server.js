@@ -988,10 +988,13 @@ const LEADERBOARD_LIMIT = 100;
 // PVE/PVP: ranked by total wins ever in that mode. Eligibility is having
 // played at least one match in it (ever) — not having won one; a 0-win
 // account that's actually played still appears, just at the bottom.
+// PVE/PVP: ranked by total wins ever in that mode. Eligibility is having
+// WON at least one match in it (ever) — merely having played isn't
+// enough, so a 0-win account never appears at all.
 app.get('/api/leaderboard/pve', (req, res) => {
   if (!usernameFromRequest(req)) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const entries = Object.entries(db.data.pveStats)
-    .filter(([, s]) => s.played > 0)
+    .filter(([, s]) => s.won > 0)
     .map(([username, s]) => ({ username, wins: s.won }))
     .sort((a, b) => b.wins - a.wins)
     .slice(0, LEADERBOARD_LIMIT);
@@ -1001,7 +1004,7 @@ app.get('/api/leaderboard/pve', (req, res) => {
 app.get('/api/leaderboard/pvp', (req, res) => {
   if (!usernameFromRequest(req)) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const entries = Object.entries(db.data.pvpStats)
-    .filter(([, s]) => s.played > 0)
+    .filter(([, s]) => s.won > 0)
     .map(([username, s]) => ({ username, wins: s.won }))
     .sort((a, b) => b.wins - a.wins)
     .slice(0, LEADERBOARD_LIMIT);
