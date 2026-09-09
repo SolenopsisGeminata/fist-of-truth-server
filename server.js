@@ -28,9 +28,9 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {}, mail: {} });
 db.read();
-db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {} };
+db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {}, mail: {} };
 db.data.decks ||= {};
 db.data.matches ||= [];
 db.data.tournament ||= {};
@@ -44,6 +44,7 @@ db.data.treasureRace ||= {};
 db.data.pveStats ||= {};
 db.data.pvpStats ||= {};
 db.data.treasureRaceBoard ||= {};
+db.data.mail ||= {};
 db.write();
 
 // ---------- Tournament ladder ----------
@@ -77,7 +78,132 @@ function tournamentTotalPoints(record) {
   return points;
 }
 
-function getTournamentRecord(username) {
+// Every Saturday 00:00 UTC, each account with a tournament record gets a
+// mail-delivered reward for whatever rank they've reached that week —
+// there's no participation gate here (unlike Treasure Race's reminder),
+// so even an untouched Оруженосец-0 still gets that rank's base reward.
+// Immediately after, the rank resets per TOURNAMENT_WEEKLY_DEMOTION so
+// next week starts from a clean slate. No "Забрать награду" button
+// exists for this — the gold/dust/crystals are credited the moment the
+// mail is created, the mail itself is just the notification of it.
+const TOURNAMENT_WEEKLY_BASE = { squire: 1000, warrior: 2000, gladiator: 3000, elite: 5000, warlord: 7000, champion: 8000, king: 10000 };
+const TOURNAMENT_WEEKLY_PER_STAR = { squire: 100, warrior: 100, gladiator: 200, elite: 200, warlord: 300, champion: 300, king: 0 };
+const TOURNAMENT_WEEKLY_DEMOTION = { king: 'warlord', champion: 'elite', warlord: 'elite', elite: 'warrior', gladiator: 'squire', warrior: 'squire', squire: 'squire' };
+const LEAGUE_NAMES = { squire: '\u041e\u0440\u0443\u0436\u0435\u043d\u043e\u0441\u0435\u0446', warrior: '\u0412\u043e\u0438\u043d', gladiator: '\u0413\u043b\u0430\u0434\u0438\u0430\u0442\u043e\u0440', elite: '\u042d\u043b\u0438\u0442\u0430', warlord: '\u041f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', champion: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d', king: '\u041a\u043e\u0440\u043e\u043b\u044c' };
+
+// Extra gold/dust + crystals for a King's GLOBAL rank among all Kings
+// that same week (computed via computeKingRank below) — on top of the
+// flat 10000 base every King already gets regardless of rank.
+function tournamentKingRankBonus(rank) {
+  if (rank == null) return { gold: 0, crystals: 0 };
+  if (rank === 1) return { gold: 5000, crystals: 3000 };
+  if (rank === 2) return { gold: 5000, crystals: 2000 };
+  if (rank === 3) return { gold: 5000, crystals: 1500 };
+  if (rank <= 10) return { gold: 4000, crystals: 1000 };
+  if (rank <= 20) return { gold: 3000, crystals: 700 };
+  if (rank <= 30) return { gold: 2000, crystals: 500 };
+  if (rank <= 50) return { gold: 1000, crystals: 300 };
+  if (rank <= 100) return { gold: 500, crystals: 0 };
+  return { gold: 0, crystals: 0 };
+}
+
+// This account's 1-indexed standing among every King-league account,
+// ranked by kingPoints (ties share — whoever has strictly more points
+// ranks strictly higher). Only meaningful for a King; null otherwise.
+// Uses getTournamentRecordRaw (never getTournamentRecord) — comparing
+// against every other account's record here must never itself trigger
+// THEIR weekly reward as an incidental side effect of someone else
+// merely being ranked against.
+function computeKingRank(username, myRecord) {
+  if (myRecord.league !== 'king') return null;
+  const myPoints = myRecord.kingPoints || 0;
+  const higherCount = db.data.users
+    .map((u) => u.username)
+    .filter((u) => u !== username)
+    .map((u) => getTournamentRecordRaw(u))
+    .filter((r) => r.league === 'king' && (r.kingPoints || 0) > myPoints).length;
+  return higherCount + 1;
+}
+
+// The most recent Saturday 00:00 UTC at or before `now` — the boundary
+// used both to detect "a new week has started" and as the record's own
+// `weekKey` once processed for that week.
+function currentTournamentWeekKey(now) {
+  now = now || new Date();
+  const day = now.getUTCDay(); // 0=Sun..6=Sat
+  const daysSinceSaturday = (day - 6 + 7) % 7;
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
+  d.setUTCDate(d.getUTCDate() - daysSinceSaturday);
+  return d.toISOString();
+}
+
+// Grants this week's rank reward (if a new week has started since this
+// record was last checked) and resets the rank for the new week. Called
+// Runs the whole week's worth of rewards in ONE atomic pass over every
+// account that has a tournament record, the first time anyone's request
+// notices a new week has started (a single db.data.tournamentWeekKey
+// marker, not a per-account one) — never per-account-as-it's-lazily-
+// checked. That matters specifically for King rank: every King's
+// standing is snapshotted together, from the same frozen picture of
+// everyone's kingPoints, BEFORE any of them get their reward/reset —
+// processing one King at a time (each resetting kingPoints to 0 as it
+// goes) would corrupt every later King's rank in the very same run.
+function ensureTournamentWeeklyRewardsProcessed() {
+  const weekKey = currentTournamentWeekKey();
+  if (db.data.tournamentWeekKey === weekKey) return; // already done for this week
+  const isFirstEver = db.data.tournamentWeekKey == null;
+  db.data.tournamentWeekKey = weekKey;
+  if (isFirstEver) { db.write(); return; } // nothing accumulated yet anywhere to reward
+
+  const allEntries = Object.entries(db.data.tournament);
+  const kingEntries = allEntries.filter(([, r]) => r.league === 'king');
+  // Same "count of strictly-higher kingPoints, plus one" formula as
+  // computeKingRank — computed here for every King at once, off one
+  // shared, never-mutated-mid-pass snapshot.
+  const kingRanks = {};
+  for (const [username, rec] of kingEntries) {
+    const myPoints = rec.kingPoints || 0;
+    const higherCount = kingEntries.filter(([u, r]) => u !== username && (r.kingPoints || 0) > myPoints).length;
+    kingRanks[username] = higherCount + 1;
+  }
+
+  for (const [username, rec] of allEntries) {
+    const rank = rec.league === 'king' ? kingRanks[username] : null;
+    const base = TOURNAMENT_WEEKLY_BASE[rec.league] || 0;
+    const perStar = TOURNAMENT_WEEKLY_PER_STAR[rec.league] || 0;
+    let gold = base + perStar * (rec.stars || 0);
+    let dust = gold;
+    let crystals = 0;
+    if (rec.league === 'king') {
+      const bonus = tournamentKingRankBonus(rank);
+      gold += bonus.gold;
+      dust += bonus.gold;
+      crystals += bonus.crystals;
+    }
+    const resources = getResources(username);
+    resources.gold = (resources.gold || 0) + gold;
+    resources.dust = (resources.dust || 0) + dust;
+    resources.crystals = (resources.crystals || 0) + crystals;
+
+    const leagueName = LEAGUE_NAMES[rec.league] || rec.league;
+    const rankLine = rec.league === 'king' && rank != null ? ` (\u043c\u0435\u0441\u0442\u043e ${rank})` : '';
+    const parts = [`+${gold} \u0437\u043e\u043b\u043e\u0442\u0430`, `+${dust} \u043f\u044b\u043b\u0438`];
+    if (crystals > 0) parts.push(`+${crystals} \u043a\u0440\u0438\u0441\u0442\u0430\u043b\u043b\u043e\u0432`);
+    addMailMessage(
+      username, 'system',
+      `\u041d\u0430\u0433\u0440\u0430\u0434\u0430 \u0442\u0443\u0440\u043d\u0438\u0440\u0430`,
+      `\u0412\u0430\u0448 \u0440\u0430\u043d\u0433 \u0432 \u0442\u0443\u0440\u043d\u0438\u0440\u043d\u043e\u0439 \u0442\u0430\u0431\u043b\u0438\u0446\u0435 \u043d\u0430 \u043c\u043e\u043c\u0435\u043d\u0442 \u043e\u043a\u043e\u043d\u0447\u0430\u043d\u0438\u044f \u043d\u0435\u0434\u0435\u043b\u0438: ${leagueName}${rankLine}. \u041d\u0430\u0433\u0440\u0430\u0434\u0430: ${parts.join(', ')}.`
+    );
+
+    rec.league = TOURNAMENT_WEEKLY_DEMOTION[rec.league] || 'squire';
+    rec.stars = 0;
+    rec.progress = 0;
+    rec.kingPoints = 0;
+  }
+  db.write();
+}
+
+function getTournamentRecordRaw(username) {
   let rec = db.data.tournament[username];
   if (!rec) {
     rec = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
@@ -85,6 +211,20 @@ function getTournamentRecord(username) {
     db.write();
   }
   return rec;
+}
+
+// The "it's really this account's own record" accessor — the only one
+// that also runs the (global, not per-account) weekly Saturday reward
+// check. Any code that's merely comparing against OTHER accounts'
+// records (matchmaking candidates, king-rank comparisons, leaderboards)
+// must use getTournamentRecordRaw instead — not because it would corrupt
+// anything now that the check is a single atomic batch (it's idempotent
+// per week regardless of who triggers it first), but simply because
+// there's no reason a read-only comparison should be what kicks off a
+// server-wide reward pass.
+function getTournamentRecord(username) {
+  ensureTournamentWeeklyRewardsProcessed();
+  return getTournamentRecordRaw(username);
 }
 
 // ---------- Treasure Race (Гонка за сокровищами) ----------
@@ -192,7 +332,22 @@ function getTreasureRaceRecord(username) {
     // and a new run could otherwise start. Only start a fresh run once
     // there's nothing pending.
     const hasUnclaimedReward = rec && rec.status !== 'active' && !rec.claimed;
-    if (!hasUnclaimedReward) {
+    if (hasUnclaimedReward) {
+      // The new window has just started (this whole branch only runs
+      // when `win` is a genuinely different, currently-open window than
+      // whatever `rec` belongs to) and there's still unclaimed gold from
+      // the one that just ended — remind them, exactly once per such
+      // reward, never spamming on every later check.
+      if (rec.gold > 0 && !rec.reminderSent) {
+        addMailMessage(
+          username, 'system',
+          '\u041d\u0430\u0433\u0440\u0430\u0434\u0430 \u0432 \u0433\u043e\u043d\u043a\u0435 \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438',
+          `\u0412 \u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u043c \u043e\u0442\u0440\u0435\u0437\u043a\u0435 \u0432\u044b \u0437\u0430\u0440\u0430\u0431\u043e\u0442\u0430\u043b\u0438 ${rec.gold} \u0437\u043e\u043b\u043e\u0442\u044b\u0445 \u0432 \u0433\u043e\u043d\u043a\u0435 \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438, \u043d\u043e \u0435\u0449\u0451 \u043d\u0435 \u0437\u0430\u0431\u0440\u0430\u043b\u0438 \u0435\u0451. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u0440\u0435\u0436\u0438\u043c \u0438 \u0437\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u043d\u0430\u0433\u0440\u0430\u0434\u0443.`
+        );
+        rec.reminderSent = true;
+        db.write();
+      }
+    } else {
       if (rec) contributeToTreasureRaceBoard(username, rec); // capture the outgoing record's final wins before it's replaced
       rec = { windowKey: win.key, wins: 0, lives: 3, gold: 0, status: 'active', claimed: false };
       db.data.treasureRace[username] = rec;
@@ -262,6 +417,35 @@ function applyTreasureRaceResult(match) {
     }
   }
   db.write();
+}
+
+// ---------- Mail (Игровая почта) ----------
+// One unified inbox per account — "Системные сообщения" — holding both
+// auto-generated system notices (tournament weekly rewards, treasure
+// race reminders) and anything sent as an admin message. Only the
+// `type` field ('system' | 'admin') distinguishes them, purely for which
+// icon the client shows next to each row.
+let nextMailIdCounter = 1;
+function nextMailId() {
+  return 'mail_' + (Date.now().toString(36)) + '_' + (nextMailIdCounter++);
+}
+function addMailMessage(username, type, subject, body) {
+  if (!db.data.mail[username]) db.data.mail[username] = [];
+  db.data.mail[username].unshift({
+    id: nextMailId(), type, subject, body,
+    createdAt: new Date().toISOString(), read: false,
+  });
+  db.write();
+}
+
+// Opening the mailbox (or just polling its unread badge) is itself
+// enough to trigger both of the lazy checks that can generate a new
+// message — same as visiting Tournament/Treasure Race directly already
+// does, this is just an extra trigger point so a player who only ever
+// checks their mail still gets processed on schedule.
+function runScheduledMailChecks(username) {
+  getTournamentRecord(username);
+  getTreasureRaceRecord(username);
 }
 
 // Account-bound currencies. Nothing awards them yet — that's a later
@@ -912,6 +1096,32 @@ app.get('/api/resources', (req, res) => {
   res.json(getResources(username));
 });
 
+// Игровая почта — the unified inbox. Calling this also runs whichever
+// lazy weekly/window-boundary checks might generate a NEW message for
+// this account right now (tournament's Saturday reward, treasure race's
+// unclaimed-reward reminder) — see runScheduledMailChecks — so opening
+// the mail icon (or just polling for the unread badge) is what actually
+// triggers those, same lazy-evaluation convention as everything else in
+// this file.
+app.get('/api/mail', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  runScheduledMailChecks(username);
+  const messages = db.data.mail[username] || [];
+  const unread = messages.filter((m) => !m.read).length;
+  res.json({ messages, unread });
+});
+
+app.post('/api/mail/read', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { id } = req.body || {};
+  const messages = db.data.mail[username] || [];
+  const msg = messages.find((m) => m.id === id);
+  if (msg && !msg.read) { msg.read = true; db.write(); }
+  res.json({ ok: true });
+});
+
 // TEMPORARY — dev/test helper only, remove after use. Only ever acts on
 // the account literally named "admin" (checked against its own session
 // token, not settable for any other account), setting its resources to
@@ -971,16 +1181,7 @@ app.get('/api/tournament', (req, res) => {
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const record = getTournamentRecord(username);
   const maxStars = LEAGUE_STARS[record.league];
-  let kingRank = null;
-  if (record.league === 'king') {
-    const myPoints = record.kingPoints || 0;
-    const higherCount = db.data.users
-      .map((u) => u.username)
-      .filter((u) => u !== username)
-      .map((u) => getTournamentRecord(u))
-      .filter((r) => r.league === 'king' && (r.kingPoints || 0) > myPoints).length;
-    kingRank = higherCount + 1;
-  }
+  const kingRank = computeKingRank(username, record);
   res.json({ league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank });
 });
 
@@ -1290,7 +1491,7 @@ function startTournamentBotMatch(myName, ws) {
 
   const candidates = db.data.users
     .map((u) => u.username)
-    .filter((u) => u !== myName && eligibleLeagues.has(getTournamentRecord(u).league));
+    .filter((u) => u !== myName && eligibleLeagues.has(getTournamentRecordRaw(u).league));
 
   let botName, botDeck;
   if (candidates.length > 0) {
