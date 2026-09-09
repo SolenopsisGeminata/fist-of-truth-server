@@ -558,6 +558,45 @@ app.post('/api/decks/save', (req, res) => {
   res.json({ ok: true });
 });
 
+// Renames one of the account's decks. Any deck can be renamed, including
+// "Базовая колода" — it's just a label, nothing else depends on it.
+app.post('/api/decks/rename', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { id, name } = req.body || {};
+  const decks = getDecks(username);
+  const deck = findDeck(decks, id);
+  if (!deck) return res.status(404).json({ error: '\u041a\u043e\u043b\u043e\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.' });
+  const trimmed = String(name || '').trim().slice(0, 40);
+  if (!trimmed) return res.status(400).json({ error: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435.' });
+  deck.name = trimmed;
+  db.write();
+  res.json({ ok: true, deck });
+});
+
+// Deletes one of the account's decks. An account must always keep at
+// least one deck, so the very last one can't be removed — the player
+// would have nothing left to play a match with. Deleting the currently
+// active deck falls back to whichever deck is now first in the list.
+app.post('/api/decks/delete', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { id } = req.body || {};
+  const decks = getDecks(username);
+  const deck = findDeck(decks, id);
+  if (!deck) return res.status(404).json({ error: '\u041a\u043e\u043b\u043e\u0434\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.' });
+  if (decks.length <= 1) return res.status(400).json({ error: '\u041d\u0435\u043b\u044c\u0437\u044f \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0435\u0434\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0443\u044e \u043a\u043e\u043b\u043e\u0434\u0443.' });
+  const idx = decks.findIndex((d) => d.id === id);
+  decks.splice(idx, 1);
+  let activeDeckId = getActiveDeckId(username);
+  if (activeDeckId === id) {
+    activeDeckId = decks[0].id;
+    db.data.activeDeck[username] = activeDeckId;
+  }
+  db.write();
+  res.json({ ok: true, decks, activeDeckId });
+});
+
 // How many copies of each card this account owns (cardId -> count).
 // Read-only here — the only way this changes is buying more copies via
 // POST /api/shop/buy.
