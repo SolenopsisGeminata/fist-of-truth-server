@@ -73,6 +73,13 @@ export const CARD_POOL = [
   // damage equal to her CURRENT effective attack (base + synergy) at
   // that exact moment.
   { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHero: true, rarity: 'rare' },
+  // Same permanent +1/+1-to-a-random-ally idea as Паладин/Родная тетушка,
+  // but recurring instead of a one-time battlecry: fires again at the
+  // START of every round he's still alive (see applyBishopBuffs() in
+  // tryEndTurn, same moment rallyBuff/heal/shot queues are drained), each
+  // time picking a fresh random ally anywhere on the board — which can
+  // include himself, unlike Паладин's explicit self-exclusion.
+  { id: 'c22', name: '\u0415\u043f\u0438\u0441\u043a\u043e\u043f', type: 'creature', cost: 3, atk: 1, hp: 3, bishopBuff: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -349,6 +356,7 @@ export function placeCard(match, username, uid, lane, depth) {
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     dawnBuff: !!card.dawnBuff,
+    bishopBuff: !!card.bishopBuff,
     placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
   };
   match.boards[username][lane][depth] = unit;
@@ -627,6 +635,42 @@ function applyDawnBuff(match, side, events, sourceUid) {
   }
 }
 
+// Епископ: at the start of every round he's alive, picks ONE random
+// allied unit anywhere on the board (himself included — no self-exclusion
+// like Паладин, no adjacency requirement like Родная тетушка) and
+// permanently gives it +1/+1. Runs once per Епископ found, each with its
+// own fresh random pick — several copies on the board each trigger
+// independently, potentially compounding on top of each other's picks
+// within the very same round. Reuses the 'rallyBuff' event shape, same
+// as applyDawnBuff above.
+function applyBishopBuffs(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.bishopBuff) continue;
+        const targets = [];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+          }
+        }
+        if (targets.length === 0) continue;
+        const chosen = targets[Math.floor(Math.random() * targets.length)];
+        const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+        targetUnit.atk += 1;
+        targetUnit.hp += 1;
+        targetUnit.maxHp += 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+          targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+        });
+      }
+    }
+  }
+}
+
 function resolveCombat(match, events) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
@@ -806,6 +850,10 @@ export function tryEndTurn(match, username) {
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
     });
   }
+
+  // Епископ fires here too — at the very start of resolution, same
+  // moment as everything else above, before spells or combat.
+  applyBishopBuffs(match, events);
 
   resolveSpells(match, events);
   resolveCombat(match, events);
