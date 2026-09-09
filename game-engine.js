@@ -77,8 +77,8 @@ export const CARD_POOL = [
   // but recurring instead of a one-time battlecry: fires again at the
   // START of every round he's still alive (see applyBishopBuffs() in
   // tryEndTurn, same moment rallyBuff/heal/shot queues are drained), each
-  // time picking a fresh random ally anywhere on the board — which can
-  // include himself, unlike Паладин's explicit self-exclusion.
+  // time picking a fresh random OTHER ally anywhere on the board — same
+  // self-exclusion rule as Паладин, never buffs himself.
   { id: 'c22', name: '\u0415\u043f\u0438\u0441\u043a\u043e\u043f', type: 'creature', cost: 3, atk: 1, hp: 3, bishopBuff: true, rarity: 'epic' },
 ];
 
@@ -636,13 +636,12 @@ function applyDawnBuff(match, side, events, sourceUid) {
 }
 
 // Епископ: at the start of every round he's alive, picks ONE random
-// allied unit anywhere on the board (himself included — no self-exclusion
-// like Паладин, no adjacency requirement like Родная тетушка) and
-// permanently gives it +1/+1. Runs once per Епископ found, each with its
-// own fresh random pick — several copies on the board each trigger
-// independently, potentially compounding on top of each other's picks
-// within the very same round. Reuses the 'rallyBuff' event shape, same
-// as applyDawnBuff above.
+// OTHER allied unit anywhere on the board (never himself — same
+// self-exclusion rule as Паладин) and permanently gives it +1/+1. Runs
+// once per Епископ found, each with its own fresh random pick — several
+// copies on the board each trigger independently, potentially
+// compounding on top of each other's picks within the very same round.
+// Reuses the 'rallyBuff' event shape, same as applyDawnBuff above.
 function applyBishopBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -653,6 +652,7 @@ function applyBishopBuffs(match, events) {
         const targets = [];
         for (let l2 = 0; l2 < LANES; l2++) {
           for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (l2 === l && d2 === d) continue; // never himself
             if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
           }
         }
