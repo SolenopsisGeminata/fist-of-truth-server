@@ -123,6 +123,11 @@ export const CARD_POOL = [
   // next resolution, same deferred-reveal pattern as Монахиня/Арбалетчик.
   { id: 'c31', name: '\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, battlecrySummon: 'c10', rarity: 'rare' },
   { id: 'c32', name: '\u042d\u043b\u0438\u0442\u043d\u044b\u0439 \u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, rarity: 'rare' },
+  // Combines two existing mechanics: battlecrySummon (once, on placement)
+  // and endOfRoundSummon (repeating, every round she survives) — see
+  // pendingBattlecrySummons in tryEndTurn for the former, the
+  // endOfRoundSummon branch in the end-of-round loop for the latter.
+  { id: 'c33', name: '\u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'creature', cost: 4, atk: 0, hp: 6, battlecrySummon: 'c10', endOfRoundSummon: 'c10', rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -400,6 +405,7 @@ function buildUnitFromCard(card, placedThisRound) {
     summonOnHeroHit: !!card.summonOnHeroHit,
     priestHeal: !!card.priestHeal,
     siegeShot: !!card.siegeShot,
+    endOfRoundSummon: card.endOfRoundSummon || null,
     placedThisRound,
   };
 }
@@ -1092,6 +1098,14 @@ export function tryEndTurn(match, username) {
               });
               if (died) targetBoard[chosen.laneIdx][chosen.depthIdx] = null;
             }
+          }
+          // Лагерь ополченцев: same as her battlecry (see
+          // pendingBattlecrySummons above) — summons another copy onto a
+          // random free cell of her own board, but repeating at the end
+          // of every round she survives instead of firing once. Silent
+          // no-op if the board is full, same as every other summon here.
+          if (unit && unit.endOfRoundSummon) {
+            summonUnitToRandomFreeCell(match, name, unit.endOfRoundSummon, events);
           }
           // Каменная Стена: grows sturdier at the end of every round she
           // survives — permanently +2 to her OWN hp (and maxHp). Reuses
