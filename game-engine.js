@@ -98,6 +98,10 @@ export const CARD_POOL = [
   // gone by the time normal units get their turn.
   { id: 'c24', name: '\u041b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, firstStrike: true, rarity: 'rare' },
   { id: 'c25', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 3, atk: 0, hp: 10, armor: 1, rarity: 'epic' },
+  // See buildUnitFromCard/summonUnitToRandomFreeCell/resolveCombatPass:
+  // every time its attack lands directly on the enemy hero, calls in a
+  // fresh Ополченец (c10) onto a random empty cell of its own board.
+  { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -348,20 +352,14 @@ export function otherPlayer(match, username) {
 }
 
 // ---------- Player actions (validated here — this IS the anti-cheat) ----------
-export function placeCard(match, username, uid, lane, depth) {
-  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
-  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
-  const hand = match.hands[username];
-  const idx = hand.findIndex((c) => c.uid === uid);
-  if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
-  const card = cardById(hand[idx].id);
-  if (!card || card.type !== 'creature') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0431\u043e\u0435\u0446.' };
-  if (match.boards[username][lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
-  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
-
-  match.mana[username] -= card.cost;
-  hand.splice(idx, 1);
-  const unit = {
+// Every field a battlefield unit carries, derived from its card — shared
+// by placeCard (a player-placed unit) and summonUnitToRandomFreeCell (a
+// mid-combat reinforcement, e.g. Храмовый боец's Ополченец). `placedThisRound`
+// is the one thing that varies by caller: true for something the player
+// just placed this turn (lets them reposition it, shows dimmed
+// client-side), false for anything appearing outside the placing phase.
+function buildUnitFromCard(card, placedThisRound) {
+  return {
     id: card.id,
     uid: nextUid('unit'),
     atk: card.atk,
@@ -377,8 +375,50 @@ export function placeCard(match, username, uid, lane, depth) {
     firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
     bishopBuff: !!card.bishopBuff,
-    placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
+    summonOnHeroHit: !!card.summonOnHeroHit,
+    placedThisRound,
   };
+}
+
+// Храмовый боец (and any future card with this flag): the instant its
+// attack lands directly on the enemy hero, summons a fresh copy of
+// `cardId` onto a random EMPTY cell on its OWN owner's board. If every
+// cell is already occupied, this is a silent no-op — the mechanic simply
+// doesn't trigger, per spec. The new unit wasn't placed by the player
+// this turn, so placedThisRound is false (no dimmed/provisional state,
+// no repositioning window — placing phase for this round is already
+// over by the time combat runs).
+function summonUnitToRandomFreeCell(match, side, cardId, events) {
+  const board = match.boards[side];
+  const freeCells = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (!board[l][d]) freeCells.push({ l, d });
+    }
+  }
+  if (freeCells.length === 0) return;
+  const { l, d } = freeCells[Math.floor(Math.random() * freeCells.length)];
+  const summonedCard = cardById(cardId);
+  if (!summonedCard) return;
+  const unit = buildUnitFromCard(summonedCard, false);
+  board[l][d] = unit;
+  events.push({ type: 'summon', side, cardId, laneIdx: l, depthIdx: d, uid: unit.uid });
+}
+
+export function placeCard(match, username, uid, lane, depth) {
+  if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
+  if (lane < 0 || lane >= LANES || !Number.isInteger(depth) || depth < 0 || depth >= DEPTH) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+  const hand = match.hands[username];
+  const idx = hand.findIndex((c) => c.uid === uid);
+  if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
+  const card = cardById(hand[idx].id);
+  if (!card || card.type !== 'creature') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0431\u043e\u0435\u0446.' };
+  if (match.boards[username][lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
+  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
+
+  match.mana[username] -= card.cost;
+  hand.splice(idx, 1);
+  const unit = buildUnitFromCard(card, true);
   match.boards[username][lane][depth] = unit;
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -803,6 +843,13 @@ function resolveCombatPass(match, events, isEligible) {
 
       if (aDied) match.boards[nameB][l][aTarget.depth] = null;
       if (bDied) match.boards[nameA][l][bTarget.depth] = null;
+
+      // Храмовый боец: the instant its attack lands directly on the
+      // enemy hero (not blocked by a unit), summon a fresh Ополченец
+      // onto a random empty cell of its own board — silently does
+      // nothing if there's no room.
+      if (aAttacks && !aTarget && aUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameA, 'c10', events);
+      if (bAttacks && !bTarget && bUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameB, 'c10', events);
     }
   }
 }
