@@ -1165,14 +1165,20 @@ export function tryEndTurn(match, username) {
             const targetSide = match.players.find((p) => p !== name);
             const targetBoard = match.boards[targetSide];
             const targetDepth = Math.floor(Math.random() * DEPTH);
-            // Чаростойкость: a spellResist unit sitting in the picked
-            // cell simply isn't a legal target — treated exactly like an
-            // empty cell would be, redirecting the shot to the hero.
             const cellUnit = targetBoard[l][targetDepth];
-            const targetUnit = (cellUnit && !cellUnit.spellResist) ? cellUnit : null;
+            // Чаростойкость: if the picked cell holds a spellResist unit,
+            // the shot still lands and explodes there (visually), but
+            // deals NO damage at all — not to her, not redirected to the
+            // hero either. An empty cell still redirects to the hero as
+            // before; this only changes the "occupied by an immune unit"
+            // case specifically.
+            const resisted = !!(cellUnit && cellUnit.spellResist);
+            const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
             const amount = effectiveAtk(board, l, d);
             let died = false;
-            if (targetUnit) {
+            if (resisted) {
+              // no-op: cannonball explodes on her harmlessly
+            } else if (targetUnit) {
               targetUnit.hp -= amount;
               died = targetUnit.hp <= 0;
               if (died) targetBoard[l][targetDepth] = null;
@@ -1180,10 +1186,10 @@ export function tryEndTurn(match, username) {
               match.hp[targetSide] -= amount;
             }
             events.push({
-              type: 'cannonShot', side: name, targetSide, amount,
+              type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : amount,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
               targetLaneIdx: l, targetDepthIdx: targetDepth,
-              targetHero: !targetUnit, died,
+              targetHero: !cellUnit, died, resisted,
             });
           }
           // Каменная Стена: grows sturdier at the end of every round she
