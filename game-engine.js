@@ -49,6 +49,7 @@ export const CARD_POOL = [
   // castSpell()'s `card.healHero` branch and resolveSpells()'s
   // 'wellspring' kind further down.
   { id: 's2', name: '\u0420\u043e\u0434\u043d\u0438\u043a', type: 'spell', cost: 2, healHero: 2, drawCard: 1, rarity: 'rare' },
+  { id: 's3', name: '\u0414\u043e\u0441\u043f\u0435\u0445\u0438', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffArmor: 1, rarity: 'epic' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -516,7 +517,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   }
@@ -535,6 +536,7 @@ export function castSpell(match, username, uid, lane, depth) {
     drawCard: card.drawCard,
     buffHp: card.buffHp,
     buffAtk: card.buffAtk,
+    buffArmor: card.buffArmor,
   });
   return { ok: true };
 }
@@ -613,18 +615,21 @@ function resolveSpells(match, events) {
         healAmount: spell.healHero, drew,
       });
     } else if (spell.kind === 'buff') {
-      // Permanent stat increase (e.g. Кольчуга) — unlike heal, this raises
-      // the ceiling itself: both current and max HP go up, not just a
-      // refill up to the old cap.
+      // Permanent stat increase (e.g. Кольчуга, Доспехи) — unlike heal,
+      // this raises the ceiling itself: both current and max HP go up,
+      // not just a refill up to the old cap. Armor stacks additively
+      // with whatever the unit already has (its own base, or from an
+      // earlier cast of a different buff spell).
       const board = match.boards[spell.side];
       const unit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
       if (unit) {
         if (spell.buffAtk) unit.atk += spell.buffAtk;
         if (spell.buffHp) { unit.hp += spell.buffHp; unit.maxHp += spell.buffHp; }
+        if (spell.buffArmor) unit.armor = (unit.armor || 0) + spell.buffArmor;
         events.push({
           type: 'spell', kind: 'buff', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
-          buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0,
+          buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
         });
       }
     }
