@@ -96,6 +96,7 @@ export const CARD_POOL = [
   // everyone else. A target this kills in that first pass is already
   // gone by the time normal units get their turn.
   { id: 'c24', name: '\u041b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, firstStrike: true, rarity: 'rare' },
+  { id: 'c25', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 3, atk: 0, hp: 10, armor: 1, rarity: 'epic' },
 ];
 
 export function cardById(id) {
