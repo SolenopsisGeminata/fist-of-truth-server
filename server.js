@@ -1347,7 +1347,11 @@ app.get('/api/treasure-race', (req, res) => {
     nextWindowStart: new Date(nextTreasureRaceWindowStart(now)).toISOString(),
     wins: rec ? rec.wins : 0,
     lives: rec ? rec.lives : 3,
-    gold: rec ? rec.gold : 0,
+    // Once claimed, that run's gold is already in the real balance —
+    // "Текущая награда" must read 0 until the next window's first win.
+    // The `!rec.claimed` guard here also self-heals any record left
+    // over from before claim actually zeroed rec.gold itself.
+    gold: rec && !rec.claimed ? rec.gold : 0,
     status: rec ? rec.status : 'active',
     rewardPending: !!(rec && rec.status !== 'active' && !rec.claimed),
   });
@@ -1368,6 +1372,7 @@ app.post('/api/treasure-race/claim', (req, res) => {
   resources.gold = (resources.gold || 0) + rec.gold;
   const credited = rec.gold;
   rec.claimed = true;
+  rec.gold = 0; // already paid out to the real balance — "Текущая награда" must show 0 until the next window's first win
   db.write();
   res.json({ ok: true, credited, resources });
 });
