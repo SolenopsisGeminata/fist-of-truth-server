@@ -106,7 +106,7 @@ export const CARD_POOL = [
   // See buildUnitFromCard/summonUnitToRandomFreeCell/resolveCombatPass:
   // every time its attack lands directly on the enemy hero, calls in a
   // fresh Ополченец (c10) onto a random empty cell of its own board.
-  { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: true, rarity: 'epic' },
+  { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: 'c10', rarity: 'epic' },
   // Ends every round by permanently healing (+2 hp/maxHp) one random
   // OTHER ally on his own board — see the priestHeal branch inlined in
   // the end-of-round loop right next to Каменная Стена's wallGrow,
@@ -134,6 +134,9 @@ export const CARD_POOL = [
   // the enemy side.
   { id: 'c34', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 4, atk: 4, hp: 9, defender: true, cannonShot: true, rarity: 'rare' },
   { id: 'c35', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u041b\u0443\u043d\u044b', type: 'creature', cost: 4, atk: 1, hp: 3, fixedHeal: 7, rarity: 'epic' },
+  // summonOnHeroHit now stores WHICH card to summon (see the c26 refactor
+  // above) — this one calls in a Страж дворца instead of an Ополченец.
+  { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -408,7 +411,7 @@ function buildUnitFromCard(card, placedThisRound) {
     firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
     bishopBuff: !!card.bishopBuff,
-    summonOnHeroHit: !!card.summonOnHeroHit,
+    summonOnHeroHit: card.summonOnHeroHit || null,
     priestHeal: !!card.priestHeal,
     siegeShot: !!card.siegeShot,
     endOfRoundSummon: card.endOfRoundSummon || null,
@@ -906,8 +909,8 @@ function resolveCombatPass(match, events, isEligible) {
       // enemy hero (not blocked by a unit), summon a fresh Ополченец
       // onto a random empty cell of its own board — silently does
       // nothing if there's no room.
-      if (aAttacks && !aTarget && aUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameA, 'c10', events);
-      if (bAttacks && !bTarget && bUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameB, 'c10', events);
+      if (aAttacks && !aTarget && aUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameA, aUnit.summonOnHeroHit, events);
+      if (bAttacks && !bTarget && bUnit.summonOnHeroHit) summonUnitToRandomFreeCell(match, nameB, bUnit.summonOnHeroHit, events);
     }
   }
 }
