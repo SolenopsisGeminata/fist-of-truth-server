@@ -50,6 +50,11 @@ export const CARD_POOL = [
   // 'wellspring' kind further down.
   { id: 's2', name: '\u0420\u043e\u0434\u043d\u0438\u043a', type: 'spell', cost: 2, healHero: 2, drawCard: 1, rarity: 'rare' },
   { id: 's3', name: '\u0414\u043e\u0441\u043f\u0435\u0445\u0438', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffArmor: 1, rarity: 'epic' },
+  // Мгновенный призыв: see castSpell/tryEndTurn — resolves before rally
+  // buffs, heals, shots, Епископ, and the normal spell phase, calling
+  // summonUnitToRandomFreeCell 3 times to fill up to 3 random empty
+  // cells with a fresh c10 each (fewer if less room is available).
+  { id: 's4', name: '\u041e\u0442\u0440\u044f\u0434 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'spell', cost: 3, instantSummon: true, summonCardId: 'c10', summonCount: 3, rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -566,6 +571,14 @@ export function castSpell(match, username, uid, lane, depth) {
   } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
+  } else if (card.instantSummon) {
+    // Отряд ополченцев: any cell works, occupied or empty, friendly or
+    // not — same as Родник, the cell is purely where the player points
+    // it. The actual summons land on random EMPTY cells of their own
+    // board, worked out fresh once resolution starts, not here.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -573,7 +586,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : 'buff')),
+    kind: card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : 'buff'))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -583,6 +596,8 @@ export function castSpell(match, username, uid, lane, depth) {
     buffHp: card.buffHp,
     buffAtk: card.buffAtk,
     buffArmor: card.buffArmor,
+    summonCardId: card.summonCardId,
+    summonCount: card.summonCount,
   });
   return { ok: true };
 }
@@ -907,6 +922,23 @@ export function tryEndTurn(match, username) {
   const preBoards = { [nameA]: displayBoard(match.boards[nameA]), [nameB]: displayBoard(match.boards[nameB]) };
 
   const events = [];
+
+  // Мгновенный призыв (Отряд ополченцев): fires before ANYTHING else in
+  // resolution — even before rally buffs, heals, shots, and Епископ
+  // below, let alone the normal spell phase. Pulled out of pendingSpells
+  // here rather than living in its own separate queue, so the
+  // pending-spell-icon overlay during placing (which reads pendingSpells
+  // directly) keeps working for it with no extra plumbing; whatever's
+  // left in pendingSpells after this filter is everything resolveSpells
+  // still needs to handle normally, later.
+  const instantSummonQueue = match.pendingSpells.filter((sp) => sp.kind === 'instantSummon');
+  match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'instantSummon');
+  for (const summonSpell of instantSummonQueue) {
+    const count = summonSpell.summonCount || 1;
+    for (let i = 0; i < count; i++) {
+      summonUnitToRandomFreeCell(match, summonSpell.side, summonSpell.summonCardId, events);
+    }
+  }
 
   // Rally buffs (e.g. Паладин) apply right at the very start of
   // resolution — before spells or combat — using preBoards (just
