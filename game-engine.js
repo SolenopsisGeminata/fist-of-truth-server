@@ -114,6 +114,10 @@ export const CARD_POOL = [
   { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' },
   { id: 'c28', name: '\u042d\u043b\u0438\u0442\u0430 \u0445\u0440\u0430\u043c\u0430', type: 'creature', cost: 4, atk: 2, hp: 4, synergy: 2, rarity: 'rare' },
   { id: 'c29', name: '\u0413\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, lifesteal: true, rarity: 'rare' },
+  // siegeShot: same end-of-round trigger as Арбалетчик's shootHero, but
+  // fires a fixed 2 damage at a random ENEMY UNIT instead of the hero —
+  // see the siegeShot branch in tryEndTurn's end-of-round loop.
+  { id: 'c30', name: '\u041e\u0441\u0430\u0434\u043d\u0430\u044f \u0431\u0430\u0448\u043d\u044f', type: 'creature', cost: 4, atk: 1, hp: 8, siegeShot: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -389,6 +393,7 @@ function buildUnitFromCard(card, placedThisRound) {
     bishopBuff: !!card.bishopBuff,
     summonOnHeroHit: !!card.summonOnHeroHit,
     priestHeal: !!card.priestHeal,
+    siegeShot: !!card.siegeShot,
     placedThisRound,
   };
 }
@@ -1036,6 +1041,34 @@ export function tryEndTurn(match, username) {
               type: 'heroShot', side: name, targetSide, amount,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
             });
+          }
+          // Осадная башня: same end-of-round trigger and crossbow-bolt
+          // animation as Арбалетчик's shootHero above, but the bolt flies
+          // at a random ENEMY UNIT instead of the hero, for a fixed 2
+          // damage (not attack-based) — silently does nothing if the
+          // enemy board is empty.
+          if (unit && unit.siegeShot) {
+            const targetSide = match.players.find((p) => p !== name);
+            const targetBoard = match.boards[targetSide];
+            const targets = [];
+            for (let l2 = 0; l2 < LANES; l2++) {
+              for (let d2 = 0; d2 < DEPTH; d2++) {
+                if (targetBoard[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+              }
+            }
+            if (targets.length > 0) {
+              const chosen = targets[Math.floor(Math.random() * targets.length)];
+              const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+              const amount = 2;
+              targetUnit.hp -= amount;
+              const died = targetUnit.hp <= 0;
+              events.push({
+                type: 'unitShot', side: name, targetSide, amount,
+                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+                targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
+              });
+              if (died) targetBoard[chosen.laneIdx][chosen.depthIdx] = null;
+            }
           }
           // Каменная Стена: grows sturdier at the end of every round she
           // survives — permanently +2 to her OWN hp (and maxHp). Reuses
