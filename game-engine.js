@@ -122,6 +122,7 @@ export const CARD_POOL = [
   // in tryEndTurn) resolved onto a random free cell at the start of the
   // next resolution, same deferred-reveal pattern as Монахиня/Арбалетчик.
   { id: 'c31', name: '\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, battlecrySummon: 'c10', rarity: 'rare' },
+  { id: 'c32', name: '\u042d\u043b\u0438\u0442\u043d\u044b\u0439 \u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
