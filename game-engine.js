@@ -55,6 +55,10 @@ export const CARD_POOL = [
   // summonUnitToRandomFreeCell 3 times to fill up to 3 random empty
   // cells with a fresh c10 each (fewer if less room is available).
   { id: 's4', name: '\u041e\u0442\u0440\u044f\u0434 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'spell', cost: 3, instantSummon: true, summonCardId: 'c10', summonCount: 3, rarity: 'rare' },
+  // Targets an entire enemy lane (all 3 depth positions), not a single
+  // cell — see the 'wrath' spell kind in resolveSpells, which hits every
+  // cell in the lane with its own sequential event.
+  { id: 's5', name: '\u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441', type: 'spell', cost: 5, wrathDmg: 7, rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -605,7 +609,7 @@ export function castSpell(match, username, uid, lane, depth) {
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
   if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  if (card.dmg) {
+  if (card.dmg || card.wrathDmg) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.healHero) {
     // Родник: any cell works, occupied or empty, friendly or not — the
@@ -632,10 +636,11 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : 'buff'))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : 'buff')))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
+    wrathDmg: card.wrathDmg,
     heal: card.heal,
     healHero: card.healHero,
     drawCard: card.drawCard,
@@ -677,7 +682,45 @@ function resolveSpells(match, events) {
   match.pendingSpells = [];
   for (const spell of queue) {
     if (anyHeroDown(match)) break; // match already decided — stop applying further spells
-    if (spell.kind === 'damage') {
+    if (spell.kind === 'wrath') {
+      // Гнев небес: unlike 'damage' (front unit only), this hits EVERY
+      // depth position in the chosen enemy lane — one damage event per
+      // cell, in order, so the client plays them as a sequence of
+      // lightning strikes rather than one simultaneous hit. An empty
+      // cell still gets struck (visually) but deals nothing; a
+      // Чаростойкость unit is struck too but takes no damage, same
+      // resisted-no-redirect behavior as every other cross-side damage
+      // mechanic — this never falls through to the hero.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      for (let d = 0; d < DEPTH; d++) {
+        if (anyHeroDown(match)) break;
+        const targetUnit = board[spell.laneIdx][d];
+        if (!targetUnit) {
+          events.push({
+            type: 'spell', kind: 'wrath', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: 0, died: false, empty: true, resisted: false,
+          });
+        } else if (targetUnit.spellResist) {
+          events.push({
+            type: 'spell', kind: 'wrath', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: 0, died: false, empty: false, resisted: true,
+          });
+        } else {
+          const applied = Math.max(0, spell.wrathDmg - (targetUnit.armor || 0));
+          targetUnit.hp -= applied;
+          const died = targetUnit.hp <= 0;
+          events.push({
+            type: 'spell', kind: 'wrath', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: applied, died, empty: false, resisted: false,
+          });
+          if (died) board[spell.laneIdx][d] = null;
+        }
+      }
+    } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
       const info = frontUnit(board, spell.laneIdx);
