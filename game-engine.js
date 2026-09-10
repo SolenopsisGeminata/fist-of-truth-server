@@ -113,6 +113,7 @@ export const CARD_POOL = [
   // reusing the exact same rallyBuff event/animation.
   { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' },
   { id: 'c28', name: '\u042d\u043b\u0438\u0442\u0430 \u0445\u0440\u0430\u043c\u0430', type: 'creature', cost: 4, atk: 2, hp: 4, synergy: 2, rarity: 'rare' },
+  { id: 'c29', name: '\u0413\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, lifesteal: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
