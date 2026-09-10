@@ -90,6 +90,12 @@ export const CARD_POOL = [
   // instead of +1), so even a single neighbour already gets her
   // swinging, and a full ring of four makes her hit as hard as +8.
   { id: 'c23', name: '\u0411\u0430\u043b\u043b\u0438\u0441\u0442\u0430', type: 'creature', cost: 3, atk: 0, hp: 4, synergy: 2, rarity: 'rare' },
+  // Первый удар (First Strike): fights in its own combat pass BEFORE
+  // every other unit — see resolveCombat()/resolveCombatPass() below,
+  // which runs a firstStrike-only pass first, then a second pass for
+  // everyone else. A target this kills in that first pass is already
+  // gone by the time normal units get their turn.
+  { id: 'c24', name: '\u041b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, firstStrike: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -366,6 +372,7 @@ export function placeCard(match, username, uid, lane, depth) {
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     wallGrow: !!card.wallGrow,
+    firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
     bishopBuff: !!card.bishopBuff,
     placedThisRound: true, // lets the owner reposition it (and shows it dimmed client-side) until this round resolves
@@ -682,7 +689,16 @@ function applyBishopBuffs(match, events) {
   }
 }
 
-function resolveCombat(match, events) {
+// One full pass over every lane's combat, but only units for which
+// `isEligible(unit)` returns true actually get to act this pass —
+// everyone else just sits there (still targetable, still able to block,
+// exactly like a 0-attack unit already does within a single pass). This
+// is what lets First Strike work: call this once with an eligibility
+// filter that only admits firstStrike units, then again with the
+// opposite filter for the normal exchange — units killed in the first
+// call are already gone (frontUnit/actingOrder re-scan the live board
+// each time) by the time the second call's targets are picked.
+function resolveCombatPass(match, events, isEligible) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
     if (anyHeroDown(match)) break; // match already decided — stop resolving further lanes
@@ -700,25 +716,29 @@ function resolveCombat(match, events) {
 
       const aUnit = aInfo && aInfo.unit;
       const bUnit = bInfo && bInfo.unit;
+      const aEligible = !!(aUnit && isEligible(aUnit));
+      const bEligible = !!(bUnit && isEligible(bUnit));
 
-      if (aUnit && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
-      if (bUnit && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
+      if (aEligible && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
+      if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
       // now — the neighbours that earned this bonus might not be there
       // by the next wave or the next round.
-      const aAtk = aUnit ? effectiveAtk(match.boards[nameA], l, aInfo.depth) : 0;
-      const bAtk = bUnit ? effectiveAtk(match.boards[nameB], l, bInfo.depth) : 0;
+      const aAtk = aEligible ? effectiveAtk(match.boards[nameA], l, aInfo.depth) : 0;
+      const bAtk = bEligible ? effectiveAtk(match.boards[nameB], l, bInfo.depth) : 0;
 
       // A unit whose current effective attack is 0 or less (e.g. Корова,
-      // base 0 attack) doesn't attack this wave at all — it picks no
-      // target and deals no damage, and doesn't show up as an attacker
-      // in the event below. It can still BE attacked/blocked normally by
-      // the other side, same as always — this only ever stops it from
-      // acting, never from being acted upon.
-      const aAttacks = !!(aUnit && aAtk > 0);
-      const bAttacks = !!(bUnit && bAtk > 0);
+      // base 0 attack), or one that isn't eligible this particular pass
+      // (not First Strike during the First Strike pass, or already
+      // spent during the normal pass), doesn't attack this wave at all —
+      // it picks no target and deals no damage, and doesn't show up as
+      // an attacker in the event below. It can still BE attacked/blocked
+      // normally by the other side, same as always.
+      const aAttacks = !!(aEligible && aAtk > 0);
+      const bAttacks = !!(bEligible && bAtk > 0);
+      if (!aAttacks && !bAttacks) continue; // nobody eligible acted this wave — nothing to animate or apply
       const aTarget = aAttacks ? frontUnit(match.boards[nameB], l) : null;
       const bTarget = bAttacks ? frontUnit(match.boards[nameA], l) : null;
 
@@ -779,6 +799,19 @@ function resolveCombat(match, events) {
       if (bDied) match.boards[nameA][l][bTarget.depth] = null;
     }
   }
+}
+
+// Первый удар (First Strike): units with this flag fight in their own
+// pass BEFORE everyone else — resolveCombat below runs resolveCombatPass
+// twice, first admitting only firstStrike units, then admitting
+// everyone else. A First Strike unit killed by another First Strike unit
+// never gets to act in the (later) normal pass, same as it would if it
+// simply died mid-combat any other time; a First Strike unit that lands
+// a kill in its own pass means that target is already gone by the time
+// the normal pass picks targets.
+function resolveCombat(match, events) {
+  resolveCombatPass(match, events, (unit) => !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
