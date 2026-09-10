@@ -133,6 +133,7 @@ export const CARD_POOL = [
   // in the end-of-round loop instead, striking her OWN lane's mirror on
   // the enemy side.
   { id: 'c34', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 4, atk: 4, hp: 9, defender: true, cannonShot: true, rarity: 'rare' },
+  { id: 'c35', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u041b\u0443\u043d\u044b', type: 'creature', cost: 4, atk: 1, hp: 3, fixedHeal: 7, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -413,6 +414,7 @@ function buildUnitFromCard(card, placedThisRound) {
     endOfRoundSummon: card.endOfRoundSummon || null,
     defender: !!card.defender,
     cannonShot: !!card.cannonShot,
+    fixedHeal: card.fixedHeal || 0,
     placedThisRound,
   };
 }
@@ -1065,6 +1067,14 @@ export function tryEndTurn(match, username) {
           if (unit && unit.cookHeal) {
             match.hp[name] += unit.atk;
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.atk, laneIdx: l, depthIdx: d });
+          }
+          // Священник Луны: a flat, guaranteed heal every round she
+          // survives — unlike Повар (tied to attack) or Корова (tied to
+          // current hp, 50/50 chance), this is just a fixed number.
+          // Reuses the exact same 'endOfRound' event/heal-orb animation.
+          if (unit && unit.fixedHeal) {
+            match.hp[name] += unit.fixedHeal;
+            events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: unit.fixedHeal, laneIdx: l, depthIdx: d });
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
