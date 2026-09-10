@@ -128,6 +128,11 @@ export const CARD_POOL = [
   // pendingBattlecrySummons in tryEndTurn for the former, the
   // endOfRoundSummon branch in the end-of-round loop for the latter.
   { id: 'c33', name: '\u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'creature', cost: 4, atk: 0, hp: 6, battlecrySummon: 'c10', endOfRoundSummon: 'c10', rarity: 'rare' },
+  // Защитник (Defender): never attacks in normal combat (see the
+  // resolveCombat wrapper above). Her own mechanic — cannonShot — fires
+  // in the end-of-round loop instead, striking her OWN lane's mirror on
+  // the enemy side.
+  { id: 'c34', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 4, atk: 4, hp: 9, defender: true, cannonShot: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -406,6 +411,8 @@ function buildUnitFromCard(card, placedThisRound) {
     priestHeal: !!card.priestHeal,
     siegeShot: !!card.siegeShot,
     endOfRoundSummon: card.endOfRoundSummon || null,
+    defender: !!card.defender,
+    cannonShot: !!card.cannonShot,
     placedThisRound,
   };
 }
@@ -911,9 +918,16 @@ function resolveCombatPass(match, events, isEligible) {
 // simply died mid-combat any other time; a First Strike unit that lands
 // a kill in its own pass means that target is already gone by the time
 // the normal pass picks targets.
+// Защитник (Defender): never gets to act in EITHER combat pass below —
+// excluded from attacking entirely, regardless of First Strike or attack
+// value, though still fully targetable/blockable like any other unit
+// (this only ever gates attacking, never being attacked). A defender's
+// own attack stat still matters for ITS OWN non-combat mechanics (e.g.
+// Имперская пушка's end-of-round cannon shot uses her live attack) —
+// this exclusion is scoped to the wave-combat exchange only.
 function resolveCombat(match, events) {
-  resolveCombatPass(match, events, (unit) => !!unit.firstStrike);
-  resolveCombatPass(match, events, (unit) => !unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
@@ -1106,6 +1120,34 @@ export function tryEndTurn(match, username) {
           // no-op if the board is full, same as every other summon here.
           if (unit && unit.endOfRoundSummon) {
             summonUnitToRandomFreeCell(match, name, unit.endOfRoundSummon, events);
+          }
+          // Имперская пушка: at the end of every round she survives,
+          // strikes a random cell within the OPPOSING side's version of
+          // her OWN lane (not any random lane on the board — specifically
+          // whichever lane she herself sits in) for damage equal to her
+          // live attack. If that cell is empty, the shot instead lands on
+          // the enemy hero. New 'cannonShot' event carries enough for the
+          // client to fly a cannonball to the right spot and explode.
+          if (unit && unit.cannonShot) {
+            const targetSide = match.players.find((p) => p !== name);
+            const targetBoard = match.boards[targetSide];
+            const targetDepth = Math.floor(Math.random() * DEPTH);
+            const targetUnit = targetBoard[l][targetDepth];
+            const amount = effectiveAtk(board, l, d);
+            let died = false;
+            if (targetUnit) {
+              targetUnit.hp -= amount;
+              died = targetUnit.hp <= 0;
+              if (died) targetBoard[l][targetDepth] = null;
+            } else {
+              match.hp[targetSide] -= amount;
+            }
+            events.push({
+              type: 'cannonShot', side: name, targetSide, amount,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+              targetLaneIdx: l, targetDepthIdx: targetDepth,
+              targetHero: !targetUnit, died,
+            });
           }
           // Каменная Стена: grows sturdier at the end of every round she
           // survives — permanently +2 to her OWN hp (and maxHp). Reuses
