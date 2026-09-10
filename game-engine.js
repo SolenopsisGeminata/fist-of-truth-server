@@ -102,6 +102,11 @@ export const CARD_POOL = [
   // every time its attack lands directly on the enemy hero, calls in a
   // fresh Ополченец (c10) onto a random empty cell of its own board.
   { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: true, rarity: 'epic' },
+  // Ends every round by permanently healing (+2 hp/maxHp) one random
+  // OTHER ally on his own board — see the priestHeal branch inlined in
+  // the end-of-round loop right next to Каменная Стена's wallGrow,
+  // reusing the exact same rallyBuff event/animation.
+  { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -376,6 +381,7 @@ function buildUnitFromCard(card, placedThisRound) {
     dawnBuff: !!card.dawnBuff,
     bishopBuff: !!card.bishopBuff,
     summonOnHeroHit: !!card.summonOnHeroHit,
+    priestHeal: !!card.priestHeal,
     placedThisRound,
   };
 }
@@ -1008,6 +1014,30 @@ export function tryEndTurn(match, username) {
               type: 'rallyBuff', side: name, laneIdx: l,
               targetDepth: d, buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
             });
+          }
+          // Священник: at the end of every round, picks one random OTHER
+          // ally anywhere on his own board (never himself) and permanently
+          // raises its hp (and maxHp) by 2 — same target-selection and
+          // event/animation as Епископ, just hp-only and end-of-round
+          // instead of start-of-round.
+          if (unit && unit.priestHeal) {
+            const targets = [];
+            for (let l2 = 0; l2 < LANES; l2++) {
+              for (let d2 = 0; d2 < DEPTH; d2++) {
+                if (l2 === l && d2 === d) continue; // never himself
+                if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+              }
+            }
+            if (targets.length > 0) {
+              const chosen = targets[Math.floor(Math.random() * targets.length)];
+              const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+              targetUnit.hp += 2;
+              targetUnit.maxHp += 2;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
+                targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
+              });
+            }
           }
         }
       }
