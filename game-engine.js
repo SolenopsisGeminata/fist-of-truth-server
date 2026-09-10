@@ -137,6 +137,7 @@ export const CARD_POOL = [
   // summonOnHeroHit now stores WHICH card to summon (see the c26 refactor
   // above) — this one calls in a Страж дворца instead of an Ополченец.
   { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' },
+  { id: 'c37', name: '\u041a\u0430\u043d\u043e\u043d\u0438\u0441\u0441\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, lifesteal: true, spellResist: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -418,6 +419,11 @@ function buildUnitFromCard(card, placedThisRound) {
     defender: !!card.defender,
     cannonShot: !!card.cannonShot,
     fixedHeal: card.fixedHeal || 0,
+    // Чаростойкость: see the siegeShot/cannonShot targeting above and the
+    // 'damage' spell kind in resolveSpells — every current cross-side
+    // damage-dealing mechanic checks this. No enemy-facing stat-reduction
+    // mechanic exists yet to guard, but any added later must check it too.
+    spellResist: !!card.spellResist,
     placedThisRound,
   };
 }
@@ -675,7 +681,18 @@ function resolveSpells(match, events) {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
       const info = frontUnit(board, spell.laneIdx);
-      if (info) {
+      if (info && info.unit.spellResist) {
+        // Чаростойкость: this enemy damage spell simply has no effect on
+        // her — not redirected to the hero or anyone else, just resisted
+        // outright. Still emits an event (0 damage, resisted:true) so the
+        // pending-spell icon still clears and the client can show why
+        // nothing happened.
+        events.push({
+          type: 'spell', kind: 'damage', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: info.depth,
+          amount: 0, died: false, resisted: true,
+        });
+      } else if (info) {
         const applied = Math.max(0, spell.dmg - (info.unit.armor || 0));
         info.unit.hp -= applied;
         const died = info.unit.hp <= 0;
@@ -1109,7 +1126,10 @@ export function tryEndTurn(match, username) {
             const targets = [];
             for (let l2 = 0; l2 < LANES; l2++) {
               for (let d2 = 0; d2 < DEPTH; d2++) {
-                if (targetBoard[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+                // Чаростойкость: a spellResist unit is never even a
+                // candidate here — she's not a legal target for this
+                // enemy end-of-round damage mechanic at all.
+                if (targetBoard[l2][d2] && !targetBoard[l2][d2].spellResist) targets.push({ laneIdx: l2, depthIdx: d2 });
               }
             }
             if (targets.length > 0) {
@@ -1145,7 +1165,11 @@ export function tryEndTurn(match, username) {
             const targetSide = match.players.find((p) => p !== name);
             const targetBoard = match.boards[targetSide];
             const targetDepth = Math.floor(Math.random() * DEPTH);
-            const targetUnit = targetBoard[l][targetDepth];
+            // Чаростойкость: a spellResist unit sitting in the picked
+            // cell simply isn't a legal target — treated exactly like an
+            // empty cell would be, redirecting the shot to the hero.
+            const cellUnit = targetBoard[l][targetDepth];
+            const targetUnit = (cellUnit && !cellUnit.spellResist) ? cellUnit : null;
             const amount = effectiveAtk(board, l, d);
             let died = false;
             if (targetUnit) {
