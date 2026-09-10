@@ -142,6 +142,7 @@ export const CARD_POOL = [
   // above) — this one calls in a Страж дворца instead of an Ополченец.
   { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' },
   { id: 'c37', name: '\u041a\u0430\u043d\u043e\u043d\u0438\u0441\u0441\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, lifesteal: true, spellResist: true, rarity: 'legendary' },
+  { id: 'c38', name: '\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d', type: 'creature', cost: 5, atk: 5, hp: 5, armor: 3, synergy: 1, rarity: 'epic' },
 ];
 
 export function cardById(id) {
