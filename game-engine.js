@@ -118,6 +118,10 @@ export const CARD_POOL = [
   // fires a fixed 2 damage at a random ENEMY UNIT instead of the hero —
   // see the siegeShot branch in tryEndTurn's end-of-round loop.
   { id: 'c30', name: '\u041e\u0441\u0430\u0434\u043d\u0430\u044f \u0431\u0430\u0448\u043d\u044f', type: 'creature', cost: 4, atk: 1, hp: 8, siegeShot: true, rarity: 'rare' },
+  // battlecrySummon: on placement, queues a summon (see pendingBattlecrySummons
+  // in tryEndTurn) resolved onto a random free cell at the start of the
+  // next resolution, same deferred-reveal pattern as Монахиня/Арбалетчик.
+  { id: 'c31', name: '\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, battlecrySummon: 'c10', rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -335,6 +339,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingRallyBuffs: [],
     pendingHeals: [],
     pendingShots: [],
+    pendingBattlecrySummons: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -489,6 +494,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // then (more allies might get placed this same round).
   if (card.shootHero) {
     match.pendingShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Толстый караульный: battlecry summon — same deferred reasoning as
+  // Монахиня/Арбалетчик above (revealed as an animated event at the
+  // start of resolution, not silently during placing). Which random
+  // free cell it lands on is worked out then too, not here, since more
+  // cells could still fill up before resolution starts.
+  if (card.battlecrySummon) {
+    match.pendingBattlecrySummons.push({ side: username, summonCardId: card.battlecrySummon, sourceUid: unit.uid });
   }
 
   return { ok: true };
@@ -991,6 +1005,14 @@ export function tryEndTurn(match, username) {
       type: 'heroShot', side: shot.side, targetSide, amount,
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
     });
+  }
+
+  // Толстый караульный's battlecry summon — same moment as everything
+  // above, resolved onto whatever's free right now.
+  const battlecrySummonQueue = match.pendingBattlecrySummons;
+  match.pendingBattlecrySummons = [];
+  for (const summon of battlecrySummonQueue) {
+    summonUnitToRandomFreeCell(match, summon.side, summon.summonCardId, events);
   }
 
   // Епископ fires here too — at the very start of resolution, same
