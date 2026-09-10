@@ -709,7 +709,9 @@ function resolveSpells(match, events) {
             amount: 0, died: false, empty: false, resisted: true,
           });
         } else {
-          const applied = Math.max(0, spell.wrathDmg - (targetUnit.armor || 0));
+          // Spell damage ignores armor entirely — only direct combat hits
+          // are reduced by it.
+          const applied = spell.wrathDmg;
           targetUnit.hp -= applied;
           const died = targetUnit.hp <= 0;
           events.push({
@@ -736,7 +738,9 @@ function resolveSpells(match, events) {
           amount: 0, died: false, resisted: true,
         });
       } else if (info) {
-        const applied = Math.max(0, spell.dmg - (info.unit.armor || 0));
+        // Spell damage ignores armor entirely — only direct combat hits
+        // are reduced by it.
+        const applied = spell.dmg;
         info.unit.hp -= applied;
         const died = info.unit.hp <= 0;
         events.push({
