@@ -63,8 +63,7 @@ const LEAGUE_STARS = { squire: 3, warrior: 3, gladiator: 4, elite: 4, warlord: 5
 // scores exactly 0 — the "must be > 0 to appear" leaderboard rule reads
 // directly off this number.
 const TOURNAMENT_KING_BASELINE = 100000;
-function tournamentTotalPoints(record) {
-  if (record.league === 'king') {
+function tournamentTotalPoints(record) {  if (record.league === 'king') {
     return TOURNAMENT_KING_BASELINE + (record.kingPoints || 0);
   }
   let points = 0;
@@ -89,6 +88,56 @@ function tournamentTotalPoints(record) {
 const TOURNAMENT_WEEKLY_BASE = { squire: 1000, warrior: 2000, gladiator: 3000, elite: 5000, warlord: 7000, champion: 8000, king: 10000 };
 const TOURNAMENT_WEEKLY_PER_STAR = { squire: 100, warrior: 100, gladiator: 200, elite: 200, warlord: 300, champion: 300, king: 0 };
 const TOURNAMENT_WEEKLY_DEMOTION = { king: 'warlord', champion: 'elite', warlord: 'elite', elite: 'warrior', gladiator: 'squire', warrior: 'squire', squire: 'squire' };
+
+// The separate "30 wins" chest reward track shown under the star
+// progress bar — a plain count of MATCHES WON (never reduced by a loss,
+// unlike the streak-bonus-driven `progress` field above), reaching a
+// chest at 10/20/30 wins. Resets alongside the weekly reward (see
+// ensureTournamentWeeklyRewardsProcessed) so every week is a fresh run
+// at all three chests. One random reward per chest, rolled once the
+// moment that chest's win count is first reached, then locked in.
+const TOURNAMENT_CHEST_REWARDS = {
+  10: [
+    { type: 'gold', amount: 1000, chance: 0.34 },
+    { type: 'dust', amount: 800, chance: 0.33 },
+    { type: 'crystals', amount: 100, chance: 0.33 },
+  ],
+  20: [
+    { type: 'gold', amount: 2000, chance: 0.34 },
+    { type: 'dust', amount: 1600, chance: 0.33 },
+    { type: 'crystals', amount: 200, chance: 0.33 },
+  ],
+  30: [
+    { type: 'gold', amount: 3000, chance: 0.34 },
+    { type: 'dust', amount: 2500, chance: 0.33 },
+    { type: 'crystals', amount: 300, chance: 0.33 },
+  ],
+};
+function rollTournamentChestReward(milestone) {
+  const options = TOURNAMENT_CHEST_REWARDS[milestone];
+  const r = Math.random();
+  let cumulative = 0;
+  for (const opt of options) {
+    cumulative += opt.chance;
+    if (r < cumulative) return opt;
+  }
+  return options[options.length - 1]; // floating-point safety net
+}
+// Grants any chest milestone `rec.chestWins` has now reached for the
+// first time this cycle — called right after chestWins is incremented,
+// so at most one new chest can be crossed per single win (10/20/30 are
+// each exactly +10 apart and wins only ever go up by 1 at a time).
+function grantTournamentChestIfReached(username, rec) {
+  rec.chestsClaimed = rec.chestsClaimed || [];
+  for (const milestone of [10, 20, 30]) {
+    if (rec.chestWins >= milestone && !rec.chestsClaimed.includes(milestone)) {
+      const reward = rollTournamentChestReward(milestone);
+      const resources = getResources(username);
+      resources[reward.type] = (resources[reward.type] || 0) + reward.amount;
+      rec.chestsClaimed.push(milestone);
+    }
+  }
+}
 const LEAGUE_NAMES = { squire: '\u041e\u0440\u0443\u0436\u0435\u043d\u043e\u0441\u0435\u0446', warrior: '\u0412\u043e\u0438\u043d', gladiator: '\u0413\u043b\u0430\u0434\u0438\u0430\u0442\u043e\u0440', elite: '\u042d\u043b\u0438\u0442\u0430', warlord: '\u041f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', champion: '\u0427\u0435\u043c\u043f\u0438\u043e\u043d', king: '\u041a\u043e\u0440\u043e\u043b\u044c' };
 
 // Extra gold/dust + crystals for a King's GLOBAL rank among all Kings
@@ -199,6 +248,8 @@ function ensureTournamentWeeklyRewardsProcessed() {
     rec.stars = 0;
     rec.progress = 0;
     rec.kingPoints = 0;
+    rec.chestWins = 0;
+    rec.chestsClaimed = [];
   }
   db.write();
 }
@@ -206,7 +257,7 @@ function ensureTournamentWeeklyRewardsProcessed() {
 function getTournamentRecordRaw(username) {
   let rec = db.data.tournament[username];
   if (!rec) {
-    rec = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0 };
+    rec = { league: 'squire', stars: 0, progress: 0, streak: 0, kingPoints: 0, chestWins: 0, chestsClaimed: [] };
     db.data.tournament[username] = rec;
     db.write();
   }
@@ -436,6 +487,22 @@ function addMailMessage(username, type, subject, body) {
     createdAt: new Date().toISOString(), read: false,
   });
   db.write();
+}
+
+const MAIL_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+// Drops any message older than 30 days — called whenever this account's
+// mailbox is actually read (see GET /api/mail), same lazy-evaluation
+// convention as everything else in this file: no separate cron job,
+// just a check that runs the moment it's actually needed.
+function pruneOldMail(username) {
+  const messages = db.data.mail[username];
+  if (!messages || messages.length === 0) return;
+  const cutoff = Date.now() - MAIL_RETENTION_MS;
+  const kept = messages.filter((m) => Date.parse(m.createdAt) >= cutoff);
+  if (kept.length !== messages.length) {
+    db.data.mail[username] = kept;
+    db.write();
+  }
 }
 
 // Opening the mailbox (or just polling its unread badge) is itself
@@ -715,6 +782,8 @@ function applyTournamentResult(match) {
     const record = getTournamentRecord(name);
     if (match.winner === name) {
       record.streak = (record.streak || 0) + 1;
+      record.chestWins = (record.chestWins || 0) + 1;
+      grantTournamentChestIfReached(name, record);
       const bonus = Math.min(20, 10 + 2 * (record.streak - 1));
       if (record.league === 'king') {
         record.kingPoints = (record.kingPoints || 0) + bonus;
@@ -1107,6 +1176,7 @@ app.get('/api/mail', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   runScheduledMailChecks(username);
+  pruneOldMail(username);
   const messages = db.data.mail[username] || [];
   const unread = messages.filter((m) => !m.read).length;
   res.json({ messages, unread });
@@ -1182,7 +1252,10 @@ app.get('/api/tournament', (req, res) => {
   const record = getTournamentRecord(username);
   const maxStars = LEAGUE_STARS[record.league];
   const kingRank = computeKingRank(username, record);
-  res.json({ league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank });
+  res.json({
+    league: record.league, stars: record.stars, maxStars, progress: record.progress, kingRank,
+    chestWins: record.chestWins || 0, chestsClaimed: record.chestsClaimed || [],
+  });
 });
 
 // ---------- Leaderboards ----------
