@@ -85,6 +85,11 @@ export const CARD_POOL = [
   // time picking a fresh random OTHER ally anywhere on the board — same
   // self-exclusion rule as Паладин, never buffs himself.
   { id: 'c22', name: '\u0415\u043f\u0438\u0441\u043a\u043e\u043f', type: 'creature', cost: 3, atk: 1, hp: 3, bishopBuff: true, rarity: 'epic' },
+  // 0 base attack — per the zero-attack rule, she never acts alone. Her
+  // synergy is double Легионер/Арбалетчик's (+2 per adjacent ally
+  // instead of +1), so even a single neighbour already gets her
+  // swinging, and a full ring of four makes her hit as hard as +8.
+  { id: 'c23', name: '\u0411\u0430\u043b\u043b\u0438\u0441\u0442\u0430', type: 'creature', cost: 3, atk: 0, hp: 4, synergy: 2, rarity: 'rare' },
 ];
 
 export function cardById(id) {
