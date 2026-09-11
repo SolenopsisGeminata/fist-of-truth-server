@@ -146,6 +146,10 @@ export const CARD_POOL = [
   // Топот (Trample): see applyTrampleCascade — an overkill from her
   // primary hit continues onward through the same lane, then the hero.
   { id: 'c39', name: '\u042f\u0440\u043b \u0416\u0435\u043b\u0435\u0437\u043d\u043e\u0431\u043e\u043a\u0438\u0439', type: 'creature', cost: 5, atk: 5, hp: 10, armor: 1, synergy: 3, trample: true, rarity: 'legendary' },
+  // punisherKill: see pendingPunisherKills in tryEndTurn — battlecry
+  // instantly kills the first bornRound-this-turn enemy unit in the
+  // mirrored lane, Чаростойкость blocks it outright (no redirect).
+  { id: 'c40', name: '\u041a\u0430\u0440\u0430\u044e\u0449\u0438\u0439 \u0430\u043d\u0433\u0435\u043b', type: 'creature', cost: 6, atk: 4, hp: 6, lifesteal: true, punisherKill: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -364,6 +368,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHeals: [],
     pendingShots: [],
     pendingBattlecrySummons: [],
+    pendingPunisherKills: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -403,7 +408,11 @@ export function otherPlayer(match, username) {
 // is the one thing that varies by caller: true for something the player
 // just placed this turn (lets them reposition it, shows dimmed
 // client-side), false for anything appearing outside the placing phase.
-function buildUnitFromCard(card, placedThisRound) {
+// `bornRound` records exactly which round this unit first appeared on
+// the board — used by Карающий ангел to tell "appeared this same turn"
+// (whether normally placed OR instant-summoned) apart from anyone who
+// was already there from an earlier round.
+function buildUnitFromCard(card, placedThisRound, bornRound) {
   return {
     id: card.id,
     uid: nextUid('unit'),
@@ -433,7 +442,9 @@ function buildUnitFromCard(card, placedThisRound) {
     // mechanic exists yet to guard, but any added later must check it too.
     spellResist: !!card.spellResist,
     trample: !!card.trample,
+    punisherKill: !!card.punisherKill,
     placedThisRound,
+    bornRound,
   };
 }
 
@@ -457,7 +468,7 @@ function summonUnitToRandomFreeCell(match, side, cardId, events) {
   const { l, d } = freeCells[Math.floor(Math.random() * freeCells.length)];
   const summonedCard = cardById(cardId);
   if (!summonedCard) return;
-  const unit = buildUnitFromCard(summonedCard, false);
+  const unit = buildUnitFromCard(summonedCard, false, match.round);
   board[l][d] = unit;
   events.push({ type: 'summon', side, cardId, laneIdx: l, depthIdx: d, uid: unit.uid });
 }
@@ -475,7 +486,7 @@ export function placeCard(match, username, uid, lane, depth) {
 
   match.mana[username] -= card.cost;
   hand.splice(idx, 1);
-  const unit = buildUnitFromCard(card, true);
+  const unit = buildUnitFromCard(card, true, match.round);
   match.boards[username][lane][depth] = unit;
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -537,6 +548,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // cells could still fill up before resolution starts.
   if (card.battlecrySummon) {
     match.pendingBattlecrySummons.push({ side: username, summonCardId: card.battlecrySummon, sourceUid: unit.uid });
+  }
+
+  // Карающий ангел: battlecry queued the same deferred way — checked and
+  // resolved at the start of the next resolution (see
+  // pendingPunisherKills in tryEndTurn), specifically AFTER Мгновенный
+  // призыв has already run, so a militiaman instant-summoned this same
+  // turn is already on the board and counts as "appeared this turn" too.
+  if (card.punisherKill) {
+    match.pendingPunisherKills.push({ side: username, laneIdx: lane, sourceUid: unit.uid });
   }
 
   return { ok: true };
@@ -1112,6 +1132,35 @@ export function tryEndTurn(match, username) {
     for (let i = 0; i < count; i++) {
       summonUnitToRandomFreeCell(match, summonSpell.side, summonSpell.summonCardId, events);
     }
+  }
+
+  // Карающий ангел: right after Мгновенный призыв above (so a
+  // this-turn instant-summon already counts as "appeared this turn"),
+  // checks the mirrored lane on the enemy side for the first
+  // (front-to-back) unit whose bornRound matches THIS round — anyone
+  // left over from an earlier round is never a valid target, and if
+  // nothing at all appeared there this round, the strike simply doesn't
+  // happen. A Чаростойкость unit found this way is struck but NOT
+  // killed — same "explosion happens, no effect, no redirect" pattern
+  // as every other cross-side mechanic that checks this status.
+  const punisherKillQueue = match.pendingPunisherKills;
+  match.pendingPunisherKills = [];
+  for (const kill of punisherKillQueue) {
+    const targetSide = otherPlayer(match, kill.side);
+    const targetBoard = match.boards[targetSide];
+    let targetInfo = null;
+    for (let d = 0; d < DEPTH; d++) {
+      const candidate = targetBoard[kill.laneIdx][d];
+      if (candidate && candidate.bornRound === match.round) { targetInfo = { unit: candidate, depth: d }; break; }
+    }
+    if (!targetInfo) continue;
+    const resisted = !!targetInfo.unit.spellResist;
+    events.push({
+      type: 'punisherKill', side: kill.side, targetSide,
+      laneIdx: kill.laneIdx, targetDepth: targetInfo.depth,
+      sourceUid: kill.sourceUid, resisted,
+    });
+    if (!resisted) targetBoard[kill.laneIdx][targetInfo.depth] = null;
   }
 
   // Rally buffs (e.g. Паладин) apply right at the very start of
