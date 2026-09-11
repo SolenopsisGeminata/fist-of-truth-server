@@ -59,6 +59,10 @@ export const CARD_POOL = [
   // cell — see the 'wrath' spell kind in resolveSpells, which hits every
   // cell in the lane with its own sequential event.
   { id: 's5', name: '\u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441', type: 'spell', cost: 5, wrathDmg: 7, rarity: 'rare' },
+  // endOfRoundSpell: see the endOfRoundSpellQueue extraction/resolution
+  // in tryEndTurn — unlike every other spell, this one resolves AFTER
+  // combat, not before.
+  { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -719,6 +723,13 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.endOfRoundSpell) {
+    // Крестьянское ополчение: same "any cell" casting as Отряд
+    // ополченцев — only the RESOLUTION timing differs (end of round,
+    // not start), see the endOfRoundSpellQueue extraction in tryEndTurn.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -726,7 +737,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : 'buff')))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : 'buff'))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -739,6 +750,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffArmor: card.buffArmor,
     summonCardId: card.summonCardId,
     summonCount: card.summonCount,
+    healAmount: card.healAmount,
   });
   return { ok: true };
 }
@@ -1381,9 +1393,33 @@ export function tryEndTurn(match, username) {
   // moment as everything else above, before spells or combat.
   applyBishopBuffs(match, events);
 
+  // Крестьянское ополчение: unlike every other spell (all resolved
+  // above, before combat), this one is explicitly an END-of-round
+  // effect — pulled out of the normal spell queue here so resolveSpells
+  // below never sees it, then actually resolved further down, after
+  // resolveCombat.
+  const endOfRoundSpellQueue = match.pendingSpells.filter((sp) => sp.kind === 'endOfRoundSpell');
+  match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'endOfRoundSpell');
+
   resolveSpells(match, events);
   resolveCombat(match, events);
   match.blindedUids = null; // Рейна's effect only ever covers the one round it's cast for
+
+  // Крестьянское ополчение resolves here, genuinely after this round's
+  // combat has already happened — summons land on whatever's free right
+  // now (post-combat), and the heal uses the same healHero() choke point
+  // as everything else (so Двойное омоложение still doubles it, etc.).
+  for (const spell of endOfRoundSpellQueue) {
+    if (anyHeroDown(match)) break;
+    const count = spell.summonCount || 1;
+    for (let i = 0; i < count; i++) {
+      summonUnitToRandomFreeCell(match, spell.side, spell.summonCardId, events);
+    }
+    if (spell.healAmount) {
+      const healed = healHero(match, spell.side, spell.healAmount, events);
+      events.push({ type: 'heroHeal', side: spell.side, amount: healed, sourceUid: null, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx });
+    }
+  }
 
   let roundOver = true;
   let winner = null;
