@@ -143,6 +143,9 @@ export const CARD_POOL = [
   { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' },
   { id: 'c37', name: '\u041a\u0430\u043d\u043e\u043d\u0438\u0441\u0441\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, lifesteal: true, spellResist: true, rarity: 'legendary' },
   { id: 'c38', name: '\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d', type: 'creature', cost: 5, atk: 5, hp: 5, armor: 3, synergy: 1, rarity: 'epic' },
+  // Топот (Trample): see applyTrampleCascade — an overkill from her
+  // primary hit continues onward through the same lane, then the hero.
+  { id: 'c39', name: '\u042f\u0440\u043b \u0416\u0435\u043b\u0435\u0437\u043d\u043e\u0431\u043e\u043a\u0438\u0439', type: 'creature', cost: 5, atk: 5, hp: 10, armor: 1, synergy: 3, trample: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -429,6 +432,7 @@ function buildUnitFromCard(card, placedThisRound) {
     // damage-dealing mechanic checks this. No enemy-facing stat-reduction
     // mechanic exists yet to guard, but any added later must check it too.
     spellResist: !!card.spellResist,
+    trample: !!card.trample,
     placedThisRound,
   };
 }
@@ -870,6 +874,50 @@ function applyBishopBuffs(match, events) {
 // opposite filter for the normal exchange — units killed in the first
 // call are already gone (frontUnit/actingOrder re-scan the live board
 // each time) by the time the second call's targets are picked.
+// Топот (Trample): once an attacker with this flag overkills its
+// primary target (already dealt with by the caller, which passes in
+// exactly how much damage is left over), the leftover continues to the
+// next occupied cell further back in the SAME lane (skipping empty
+// ones), each fighter's own armor reducing it fresh, and so on through
+// as many kills as the leftover allows — finally landing on the hero
+// once the whole lane is cleared. Emits its own 'trampleHit' event per
+// additional fighter/hero hit; the original hit against the primary
+// target is already covered by the normal 'wave' event.
+function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDepth, overkill, attackerUnit, events) {
+  let remaining = overkill;
+  const board = match.boards[defenderSide];
+  for (let d = fromDepth + 1; d < DEPTH && remaining > 0; d++) {
+    const targetUnit = board[laneIdx][d];
+    if (!targetUnit) continue;
+    const beforeHp = targetUnit.hp;
+    const applied = Math.max(0, remaining - (targetUnit.armor || 0));
+    targetUnit.hp -= applied;
+    const died = targetUnit.hp <= 0;
+    events.push({
+      type: 'trampleHit', side: attackerSide, targetSide: defenderSide,
+      laneIdx, targetDepth: d, amount: applied, died, sourceUid: attackerUnit.uid,
+    });
+    if (died) {
+      board[laneIdx][d] = null;
+      remaining = Math.max(0, applied - beforeHp);
+    } else {
+      remaining = 0;
+    }
+  }
+  if (remaining > 0) {
+    match.hp[defenderSide] -= remaining;
+    let heroLifesteal = 0;
+    if (attackerUnit.lifesteal) {
+      heroLifesteal = remaining;
+      match.hp[attackerSide] += heroLifesteal;
+    }
+    events.push({
+      type: 'trampleHit', side: attackerSide, targetSide: defenderSide,
+      laneIdx, targetHero: true, amount: remaining, lifesteal: heroLifesteal, sourceUid: attackerUnit.uid,
+    });
+  }
+}
+
 function resolveCombatPass(match, events, isEligible) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
@@ -920,8 +968,10 @@ function resolveCombatPass(match, events, isEligible) {
       // popup number always matches the real HP change.
       let aApplied = 0, bApplied = 0;
       let aLifesteal = 0, bLifesteal = 0;
+      let aBeforeHp = null, bBeforeHp = null;
       if (aAttacks) {
         if (aTarget) {
+          aBeforeHp = aTarget.unit.hp;
           aApplied = Math.max(0, aAtk - (aTarget.unit.armor || 0));
           aTarget.unit.hp -= aApplied;
         } else {
@@ -937,6 +987,7 @@ function resolveCombatPass(match, events, isEligible) {
       }
       if (bAttacks) {
         if (bTarget) {
+          bBeforeHp = bTarget.unit.hp;
           bApplied = Math.max(0, bAtk - (bTarget.unit.armor || 0));
           bTarget.unit.hp -= bApplied;
         } else {
@@ -969,6 +1020,17 @@ function resolveCombatPass(match, events, isEligible) {
 
       if (aDied) match.boards[nameB][l][aTarget.depth] = null;
       if (bDied) match.boards[nameA][l][bTarget.depth] = null;
+
+      // Топот (Trample): the overkill from the primary hit (already
+      // pushed above as the normal 'wave' event) cascades onward.
+      if (aDied && aUnit.trample) {
+        const overkill = Math.max(0, aApplied - aBeforeHp);
+        if (overkill > 0) applyTrampleCascade(match, nameA, nameB, l, aTarget.depth, overkill, aUnit, events);
+      }
+      if (bDied && bUnit.trample) {
+        const overkill = Math.max(0, bApplied - bBeforeHp);
+        if (overkill > 0) applyTrampleCascade(match, nameB, nameA, l, bTarget.depth, overkill, bUnit, events);
+      }
 
       // Храмовый боец: the instant its attack lands directly on the
       // enemy hero (not blocked by a unit), summon a fresh Ополченец
