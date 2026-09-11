@@ -189,6 +189,9 @@ export const CARD_POOL = [
   // Same punisherKill mechanic as Карающий ангел — see pendingPunisherKills
   // in tryEndTurn for the full implementation.
   { id: 'c49', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043a\u0430\u0432\u0430\u043b\u0435\u0440\u0438\u0441\u0442', type: 'creature', cost: 5, atk: 6, hp: 3, punisherKill: true, rarity: 'rare' },
+  // healTrigger: see healHero above — every time healing lands for his
+  // own side, permanently buffs a random OTHER ally +1atk/+3hp.
+  { id: 'c50', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u0441\u0432\u044f\u0442\u043e\u0433\u043e \u0421\u0432\u0435\u0442\u0430', type: 'creature', cost: 5, atk: 2, hp: 5, healOnPlay: 3, healTrigger: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -501,6 +504,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
     doubleStrike: !!card.doubleStrike,
+    healTrigger: !!card.healTrigger,
     placedThisRound,
     bornRound,
   };
@@ -830,6 +834,33 @@ function healHero(match, side, amount, events) {
             type: 'rallyBuff', side, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
           });
+        }
+      }
+      // Священник святого Света: every time healing actually lands for
+      // his own side (his own battlecry heal included, same reasoning
+      // as Имперский патриарх above), picks one random OTHER ally
+      // anywhere on the board and permanently gives it +1 attack / +3
+      // hp. Reuses the same rallyBuff event/animation.
+      if (unit && unit.healTrigger) {
+        const targets = [];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (l2 === l && d2 === d) continue; // never himself
+            if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+          }
+        }
+        if (targets.length > 0) {
+          const chosen = targets[Math.floor(Math.random() * targets.length)];
+          const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+          targetUnit.atk += 1;
+          targetUnit.hp += 3;
+          targetUnit.maxHp += 3;
+          if (events) {
+            events.push({
+              type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+              targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 3, sourceUid: unit.uid,
+            });
+          }
         }
       }
     }
