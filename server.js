@@ -1356,12 +1356,19 @@ app.get('/api/treasure-race', (req, res) => {
   const now = new Date();
   const win = currentTreasureRaceWindow(now);
   const rec = getTreasureRaceRecord(username);
+  // Once claimed, that run is fully wrapped up — not just its gold (see
+  // below), but the whole track too: wins/lives fall back to a clean
+  // slate (0 wins, 3 lives) immediately, rather than waiting for the
+  // NEXT window to actually start before the display looks reset. This
+  // is what fixes the previous run's lit chest node lingering right
+  // after the player claims, well before a new window opens.
+  const isFresh = !rec || !rec.claimed;
   res.json({
     windowOpen: !!win,
     windowEndsAt: win ? new Date(win.endMs).toISOString() : null,
     nextWindowStart: new Date(nextTreasureRaceWindowStart(now)).toISOString(),
-    wins: rec ? rec.wins : 0,
-    lives: rec ? rec.lives : 3,
+    wins: isFresh && rec ? rec.wins : 0,
+    lives: isFresh && rec ? rec.lives : 3,
     // Once claimed, that run's gold is already in the real balance —
     // "Текущая награда" must read 0 until the next window's first win.
     // The `!rec.claimed` guard here also self-heals any record left
