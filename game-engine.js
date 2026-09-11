@@ -157,6 +157,7 @@ export const CARD_POOL = [
   // own healOnPlay resolves (see pendingHeals in tryEndTurn), so it
   // doubles too.
   { id: 'c41', name: '\u042f\u043d \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' },
+  { id: 'c42', name: '\u0420\u044b\u0446\u0430\u0440\u044c', type: 'creature', cost: 6, atk: 5, hp: 5, armor: 2, healOnPlay: 6, rarity: 'epic' },
 ];
 
 export function cardById(id) {
