@@ -158,6 +158,10 @@ export const CARD_POOL = [
   // doubles too.
   { id: 'c41', name: '\u042f\u043d \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' },
   { id: 'c42', name: '\u0420\u044b\u0446\u0430\u0440\u044c', type: 'creature', cost: 6, atk: 5, hp: 5, armor: 2, healOnPlay: 6, rarity: 'epic' },
+  // baronBuff: see applyDawnBuff (reused as-is, just triggered at
+  // end-of-round instead of before each attack) — buffs every ally on
+  // the board, himself included, by +1/+1 permanently.
+  { id: 'c43', name: '\u0411\u0430\u0440\u043e\u043d', type: 'creature', cost: 6, atk: 4, hp: 6, armor: 1, synergy: 1, baronBuff: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -452,6 +456,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     trample: !!card.trample,
     punisherKill: !!card.punisherKill,
     doubleHeal: !!card.doubleHeal,
+    baronBuff: !!card.baronBuff,
     placedThisRound,
     bornRound,
   };
@@ -1440,6 +1445,14 @@ export function tryEndTurn(match, username) {
                 targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
               });
             }
+          }
+          // Барон: at the end of every round he survives, gives every
+          // allied unit on the board — including himself — a permanent
+          // +1/+1. Reuses applyDawnBuff exactly (Аннабэль's own "buff
+          // everyone" loop), just triggered at end-of-round instead of
+          // before each of her attacks.
+          if (unit && unit.baronBuff) {
+            applyDawnBuff(match, name, events, unit.uid);
           }
         }
       }
