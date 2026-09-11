@@ -726,9 +726,35 @@ function hasDoubleHeal(match, side) {
   }
   return false;
 }
-function healHero(match, side, amount) {
+// `events` is optional so any existing caller that genuinely has none
+// handy still works (just silently skips the growth animation) — every
+// real call site in this file does pass it, though.
+function healHero(match, side, amount, events) {
+  if (amount <= 0) return 0;
   const applied = hasDoubleHeal(match, side) ? amount * 2 : amount;
   match.hp[side] += applied;
+  // Ян Небесный: every time healing actually lands for her own side
+  // (including her own battlecry heal, since she's already on the board
+  // when that resolves), she permanently grows +1 attack / +1 hp.
+  // Reuses the existing rallyBuff event/animation, same as Бишоп or
+  // Каменная Стена's own growth.
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const unit = board[l][d];
+      if (unit && unit.doubleHeal) {
+        unit.atk += 1;
+        unit.hp += 1;
+        unit.maxHp += 1;
+        if (events) {
+          events.push({
+            type: 'rallyBuff', side, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+          });
+        }
+      }
+    }
+  }
   return applied;
 }
 
@@ -824,7 +850,7 @@ function resolveSpells(match, events) {
     } else if (spell.kind === 'wellspring') {
       // Родник: heals the caster's own hero and draws them a card from
       // their own deck — the targeted cell itself is never touched.
-      const healed = healHero(match, spell.side, spell.healHero);
+      const healed = healHero(match, spell.side, spell.healHero, events);
       const hand = match.hands[spell.side];
       const beforeLen = hand.length;
       if (spell.drawCard) draw(match.decks[spell.side], hand, spell.drawCard);
@@ -958,7 +984,7 @@ function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDep
     match.hp[defenderSide] -= remaining;
     let heroLifesteal = 0;
     if (attackerUnit.lifesteal) {
-      heroLifesteal = healHero(match, attackerSide, remaining);
+      heroLifesteal = healHero(match, attackerSide, remaining, events);
     }
     events.push({
       type: 'trampleHit', side: attackerSide, targetSide: defenderSide,
@@ -1029,7 +1055,7 @@ function resolveCombatPass(match, events, isEligible) {
           // A unit with lifesteal that lands its hit directly on the
           // enemy hero heals its own owner's hero for its attack value.
           if (aUnit.lifesteal) {
-            aLifesteal = healHero(match, nameA, aAtk);
+            aLifesteal = healHero(match, nameA, aAtk, events);
           }
         }
       }
@@ -1042,7 +1068,7 @@ function resolveCombatPass(match, events, isEligible) {
           bApplied = bAtk;
           match.hp[nameA] -= bApplied;
           if (bUnit.lifesteal) {
-            bLifesteal = healHero(match, nameB, bAtk);
+            bLifesteal = healHero(match, nameB, bAtk, events);
           }
         }
       }
@@ -1215,7 +1241,7 @@ export function tryEndTurn(match, username) {
   const healQueue = match.pendingHeals;
   match.pendingHeals = [];
   for (const heal of healQueue) {
-    const healed = healHero(match, heal.side, heal.amount);
+    const healed = healHero(match, heal.side, heal.amount, events);
     events.push({ type: 'heroHeal', side: heal.side, amount: healed, sourceUid: heal.sourceUid, laneIdx: heal.laneIdx, depthIdx: heal.depthIdx });
   }
 
@@ -1271,7 +1297,7 @@ export function tryEndTurn(match, username) {
         for (let d = 0; d < DEPTH; d++) {
           const unit = board[l][d];
           if (unit && unit.cookHeal) {
-            const healed = healHero(match, name, unit.atk);
+            const healed = healHero(match, name, unit.atk, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
           }
           // Священник Луны: a flat, guaranteed heal every round she
@@ -1279,14 +1305,14 @@ export function tryEndTurn(match, username) {
           // current hp, 50/50 chance), this is just a fixed number.
           // Reuses the exact same 'endOfRound' event/heal-orb animation.
           if (unit && unit.fixedHeal) {
-            const healed = healHero(match, name, unit.fixedHeal);
+            const healed = healHero(match, name, unit.fixedHeal, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
           // heavily-damaged Корова gives back much less than a fresh one.
           if (unit && unit.cowHeal && Math.random() < 0.5) {
-            const healed = healHero(match, name, unit.hp);
+            const healed = healHero(match, name, unit.hp, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
           }
           // Арбалетчик: fires again at the end of every round she
