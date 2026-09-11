@@ -166,6 +166,11 @@ export const CARD_POOL = [
   // hardcoded to 1) — calls in TWO Грифоны instead of one.
   { id: 'c44', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 7, atk: 6, hp: 4, lifesteal: true, battlecrySummon: 'c29', battlecrySummonCount: 2, rarity: 'epic' },
   { id: 'c45', name: '\u0410\u0445\u0438\u043b\u043b\u0435\u0441-\u043a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 7, atk: 0, hp: 18, armor: 2, synergy: 5, rarity: 'epic' },
+  // blindEnemiesOnPlay: see pendingBlinds/match.blindedUids in tryEndTurn
+  // — a ONE-ROUND version of Защитник applied to every current enemy
+  // unit (except spellResist ones), cleared right after this round's
+  // combat resolves.
+  { id: 'c46', name: '\u0420\u0435\u0439\u043d\u0430 \u041e\u0441\u043b\u0435\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u0430\u044f', type: 'creature', cost: 7, atk: 7, hp: 10, healOnPlay: 7, blindEnemiesOnPlay: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -385,6 +390,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingShots: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
+    pendingBlinds: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -575,6 +581,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // turn is already on the board and counts as "appeared this turn" too.
   if (card.punisherKill) {
     match.pendingPunisherKills.push({ side: username, laneIdx: lane, sourceUid: unit.uid });
+  }
+
+  // Рейна Ослепительная: battlecry queued the same deferred way as every
+  // other battlecry — resolved at the start of the next resolution (see
+  // pendingBlinds in tryEndTurn), snapshotting whoever's on the enemy
+  // board at that moment (after Мгновенный призыв has already run, so a
+  // this-turn instant-summon is included too).
+  if (card.blindEnemiesOnPlay) {
+    match.pendingBlinds.push({ side: username, sourceUid: unit.uid, laneIdx: lane, depthIdx: depth });
   }
 
   return { ok: true };
@@ -1141,8 +1156,10 @@ function resolveCombatPass(match, events, isEligible) {
 // Имперская пушка's end-of-round cannon shot uses her live attack) —
 // this exclusion is scoped to the wave-combat exchange only.
 function resolveCombat(match, events) {
-  resolveCombatPass(match, events, (unit) => !unit.defender && !!unit.firstStrike);
-  resolveCombatPass(match, events, (unit) => !unit.defender && !unit.firstStrike);
+  const blinded = match.blindedUids;
+  const isBlinded = (unit) => !!(blinded && blinded.has(unit.uid));
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
@@ -1226,6 +1243,30 @@ export function tryEndTurn(match, username) {
     if (!resisted) targetBoard[kill.laneIdx][targetInfo.depth] = null;
   }
 
+  // Рейна Ослепительная: temporarily grants ALL current enemy units the
+  // same "can't attack" restriction as Защитник, but ONLY for this
+  // round's combat — match.blindedUids is cleared right after
+  // resolveCombat runs below (see tryEndTurn), so it never leaks into
+  // later rounds. Чаростойкость units are immune per spec, simply
+  // excluded from the set. The 'reinaBlind' event just carries her own
+  // cell for the light-sphere animation — no per-enemy visual needed.
+  const blindQueue = match.pendingBlinds;
+  match.pendingBlinds = [];
+  if (!match.blindedUids) match.blindedUids = new Set();
+  for (const blind of blindQueue) {
+    const targetSide = otherPlayer(match, blind.side);
+    const targetBoard = match.boards[targetSide];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = targetBoard[l][d];
+        if (u && !u.spellResist) match.blindedUids.add(u.uid);
+      }
+    }
+    events.push({
+      type: 'reinaBlind', side: blind.side, laneIdx: blind.laneIdx, depthIdx: blind.depthIdx, sourceUid: blind.sourceUid,
+    });
+  }
+
   // Rally buffs (e.g. Паладин) apply right at the very start of
   // resolution — before spells or combat — using preBoards (just
   // captured above) as the "before" picture the client reveals first,
@@ -1289,6 +1330,7 @@ export function tryEndTurn(match, username) {
 
   resolveSpells(match, events);
   resolveCombat(match, events);
+  match.blindedUids = null; // Рейна's effect only ever covers the one round it's cast for
 
   let roundOver = true;
   let winner = null;
