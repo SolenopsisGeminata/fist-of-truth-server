@@ -162,6 +162,9 @@ export const CARD_POOL = [
   // end-of-round instead of before each attack) — buffs every ally on
   // the board, himself included, by +1/+1 permanently.
   { id: 'c43', name: '\u0411\u0430\u0440\u043e\u043d', type: 'creature', cost: 6, atk: 4, hp: 6, armor: 1, synergy: 1, baronBuff: true, rarity: 'epic' },
+  // battlecrySummonCount parametrizes battlecrySummon's quantity (was
+  // hardcoded to 1) — calls in TWO Грифоны instead of one.
+  { id: 'c44', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 7, atk: 6, hp: 4, lifesteal: true, battlecrySummon: 'c29', battlecrySummonCount: 2, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -561,7 +564,7 @@ export function placeCard(match, username, uid, lane, depth) {
   // free cell it lands on is worked out then too, not here, since more
   // cells could still fill up before resolution starts.
   if (card.battlecrySummon) {
-    match.pendingBattlecrySummons.push({ side: username, summonCardId: card.battlecrySummon, sourceUid: unit.uid });
+    match.pendingBattlecrySummons.push({ side: username, summonCardId: card.battlecrySummon, summonCount: card.battlecrySummonCount || 1, sourceUid: unit.uid });
   }
 
   // Карающий ангел: battlecry queued the same deferred way — checked and
@@ -1273,7 +1276,10 @@ export function tryEndTurn(match, username) {
   const battlecrySummonQueue = match.pendingBattlecrySummons;
   match.pendingBattlecrySummons = [];
   for (const summon of battlecrySummonQueue) {
-    summonUnitToRandomFreeCell(match, summon.side, summon.summonCardId, events);
+    const count = summon.summonCount || 1;
+    for (let i = 0; i < count; i++) {
+      summonUnitToRandomFreeCell(match, summon.side, summon.summonCardId, events);
+    }
   }
 
   // Епископ fires here too — at the very start of resolution, same
