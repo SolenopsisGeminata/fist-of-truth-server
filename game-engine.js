@@ -184,6 +184,9 @@ export const CARD_POOL = [
   // currently-armored ally (himself included). Двойной удар itself is
   // implemented in actingOrder — see the comment there.
   { id: 'c48', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', type: 'creature', cost: 8, atk: 5, hp: 10, armor: 1, warlordBuff: true, rarity: 'legendary' },
+  // Same punisherKill mechanic as Карающий ангел — see pendingPunisherKills
+  // in tryEndTurn for the full implementation.
+  { id: 'c49', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043a\u0430\u0432\u0430\u043b\u0435\u0440\u0438\u0441\u0442', type: 'creature', cost: 5, atk: 6, hp: 3, punisherKill: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
