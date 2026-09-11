@@ -175,6 +175,11 @@ export const CARD_POOL = [
   // amount (not attack-based, since she has 0 atk) and a 30% chance of a
   // second, independent shot.
   { id: 'c47', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u0431\u0430\u0441\u0442\u0438\u043e\u043d', type: 'creature', cost: 8, atk: 0, hp: 25, armor: 1, cannonShot: true, cannonShotFixed: 6, cannonShotExtraChance: 0.3, rarity: 'epic' },
+  // warlordBuff: see pendingWarlordBuffs in tryEndTurn — buffs every ally
+  // +1/+1 (applyDawnBuff), then permanently grants Двойной удар to every
+  // currently-armored ally (himself included). Двойной удар itself is
+  // implemented in actingOrder — see the comment there.
+  { id: 'c48', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', type: 'creature', cost: 8, atk: 5, hp: 10, armor: 1, warlordBuff: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -308,10 +313,22 @@ export function frontUnit(board, laneIdx) {
   return null;
 }
 
+// Двойной удар (Double Strike): a unit with this flag appears TWICE in
+// its own side's acting order for a lane, so it gets two full turns
+// through the ordinary wave machinery below — each one independently
+// picks the CURRENT front target (redirecting to whoever's now in
+// front, or the hero, if its first swing already cleared the original
+// target), and each one fully applies armor/lifesteal/trample/events
+// exactly like any other attack. No bespoke "extra swing" logic needed;
+// this is the only place Double Strike is implemented.
 function actingOrder(board, laneIdx) {
   const order = [];
   for (let d = 0; d < DEPTH; d++) {
-    if (board[laneIdx][d]) order.push({ unit: board[laneIdx][d], depth: d });
+    const unit = board[laneIdx][d];
+    if (unit) {
+      order.push({ unit, depth: d });
+      if (unit.doubleStrike) order.push({ unit, depth: d });
+    }
   }
   return order;
 }
@@ -395,6 +412,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
+    pendingWarlordBuffs: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -473,6 +491,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     punisherKill: !!card.punisherKill,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
+    doubleStrike: !!card.doubleStrike,
     placedThisRound,
     bornRound,
   };
@@ -596,6 +615,13 @@ export function placeCard(match, username, uid, lane, depth) {
   // this-turn instant-summon is included too).
   if (card.blindEnemiesOnPlay) {
     match.pendingBlinds.push({ side: username, sourceUid: unit.uid, laneIdx: lane, depthIdx: depth });
+  }
+
+  // Имперский полководец: battlecry queued the same deferred way as
+  // every other battlecry — resolved at the start of the next
+  // resolution (see pendingWarlordBuffs in tryEndTurn).
+  if (card.warlordBuff) {
+    match.pendingWarlordBuffs.push({ side: username, sourceUid: unit.uid });
   }
 
   return { ok: true };
@@ -1271,6 +1297,27 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'reinaBlind', side: blind.side, laneIdx: blind.laneIdx, depthIdx: blind.depthIdx, sourceUid: blind.sourceUid,
     });
+  }
+
+  // Имперский полководец: buffs every ally +1/+1 (reusing applyDawnBuff,
+  // exactly like Барон/Аннабэль's own "buff everyone" loop, himself
+  // included), then PERMANENTLY grants Двойной удар to every unit on
+  // his own board that currently has Armor > 0 (himself included) — a
+  // one-time snapshot at the moment his battlecry resolves, not
+  // retroactive to allies placed afterward.
+  const warlordQueue = match.pendingWarlordBuffs;
+  match.pendingWarlordBuffs = [];
+  for (const warlord of warlordQueue) {
+    applyDawnBuff(match, warlord.side, events, warlord.sourceUid);
+    const board = match.boards[warlord.side];
+    let grantedCount = 0;
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.armor > 0 && !u.doubleStrike) { u.doubleStrike = true; grantedCount++; }
+      }
+    }
+    events.push({ type: 'warlordDoubleStrike', side: warlord.side, sourceUid: warlord.sourceUid, count: grantedCount });
   }
 
   // Rally buffs (e.g. Паладин) apply right at the very start of
