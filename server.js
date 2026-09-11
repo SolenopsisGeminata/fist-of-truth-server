@@ -393,7 +393,8 @@ function getTreasureRaceRecord(username) {
         addMailMessage(
           username, 'system',
           '\u041d\u0430\u0433\u0440\u0430\u0434\u0430 \u0432 \u0433\u043e\u043d\u043a\u0435 \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438',
-          `\u0412 \u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u043c \u043e\u0442\u0440\u0435\u0437\u043a\u0435 \u0432\u044b \u0437\u0430\u0440\u0430\u0431\u043e\u0442\u0430\u043b\u0438 ${rec.gold} \u0437\u043e\u043b\u043e\u0442\u044b\u0445 \u0432 \u0433\u043e\u043d\u043a\u0435 \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438, \u043d\u043e \u0435\u0449\u0451 \u043d\u0435 \u0437\u0430\u0431\u0440\u0430\u043b\u0438 \u0435\u0451. \u041e\u0442\u043a\u0440\u043e\u0439\u0442\u0435 \u0440\u0435\u0436\u0438\u043c \u0438 \u0437\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u043d\u0430\u0433\u0440\u0430\u0434\u0443.`
+          `\u0412 \u043f\u0440\u043e\u0448\u043b\u043e\u043c \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e\u043c \u043e\u0442\u0440\u0435\u0437\u043a\u0435 \u0432\u044b \u0437\u0430\u0440\u0430\u0431\u043e\u0442\u0430\u043b\u0438 ${rec.gold} \u0437\u043e\u043b\u043e\u0442\u044b\u0445 \u0432 \u0433\u043e\u043d\u043a\u0435 \u0437\u0430 \u0441\u043e\u043a\u0440\u043e\u0432\u0438\u0449\u0430\u043c\u0438, \u043d\u043e \u0435\u0449\u0451 \u043d\u0435 \u0437\u0430\u0431\u0440\u0430\u043b\u0438 \u0435\u0451. \u041d\u0430\u0433\u0440\u0430\u0434\u0430 \u043f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0430 \u043a \u044d\u0442\u043e\u043c\u0443 \u043f\u0438\u0441\u044c\u043c\u0443 \u0438 \u0431\u0443\u0434\u0435\u0442 \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0430, \u043a\u0430\u043a \u0442\u043e\u043b\u044c\u043a\u043e \u0432\u044b \u043e\u0442\u043a\u0440\u043e\u0435\u0442\u0435 \u044d\u0442\u043e \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435.\n\n\u2014\u2014\u2014\n\ud83d\udcb0 \u041f\u0440\u0438\u043b\u043e\u0436\u0435\u043d\u0438\u0435: ${rec.gold} \u0437\u043e\u043b\u043e\u0442\u044b\u0445`,
+          { autoClaimTreasureRace: true }
         );
         rec.reminderSent = true;
         db.write();
@@ -480,11 +481,12 @@ let nextMailIdCounter = 1;
 function nextMailId() {
   return 'mail_' + (Date.now().toString(36)) + '_' + (nextMailIdCounter++);
 }
-function addMailMessage(username, type, subject, body) {
+function addMailMessage(username, type, subject, body, extra) {
   if (!db.data.mail[username]) db.data.mail[username] = [];
   db.data.mail[username].unshift({
     id: nextMailId(), type, subject, body,
     createdAt: new Date().toISOString(), read: false,
+    ...(extra || {}),
   });
   db.write();
 }
@@ -1188,8 +1190,21 @@ app.post('/api/mail/read', (req, res) => {
   const { id } = req.body || {};
   const messages = db.data.mail[username] || [];
   const msg = messages.find((m) => m.id === id);
-  if (msg && !msg.read) { msg.read = true; db.write(); }
-  res.json({ ok: true });
+  let claimed = 0;
+  if (msg && !msg.read) {
+    msg.read = true;
+    // The reward embedded in a Гонка за сокровищами reminder is
+    // collected the instant the player actually opens it — reuses the
+    // exact same underlying claim as the treasure-race screen's own
+    // popup, so whichever path gets there first is the one that counts;
+    // the other is a harmless no-op afterward.
+    if (msg.autoClaimTreasureRace) {
+      const result = claimTreasureRaceRewardFor(username);
+      claimed = result.credited || 0;
+    }
+    db.write();
+  }
+  res.json({ ok: true, claimed });
 });
 
 // TEMPORARY — dev/test helper only, remove after use. Only ever acts on
@@ -1361,12 +1376,14 @@ app.get('/api/treasure-race', (req, res) => {
 // A no-op (not an error) if there's nothing to claim right now — makes
 // this safe for the client to call speculatively without first checking
 // rewardPending itself.
-app.post('/api/treasure-race/claim', (req, res) => {
-  const username = usernameFromRequest(req);
-  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+// Shared by POST /api/treasure-race/claim and the mail auto-claim (see
+// POST /api/mail/read) — whichever path gets there first credits the
+// gold and marks it claimed; the other becomes a harmless no-op since
+// rec.claimed is the single source of truth either way.
+function claimTreasureRaceRewardFor(username) {
   const rec = db.data.treasureRace[username];
   if (!rec || rec.status === 'active' || rec.claimed) {
-    return res.json({ ok: true, credited: 0 });
+    return { credited: 0 };
   }
   const resources = getResources(username);
   resources.gold = (resources.gold || 0) + rec.gold;
@@ -1374,6 +1391,13 @@ app.post('/api/treasure-race/claim', (req, res) => {
   rec.claimed = true;
   rec.gold = 0; // already paid out to the real balance — "Текущая награда" must show 0 until the next window's first win
   db.write();
+  return { credited, resources };
+}
+
+app.post('/api/treasure-race/claim', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  const { credited, resources } = claimTreasureRaceRewardFor(username);
   res.json({ ok: true, credited, resources });
 });
 
