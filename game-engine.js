@@ -171,6 +171,10 @@ export const CARD_POOL = [
   // unit (except spellResist ones), cleared right after this round's
   // combat resolves.
   { id: 'c46', name: '\u0420\u0435\u0439\u043d\u0430 \u041e\u0441\u043b\u0435\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u0430\u044f', type: 'creature', cost: 7, atk: 7, hp: 10, healOnPlay: 7, blindEnemiesOnPlay: true, rarity: 'legendary' },
+  // Same cannonShot mechanic as Имперская пушка, but with a fixed damage
+  // amount (not attack-based, since she has 0 atk) and a 30% chance of a
+  // second, independent shot.
+  { id: 'c47', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u0431\u0430\u0441\u0442\u0438\u043e\u043d', type: 'creature', cost: 8, atk: 0, hp: 25, armor: 1, cannonShot: true, cannonShotFixed: 6, cannonShotExtraChance: 0.3, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -457,6 +461,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     endOfRoundSummon: card.endOfRoundSummon || null,
     defender: !!card.defender,
     cannonShot: !!card.cannonShot,
+    cannonShotFixed: card.cannonShotFixed || 0,
+    cannonShotExtraChance: card.cannonShotExtraChance || 0,
     fixedHeal: card.fixedHeal || 0,
     // Чаростойкость: see the siegeShot/cannonShot targeting above and the
     // 'damage' spell kind in resolveSpells — every current cross-side
@@ -1429,35 +1435,43 @@ export function tryEndTurn(match, username) {
           // the enemy hero. New 'cannonShot' event carries enough for the
           // client to fly a cannonball to the right spot and explode.
           if (unit && unit.cannonShot) {
-            const targetSide = match.players.find((p) => p !== name);
-            const targetBoard = match.boards[targetSide];
-            const targetDepth = Math.floor(Math.random() * DEPTH);
-            const cellUnit = targetBoard[l][targetDepth];
-            // Чаростойкость: if the picked cell holds a spellResist unit,
-            // the shot still lands and explodes there (visually), but
-            // deals NO damage at all — not to her, not redirected to the
-            // hero either. An empty cell still redirects to the hero as
-            // before; this only changes the "occupied by an immune unit"
-            // case specifically.
-            const resisted = !!(cellUnit && cellUnit.spellResist);
-            const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
-            const amount = effectiveAtk(board, l, d);
-            let died = false;
-            if (resisted) {
-              // no-op: cannonball explodes on her harmlessly
-            } else if (targetUnit) {
-              targetUnit.hp -= amount;
-              died = targetUnit.hp <= 0;
-              if (died) targetBoard[l][targetDepth] = null;
-            } else {
-              match.hp[targetSide] -= amount;
+            // Имперский бастион: same mechanic as Имперская пушка, but
+            // with a FIXED damage amount (cannonShotFixed) instead of her
+            // live attack, and a chance (cannonShotExtraChance) of firing
+            // a second, fully independent shot — its own fresh random
+            // cell, which could even be the same one again.
+            const shotCount = 1 + ((unit.cannonShotExtraChance && Math.random() < unit.cannonShotExtraChance) ? 1 : 0);
+            for (let shotIdx = 0; shotIdx < shotCount; shotIdx++) {
+              const targetSide = match.players.find((p) => p !== name);
+              const targetBoard = match.boards[targetSide];
+              const targetDepth = Math.floor(Math.random() * DEPTH);
+              const cellUnit = targetBoard[l][targetDepth];
+              // Чаростойкость: if the picked cell holds a spellResist unit,
+              // the shot still lands and explodes there (visually), but
+              // deals NO damage at all — not to her, not redirected to the
+              // hero either. An empty cell still redirects to the hero as
+              // before; this only changes the "occupied by an immune unit"
+              // case specifically.
+              const resisted = !!(cellUnit && cellUnit.spellResist);
+              const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+              const amount = unit.cannonShotFixed || effectiveAtk(board, l, d);
+              let died = false;
+              if (resisted) {
+                // no-op: cannonball explodes on her harmlessly
+              } else if (targetUnit) {
+                targetUnit.hp -= amount;
+                died = targetUnit.hp <= 0;
+                if (died) targetBoard[l][targetDepth] = null;
+              } else {
+                match.hp[targetSide] -= amount;
+              }
+              events.push({
+                type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : amount,
+                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+                targetLaneIdx: l, targetDepthIdx: targetDepth,
+                targetHero: !cellUnit, died, resisted,
+              });
             }
-            events.push({
-              type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : amount,
-              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
-              targetLaneIdx: l, targetDepthIdx: targetDepth,
-              targetHero: !cellUnit, died, resisted,
-            });
           }
           // Каменная Стена: grows sturdier at the end of every round she
           // survives — permanently +2 to her OWN hp (and maxHp). Reuses
