@@ -63,6 +63,8 @@ export const CARD_POOL = [
   // in tryEndTurn — unlike every other spell, this one resolves AFTER
   // combat, not before.
   { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
+  // bounceToHand: see the 'skyWhirlwind' spell kind in resolveSpells.
+  { id: 's7', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, bounceToHand: true, rarity: 'epic' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -512,10 +514,15 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
 // this turn, so placedThisRound is false (no dimmed/provisional state,
 // no repositioning window — placing phase for this round is already
 // over by the time combat runs).
-function summonUnitToRandomFreeCell(match, side, cardId, events) {
+// `onlyLaneIdx` (optional) restricts the free-cell scan to just that one
+// lane instead of the whole board — used by Небесный вихрь, which needs
+// its summon confined to the caster's own mirrored lane specifically.
+// Every existing caller omits it and keeps scanning the entire board.
+function summonUnitToRandomFreeCell(match, side, cardId, events, onlyLaneIdx) {
   const board = match.boards[side];
   const freeCells = [];
   for (let l = 0; l < LANES; l++) {
+    if (onlyLaneIdx != null && l !== onlyLaneIdx) continue;
     for (let d = 0; d < DEPTH; d++) {
       if (!board[l][d]) freeCells.push({ l, d });
     }
@@ -706,7 +713,7 @@ export function castSpell(match, username, uid, lane, depth) {
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
   if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  if (card.dmg || card.wrathDmg) {
+  if (card.dmg || card.wrathDmg || card.bounceToHand) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.healHero) {
     // Родник: any cell works, occupied or empty, friendly or not — the
@@ -740,7 +747,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : 'buff'))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : 'buff')))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -874,6 +881,49 @@ function resolveSpells(match, events) {
           });
           if (died) board[spell.laneIdx][d] = null;
         }
+      }
+    } else if (spell.kind === 'skyWhirlwind') {
+      // Небесный вихрь: for every cell in the chosen enemy lane, a
+      // non-Чаростойкость unit is bounced back to its OWNER's hand as a
+      // fresh copy of its base card — losing every buff/debuff it had
+      // accumulated, matching the exact "return to hand" shape already
+      // used elsewhere in this file (id + a brand new uid). Чаростойкость
+      // units are simply skipped, staying exactly where they are —
+      // consistent with every other cross-side mechanic checking this
+      // status. Afterward, a 30% chance summons a fresh Ополченец into
+      // the CASTER's own mirrored lane specifically (not the whole
+      // board), via summonUnitToRandomFreeCell's onlyLaneIdx scoping.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const hand = match.hands[defenderName];
+      for (let d = 0; d < DEPTH; d++) {
+        const targetUnit = board[spell.laneIdx][d];
+        if (!targetUnit) {
+          events.push({
+            type: 'spell', kind: 'skyWhirlwind', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            bounced: false, empty: true, resisted: false,
+          });
+          continue;
+        }
+        if (targetUnit.spellResist) {
+          events.push({
+            type: 'spell', kind: 'skyWhirlwind', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            bounced: false, empty: false, resisted: true,
+          });
+          continue;
+        }
+        hand.push({ id: targetUnit.id, uid: nextUid('card') });
+        board[spell.laneIdx][d] = null;
+        events.push({
+          type: 'spell', kind: 'skyWhirlwind', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+          bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
+        });
+      }
+      if (Math.random() < 0.3) {
+        summonUnitToRandomFreeCell(match, spell.side, 'c10', events, spell.laneIdx);
       }
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
