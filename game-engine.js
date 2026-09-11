@@ -156,7 +156,7 @@ export const CARD_POOL = [
   // just her own battlecry. She's already on the board by the time her
   // own healOnPlay resolves (see pendingHeals in tryEndTurn), so it
   // doubles too.
-  { id: 'c41', name: '\u042f\u043d \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' },
+  { id: 'c41', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u0430\u0442\u0440\u0438\u0430\u0440\u0445', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' },
   { id: 'c42', name: '\u0420\u044b\u0446\u0430\u0440\u044c', type: 'creature', cost: 6, atk: 5, hp: 5, armor: 2, healOnPlay: 6, rarity: 'epic' },
   // baronBuff: see applyDawnBuff (reused as-is, just triggered at
   // end-of-round instead of before each attack) — buffs every ally on
@@ -719,7 +719,7 @@ function anyHeroDown(match) {
   return match.hp[nameA] <= 0 || match.hp[nameB] <= 0;
 }
 
-// Двойное омоложение (Ян Небесный): while she's alive anywhere on a
+// Двойное омоложение (Имперский патриарх): while he's alive anywhere on a
 // side's own board, EVERY heal that side's hero receives is doubled —
 // spells, lifesteal, end-of-round heals, battlecries, all of it. This is
 // the single choke point every hero-heal in the file must go through so
@@ -742,7 +742,7 @@ function healHero(match, side, amount, events) {
   if (amount <= 0) return 0;
   const applied = hasDoubleHeal(match, side) ? amount * 2 : amount;
   match.hp[side] += applied;
-  // Ян Небесный: every time healing actually lands for her own side
+  // Имперский патриарх: every time healing actually lands for his own side
   // (including her own battlecry heal, since she's already on the board
   // when that resolves), she permanently grows +1 attack / +1 hp.
   // Reuses the existing rallyBuff event/animation, same as Бишоп or
