@@ -195,6 +195,11 @@ export const CARD_POOL = [
   // blacksmithBuff: see the end-of-round loop in tryEndTurn — always
   // improves himself +1atk/+1armor, plus a random OTHER armored ally.
   { id: 'c51', name: '\u041a\u0443\u0437\u043d\u0435\u0446', type: 'creature', cost: 4, atk: 1, hp: 6, armor: 1, blacksmithBuff: true, rarity: 'epic' },
+  // powderKeg: throws at a random occupied enemy unit anywhere on the
+  // board, 5 fixed damage (see the end-of-round loop in tryEndTurn).
+  // explodeOnDeath: checked via explodeOnDeathSnapshot at the very end
+  // of resolution, catching death from any source this round.
+  { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -509,6 +514,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     doubleStrike: !!card.doubleStrike,
     healTrigger: !!card.healTrigger,
     blacksmithBuff: !!card.blacksmithBuff,
+    powderKeg: !!card.powderKeg,
+    explodeOnDeath: !!card.explodeOnDeath,
     placedThisRound,
     bornRound,
   };
@@ -1329,6 +1336,22 @@ export function tryEndTurn(match, username) {
 
   const events = [];
 
+  // Подрывник: snapshot who currently has explodeOnDeath BEFORE
+  // anything this round can kill them — checked again at the very end
+  // of resolution (after combat, spells, cannon/siege shots,
+  // everything), so this catches death from ANY source this round
+  // without needing to hook into every individual damage site.
+  const explodeOnDeathSnapshot = [];
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.explodeOnDeath) explodeOnDeathSnapshot.push({ uid: u.uid, side });
+      }
+    }
+  }
+
   // Мгновенный призыв (Отряд ополченцев): fires before ANYTHING else in
   // resolution — even before rally buffs, heals, shots, and Епископ
   // below, let alone the normal spell phase. Pulled out of pendingSpells
@@ -1509,6 +1532,27 @@ export function tryEndTurn(match, username) {
     }
   }
 
+  // Подрывник: checked against the snapshot taken at the very start of
+  // this function — anyone with explodeOnDeath who was alive then but
+  // isn't anywhere on their own board anymore (from combat, spells,
+  // cannon/siege shots, any of it) blows up, dealing 5 damage to their
+  // OWN hero. Catches death from every possible source this round
+  // without needing a check at each individual damage site.
+  for (const entry of explodeOnDeathSnapshot) {
+    if (anyHeroDown(match)) break;
+    const board = match.boards[entry.side];
+    let stillAlive = false;
+    for (let l = 0; l < LANES && !stillAlive; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (board[l][d] && board[l][d].uid === entry.uid) { stillAlive = true; break; }
+      }
+    }
+    if (!stillAlive) {
+      match.hp[entry.side] -= 5;
+      events.push({ type: 'selfExplosion', side: entry.side, amount: 5, sourceUid: entry.uid });
+    }
+  }
+
   let roundOver = true;
   let winner = null;
   if (match.hp[nameA] <= 0 || match.hp[nameB] <= 0) {
@@ -1584,6 +1628,33 @@ export function tryEndTurn(match, username) {
               const died = targetUnit.hp <= 0;
               events.push({
                 type: 'unitShot', side: name, targetSide, amount,
+                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+                targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
+              });
+              if (died) targetBoard[chosen.laneIdx][chosen.depthIdx] = null;
+            }
+          }
+          // Подрывник: throws a powder keg at a random OCCUPIED enemy
+          // unit anywhere on their board (same Чаростойкость exclusion
+          // as Осадная башня above) — explodes on contact for a fixed 5
+          // damage. Silently does nothing if there's no legal target.
+          if (unit && unit.powderKeg) {
+            const targetSide = match.players.find((p) => p !== name);
+            const targetBoard = match.boards[targetSide];
+            const targets = [];
+            for (let l2 = 0; l2 < LANES; l2++) {
+              for (let d2 = 0; d2 < DEPTH; d2++) {
+                if (targetBoard[l2][d2] && !targetBoard[l2][d2].spellResist) targets.push({ laneIdx: l2, depthIdx: d2 });
+              }
+            }
+            if (targets.length > 0) {
+              const chosen = targets[Math.floor(Math.random() * targets.length)];
+              const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+              const amount = 5;
+              targetUnit.hp -= amount;
+              const died = targetUnit.hp <= 0;
+              events.push({
+                type: 'powderKegShot', side: name, targetSide, amount,
                 laneIdx: l, depthIdx: d, sourceUid: unit.uid,
                 targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
               });
