@@ -71,6 +71,10 @@ export const CARD_POOL = [
   { id: 's8', name: '\u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442', type: 'spell', cost: 2, randomBlind: true, rarity: 'rare' },
   { id: 's9', name: '\u0421\u0443\u043c\u043a\u0430 \u0441 \u043f\u0440\u0438\u043f\u0430\u0441\u0430\u043c\u0438', type: 'spell', cost: 2, buffAtk: 1, buffHp: 1, buffLifesteal: true, rarity: 'rare' },
   { id: 's10', name: '\u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a', type: 'spell', cost: 1, buffHp: 1, drawIfArmored: true, rarity: 'rare' },
+  // lifeLight: see the 'lifeLight' spell kind in resolveSpells — heals
+  // own hero, then conditionally summons onto the SPECIFIC targeted
+  // cell (not a random one) if that leaves the caster's hero ahead.
+  { id: 's11', name: '\u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438', type: 'spell', cost: 4, lifeLight: true, healAmount: 10, summonCardId: 'c10', rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -778,6 +782,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.lifeLight) {
+    // Свет жизни: same "any own cell" casting as Родник — but UNLIKE
+    // Родник, exactly which cell was chosen matters at resolution time
+    // (the conditional summon lands there specifically, and fails
+    // outright if something's occupying it by then).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -785,7 +797,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : 'buff'))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : 'buff')))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1070,6 +1082,37 @@ function resolveSpells(match, events) {
           laneIdx: spell.laneIdx, targetSide: defenderName, empty: true,
         });
       }
+    } else if (spell.kind === 'lifeLight') {
+      // Свет жизни: heals own hero for a fixed amount first (via the
+      // shared healHero choke point, so Двойное омоложение/Имперский
+      // патриарх's growth still apply), THEN — only if that leaves the
+      // caster's hero with STRICTLY MORE hp than the enemy's — attempts
+      // to summon an Ополченец onto the SPECIFIC cell the player
+      // targeted. If that cell is occupied by resolution time (by
+      // anything, from either side reaching in — though only the
+      // caster's own board is ever targeted), the summon simply fails,
+      // no redirect elsewhere.
+      const defenderName = otherPlayer(match, spell.side);
+      const healed = healHero(match, spell.side, spell.healAmount, events);
+      events.push({ type: 'heroHeal', side: spell.side, amount: healed, sourceUid: null, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx });
+      const qualifies = match.hp[spell.side] > match.hp[defenderName];
+      let summoned = false;
+      if (qualifies && !anyHeroDown(match)) {
+        const board = match.boards[spell.side];
+        if (!board[spell.laneIdx][spell.depthIdx]) {
+          const summonedCard = cardById(spell.summonCardId);
+          if (summonedCard) {
+            const unit = buildUnitFromCard(summonedCard, false, match.round);
+            board[spell.laneIdx][spell.depthIdx] = unit;
+            events.push({ type: 'summon', side: spell.side, cardId: spell.summonCardId, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, uid: unit.uid });
+            summoned = true;
+          }
+        }
+      }
+      events.push({
+        type: 'spell', kind: 'lifeLight', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, qualifies, summoned,
+      });
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
