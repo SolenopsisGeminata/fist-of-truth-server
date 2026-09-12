@@ -78,6 +78,9 @@ export const CARD_POOL = [
   // guardCall: see the guardCallQueue extraction in tryEndTurn (fires in
   // the Мгновенный призыв phase, same as Отряд ополченцев).
   { id: 's12', name: '\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'spell', cost: 4, guardCall: true, summonCardId: 'c11', rarity: 'epic' },
+  // heavenlyRays: see the 'heavenlyRays' spell kind in resolveSpells —
+  // reuses applyDawnBuff (parametrized to 2) for the "buff everyone" loop.
+  { id: 's13', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0435 \u043b\u0443\u0447\u0438', type: 'spell', cost: 4, heavenlyRays: true, rarity: 'epic' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -805,6 +808,12 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.heavenlyRays) {
+    // Небесные лучи: buffs every allied unit regardless of where the
+    // player clicks — same "any own cell" casting as Родник.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -812,7 +821,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : 'buff'))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : 'buff')))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1128,6 +1137,12 @@ function resolveSpells(match, events) {
         type: 'spell', kind: 'lifeLight', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, qualifies, summoned,
       });
+    } else if (spell.kind === 'heavenlyRays') {
+      // Небесные лучи: buffs every allied unit currently on the
+      // caster's board by +2/+2, reusing applyDawnBuff (parametrized to
+      // 2 instead of its default 1) — the same "buff everyone" loop
+      // already used by Аннабэль/Барон/Имперский полководец.
+      applyDawnBuff(match, spell.side, events, null, 2);
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
@@ -1226,16 +1241,21 @@ function resolveSpells(match, events) {
 // needed — and since it's pushed to `events` right before this wave's
 // own 'wave' event, her own hit this same round already reflects the
 // fresh buff (aAtk/bAtk below are computed *after* this runs).
-function applyDawnBuff(match, side, events, sourceUid) {
+// `amount` (optional) parametrizes the buff size — defaults to 1, the
+// original hardcoded value every existing caller (Аннабэль, Барон,
+// Имперский полководец) still relies on. Небесные лучи is the first to
+// pass a different value.
+function applyDawnBuff(match, side, events, sourceUid, amount) {
+  amount = amount || 1;
   const board = match.boards[side];
   for (let l = 0; l < LANES; l++) {
     for (let d = 0; d < DEPTH; d++) {
       const u = board[l][d];
       if (u) {
-        u.atk += 1;
-        u.hp += 1;
-        u.maxHp += 1;
-        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid });
+        u.atk += amount;
+        u.hp += amount;
+        u.maxHp += amount;
+        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: amount, buffHp: amount, sourceUid });
       }
     }
   }
