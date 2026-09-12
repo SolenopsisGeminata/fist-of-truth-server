@@ -233,12 +233,15 @@ export const CARD_POOL = [
   { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' },
   // legacy: see the legacyValue transfer mechanic in killUnit above —
   // first card of the Дзен faction.
-  { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare' },
+  { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare', locked: true },
   // bambooShotOnPlay: battlecry throw (see pendingBambooShots in
   // tryEndTurn). bambooShotRecurring: pre-attack throw starting the
   // round AFTER placement (see applyBambooRecurringShot, gated by
   // match.round > bornRound).
-  { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare' },
+  { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare', locked: true },
+  // Part of the Дзен starter deck (see zenStarterDeckCounts below) —
+  // granted once the faction is unlocked, a mechanism not built yet.
+  { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 1, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -291,6 +294,15 @@ export function defaultOwnedCounts() {
   return { ...defaultDeckCounts() };
 }
 
+// The Дзен starter deck — granted to an account once it unlocks the
+// Дзен faction (not built yet; this is just the composition the future
+// unlock step will hand out, kept here so that step has something
+// ready to call). Олень-Даос is the only card confirmed as part of it
+// so far, at 3 copies, same as every card in the Empire starter deck.
+export function zenStarterDeckCounts() {
+  return { c60: 3 };
+}
+
 // ---------- Shop ----------
 // Only Rare/Epic/Legendary cards are ever sold — Common has no defined
 // shop price (every account already starts owning most Commons anyway),
@@ -323,6 +335,7 @@ export function shopPriceForCard(card, currency) {
 // repeat cards. That's expected, not a bug.
 export function shoppableCards() {
   return CARD_POOL.filter((c) => {
+    if (c.locked) return false;
     const r = shopRarityOf(c);
     return r === 'rare' || r === 'epic' || r === 'legendary';
   });
