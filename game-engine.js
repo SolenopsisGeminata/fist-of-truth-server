@@ -204,6 +204,10 @@ export const CARD_POOL = [
   // round (moved from end-of-round), reuses adjacentAllyPositions
   // (already used by Родная тетушка). Also a Защитник — never attacks.
   { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, defender: true, statueBuff: true, rarity: 'rare' },
+  // weaponThrowOnDeath: see killUnit above — on death, throws his
+  // weapon at a random depth in HIS OWN lane on the enemy side, empty
+  // redirects to hero, Чаростойкость blocks outright.
+  { id: 'c54', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 2, hp: 1, armor: 1, weaponThrowOnDeath: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -521,6 +525,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     powderKeg: !!card.powderKeg,
     explodeOnDeath: !!card.explodeOnDeath,
     statueBuff: !!card.statueBuff,
+    weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     placedThisRound,
     bornRound,
   };
@@ -822,6 +827,37 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
     match.hp[side] -= 5;
     events.push({ type: 'selfExplosion', side, amount: 5, sourceUid: unit.uid, laneIdx, depthIdx });
+  }
+  // Метеоритный страж: on death, throws his weapon at a random depth
+  // within the SAME lane index on the enemy's board — his own mirrored
+  // lane, same convention as Имперская пушка. Damage equals his own
+  // attack. Чаростойкость blocks it outright (struck harmlessly, no
+  // redirect), same as every other cross-side damage mechanic; an empty
+  // square redirects to the enemy hero instead.
+  if (unit && unit.weaponThrowOnDeath && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    const targetBoard = match.boards[targetSide];
+    const targetDepth = Math.floor(Math.random() * DEPTH);
+    const cellUnit = targetBoard[laneIdx][targetDepth];
+    const resisted = !!(cellUnit && cellUnit.spellResist);
+    const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+    const amount = unit.atk;
+    let died = false;
+    if (resisted) {
+      // no-op: the weapon lands on her harmlessly
+    } else if (targetUnit) {
+      targetUnit.hp -= amount;
+      died = targetUnit.hp <= 0;
+    } else {
+      match.hp[targetSide] -= amount;
+    }
+    events.push({
+      type: 'weaponThrow', side, targetSide, amount: resisted ? 0 : amount,
+      laneIdx, depthIdx, sourceUid: unit.uid,
+      targetLaneIdx: laneIdx, targetDepthIdx: targetDepth,
+      targetHero: !cellUnit, died, resisted,
+    });
+    if (died) killUnit(match, targetSide, laneIdx, targetDepth, events);
   }
 }
 
