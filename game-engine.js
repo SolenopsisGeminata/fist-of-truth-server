@@ -200,9 +200,10 @@ export const CARD_POOL = [
   // loop in tryEndTurn). explodeOnDeath: handled by the shared killUnit
   // helper, applied the instant he actually dies, from any cause.
   { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' },
-  // statueBuff: see the end-of-round loop in tryEndTurn — reuses
-  // adjacentAllyPositions (already used by Родная тетушка).
-  { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, statueBuff: true, rarity: 'rare' },
+  // statueBuff: see applyStatueBuffs — now fires at the START of every
+  // round (moved from end-of-round), reuses adjacentAllyPositions
+  // (already used by Родная тетушка). Also a Защитник — never attacks.
+  { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, defender: true, statueBuff: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -1096,6 +1097,35 @@ function applyDawnBuff(match, side, events, sourceUid) {
 // copies on the board each trigger independently, potentially
 // compounding on top of each other's picks within the very same round.
 // Reuses the 'rallyBuff' event shape, same as applyDawnBuff above.
+// Статуя: at the very start of every round's resolution (same moment
+// as Епископ below), picks one random ADJACENT ally (same
+// cardinal-neighbour rule as Synergy/Родная тетушка — directly
+// above/below/left/right, no diagonals) and permanently increases its
+// hp by an amount equal to her own CURRENT attack. A safe no-op if she
+// has no neighbour right now.
+function applyStatueBuffs(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.statueBuff) continue;
+        const neighbours = adjacentAllyPositions(board, l, d);
+        if (neighbours.length === 0) continue;
+        const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+        const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+        const amount = unit.atk;
+        targetUnit.hp += amount;
+        targetUnit.maxHp += amount;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+          targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: amount, sourceUid: unit.uid,
+        });
+      }
+    }
+  }
+}
+
 function applyBishopBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -1507,6 +1537,9 @@ export function tryEndTurn(match, username) {
   // Епископ fires here too — at the very start of resolution, same
   // moment as everything else above, before spells or combat.
   applyBishopBuffs(match, events);
+  // Статуя now fires here too (moved from end-of-round) — same "start
+  // of round" moment as Епископ.
+  applyStatueBuffs(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
@@ -1777,26 +1810,6 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
                 targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: unit.uid,
-              });
-            }
-          }
-          // Статуя: at the end of every round she survives, picks one
-          // random ADJACENT ally (same cardinal-neighbour rule as
-          // Synergy/Родная тетушка — directly above/below/left/right, no
-          // diagonals) and permanently increases its hp by an amount
-          // equal to her own CURRENT attack. Does nothing if she has no
-          // neighbour right now. Reuses the rallyBuff event/animation.
-          if (unit && unit.statueBuff) {
-            const neighbours = adjacentAllyPositions(board, l, d);
-            if (neighbours.length > 0) {
-              const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
-              const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
-              const amount = unit.atk;
-              targetUnit.hp += amount;
-              targetUnit.maxHp += amount;
-              events.push({
-                type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
-                targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: amount, sourceUid: unit.uid,
               });
             }
           }
