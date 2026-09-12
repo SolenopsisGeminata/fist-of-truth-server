@@ -214,6 +214,7 @@ export const CARD_POOL = [
   // weapon at a random depth in HIS OWN lane on the enemy side, empty
   // redirects to hero, Чаростойкость blocks outright.
   { id: 'c54', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 2, hp: 1, armor: 1, weaponThrowOnDeath: true, rarity: 'epic' },
+  { id: 'c55', name: '\u0421\u043b\u0435\u0434\u043e\u043f\u044b\u0442', type: 'creature', cost: 1, atk: 1, hp: 1, synergy: 1, rarity: 'rare' },
 ];
 
 export function cardById(id) {
