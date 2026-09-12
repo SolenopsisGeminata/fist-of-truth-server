@@ -242,6 +242,8 @@ export const CARD_POOL = [
   // Part of the Дзен starter deck (see zenStarterDeckCounts below) —
   // granted once the faction is unlocked, a mechanism not built yet.
   { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
+  // deerSwordsman: see the depth-based stat shaping in placeCard above.
+  { id: 'c61', name: '\u041e\u043b\u0435\u043d\u044c-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, deerSwordsman: true, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -297,10 +299,11 @@ export function defaultOwnedCounts() {
 // The Дзен starter deck — granted to an account once it unlocks the
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
-// ready to call). Олень-Даос is the only card confirmed as part of it
-// so far, at 3 copies, same as every card in the Empire starter deck.
+// ready to call). Both Олень-Даос and Олень-мечник are confirmed part
+// of it so far, at 3 copies each, same as every card in the Empire
+// starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3 };
+  return { c60: 3, c61: 3 };
 }
 
 // ---------- Shop ----------
@@ -625,6 +628,23 @@ export function placeCard(match, username, uid, lane, depth) {
   hand.splice(idx, 1);
   const unit = buildUnitFromCard(card, true, match.round);
   match.boards[username][lane][depth] = unit;
+
+  // Олень-мечник: which depth he's placed at (first/last/middle of the
+  // lane, regardless of which lane) permanently shapes his own starting
+  // stats — applied immediately, since it's baked into the unit the
+  // instant he's built, not a separate visible "buff" moment.
+  if (card.deerSwordsman) {
+    if (depth === 0) {
+      unit.atk -= 1;
+      unit.hp += 2;
+      unit.maxHp += 2;
+    } else if (depth === DEPTH - 1) {
+      unit.atk += 2;
+      unit.hp -= 1;
+      unit.maxHp -= 1;
+    }
+    // depth === middle: no change at all.
+  }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
   // already on the board at the moment this one is placed — units placed
