@@ -65,6 +65,10 @@ export const CARD_POOL = [
   { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
   // bounceToHand: see the 'skyWhirlwind' spell kind in resolveSpells.
   { id: 's7', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, bounceToHand: true, rarity: 'epic' },
+  // randomBlind: see the 'randomBlind' spell kind in resolveSpells —
+  // reuses match.blindedUids exactly like Рейна Ослепительная, just for
+  // one random enemy unit instead of all of them.
+  { id: 's8', name: '\u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442', type: 'spell', cost: 2, randomBlind: true, rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -765,6 +769,12 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.randomBlind) {
+    // Яркий свет: same "any cell" casting — the player doesn't choose
+    // who's blinded, it's a random enemy unit picked at resolution.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -772,7 +782,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : 'buff')))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : 'buff'))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1023,6 +1033,37 @@ function resolveSpells(match, events) {
       }
       if (Math.random() < 0.3) {
         summonUnitToRandomFreeCell(match, spell.side, 'c10', events, spell.laneIdx);
+      }
+    } else if (spell.kind === 'randomBlind') {
+      // Яркий свет: picks ONE random enemy unit anywhere on the board
+      // (Чаростойкость units are never eligible, same exclusion as
+      // Рейна's blind) and adds it to match.blindedUids for this round
+      // only — reuses the EXACT same mechanism/cleanup built for Рейна
+      // Ослепительная (see resolveCombat/tryEndTurn), just a single
+      // target instead of every enemy unit.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targets = [];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          const u = board[l][d];
+          if (u && !u.spellResist) targets.push({ laneIdx: l, depthIdx: d, unit: u });
+        }
+      }
+      if (!match.blindedUids) match.blindedUids = new Set();
+      if (targets.length > 0) {
+        const chosen = targets[Math.floor(Math.random() * targets.length)];
+        match.blindedUids.add(chosen.unit.uid);
+        events.push({
+          type: 'spell', kind: 'randomBlind', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName,
+          targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, empty: false,
+        });
+      } else {
+        events.push({
+          type: 'spell', kind: 'randomBlind', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName, empty: true,
+        });
       }
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
