@@ -231,6 +231,9 @@ export const CARD_POOL = [
   // lunaBlind: see applyLunaBlind above — persistent aura, re-evaluated
   // every round she's alive, checking her CURRENT lane each time.
   { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' },
+  // legacy: see the legacyValue transfer mechanic in killUnit above —
+  // first card of the Дзен faction.
+  { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -551,6 +554,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
+    legacyValue: card.legacy || 0,
     placedThisRound,
     bornRound,
   };
@@ -913,6 +917,31 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       targetHero: !cellUnit, died, resisted,
     });
     if (died) killUnit(match, targetSide, laneIdx, targetDepth, events);
+  }
+  // Наследие (Отшельник and anyone who inherits it): on death, if the
+  // unit is currently carrying a Legacy value (its own starting value,
+  // or a larger stacked one it received from an earlier death in the
+  // chain), picks ONE random ADJACENT ally and gives it +N atk / +N hp
+  // (N = the carried Legacy value) AND transfers that SAME Legacy value
+  // to it, stacking on top of whatever Legacy that ally might already
+  // be carrying. The unit that just died never benefits from its own
+  // Legacy — only the ally it transfers to does. No adjacent ally at
+  // all simply lets the Legacy dissipate with nowhere to go.
+  if (unit && unit.legacyValue > 0) {
+    const neighbours = adjacentAllyPositions(board, laneIdx, depthIdx);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+      const amount = unit.legacyValue;
+      targetUnit.atk += amount;
+      targetUnit.hp += amount;
+      targetUnit.maxHp += amount;
+      targetUnit.legacyValue = (targetUnit.legacyValue || 0) + amount;
+      events.push({
+        type: 'legacyTransfer', side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
+        amount, newLegacyValue: targetUnit.legacyValue, sourceUid: unit.uid,
+      });
+    }
   }
 }
 
