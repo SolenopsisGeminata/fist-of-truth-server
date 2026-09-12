@@ -228,6 +228,9 @@ export const CARD_POOL = [
   // musketShot: see applyMusketShot above, hooked in right before his
   // own attack in resolveCombatPass (same spot as Аннабэль's dawnBuff).
   { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: true, rarity: 'rare' },
+  // lunaBlind: see applyLunaBlind above — persistent aura, re-evaluated
+  // every round she's alive, checking her CURRENT lane each time.
+  { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' },
 ];
 
 export function cardById(id) {
@@ -547,6 +550,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     statueBuff: !!card.statueBuff,
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     musketShot: !!card.musketShot,
+    lunaBlind: !!card.lunaBlind,
     placedThisRound,
     bornRound,
   };
@@ -1274,6 +1278,42 @@ function applyDawnBuff(match, side, events, sourceUid, amount) {
 // above/below/left/right, no diagonals) and permanently increases its
 // hp by an amount equal to her own CURRENT attack. A safe no-op if she
 // has no neighbour right now.
+// Луна, голос будущего: a PERSISTENT aura, re-evaluated fresh at the
+// start of every round she's alive (same moment as Епископ/Статуя
+// below) — every enemy unit currently in HER mirrored lane (whichever
+// lane she's actually standing in right now, re-checked each round)
+// gets added to match.blindedUids for that round only, exactly like
+// Рейна Ослепительная's one-shot version, just re-applied continuously
+// and scoped to a single lane instead of the whole board. Чаростойкость
+// units are immune, same exclusion rule. Cleared the same way (right
+// after resolveCombat runs in tryEndTurn), so it never leaks into a
+// round where she's no longer alive or has moved lanes.
+function applyLunaBlind(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.lunaBlind) continue;
+        const enemySide = otherPlayer(match, side);
+        const enemyBoard = match.boards[enemySide];
+        let blindedAny = false;
+        for (let d2 = 0; d2 < DEPTH; d2++) {
+          const eu = enemyBoard[l][d2];
+          if (eu && !eu.spellResist) {
+            if (!match.blindedUids) match.blindedUids = new Set();
+            match.blindedUids.add(eu.uid);
+            blindedAny = true;
+          }
+        }
+        if (blindedAny) {
+          events.push({ type: 'reinaBlind', side, laneIdx: l, depthIdx: d, sourceUid: unit.uid });
+        }
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -1781,6 +1821,9 @@ export function tryEndTurn(match, username) {
   // Статуя now fires here too (moved from end-of-round) — same "start
   // of round" moment as Епископ.
   applyStatueBuffs(match, events);
+  // Луна, голос будущего also fires here — re-evaluated fresh every
+  // round she's alive.
+  applyLunaBlind(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
