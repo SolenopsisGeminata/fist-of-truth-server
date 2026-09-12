@@ -70,6 +70,7 @@ export const CARD_POOL = [
   // one random enemy unit instead of all of them.
   { id: 's8', name: '\u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442', type: 'spell', cost: 2, randomBlind: true, rarity: 'rare' },
   { id: 's9', name: '\u0421\u0443\u043c\u043a\u0430 \u0441 \u043f\u0440\u0438\u043f\u0430\u0441\u0430\u043c\u0438', type: 'spell', cost: 2, buffAtk: 1, buffHp: 1, buffLifesteal: true, rarity: 'rare' },
+  { id: 's10', name: '\u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a', type: 'spell', cost: 1, buffHp: 1, drawIfArmored: true, rarity: 'rare' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -795,6 +796,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffAtk: card.buffAtk,
     buffArmor: card.buffArmor,
     buffLifesteal: card.buffLifesteal,
+    drawIfArmored: card.drawIfArmored,
     summonCardId: card.summonCardId,
     summonCount: card.summonCount,
     healAmount: card.healAmount,
@@ -1137,11 +1139,20 @@ function resolveSpells(match, events) {
         if (spell.buffHp) { unit.hp += spell.buffHp; unit.maxHp += spell.buffHp; }
         if (spell.buffArmor) unit.armor = (unit.armor || 0) + spell.buffArmor;
         if (spell.buffLifesteal) unit.lifesteal = true;
+        // Наплечник: if the TARGET already has Armor (her own, not from
+        // this spell — buffArmor isn't set on this card at all), the
+        // caster draws a card from their own deck as a bonus.
+        let drewCard = false;
+        if (spell.drawIfArmored && unit.armor > 0) {
+          const beforeLen = match.hands[spell.side].length;
+          draw(match.decks[spell.side], match.hands[spell.side], 1);
+          drewCard = match.hands[spell.side].length > beforeLen;
+        }
         events.push({
           type: 'spell', kind: 'buff', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
-          buffLifesteal: !!spell.buffLifesteal,
+          buffLifesteal: !!spell.buffLifesteal, drewCard,
         });
       }
     }
