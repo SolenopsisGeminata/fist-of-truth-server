@@ -241,7 +241,7 @@ export const CARD_POOL = [
   { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below) —
   // granted once the faction is unlocked, a mechanism not built yet.
-  { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 1, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
+  { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
