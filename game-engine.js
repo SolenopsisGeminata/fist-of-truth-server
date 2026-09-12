@@ -192,6 +192,9 @@ export const CARD_POOL = [
   // healTrigger: see healHero above — every time healing lands for his
   // own side, permanently buffs a random OTHER ally +1atk/+3hp.
   { id: 'c50', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u0441\u0432\u044f\u0442\u043e\u0433\u043e \u0421\u0432\u0435\u0442\u0430', type: 'creature', cost: 5, atk: 2, hp: 5, healOnPlay: 3, healTrigger: true, rarity: 'epic' },
+  // blacksmithBuff: see the end-of-round loop in tryEndTurn — always
+  // improves himself +1atk/+1armor, plus a random OTHER armored ally.
+  { id: 'c51', name: '\u041a\u0443\u0437\u043d\u0435\u0446', type: 'creature', cost: 4, atk: 1, hp: 6, armor: 1, blacksmithBuff: true, rarity: 'epic' },
 ];
 
 export function cardById(id) {
@@ -505,6 +508,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     baronBuff: !!card.baronBuff,
     doubleStrike: !!card.doubleStrike,
     healTrigger: !!card.healTrigger,
+    blacksmithBuff: !!card.blacksmithBuff,
     placedThisRound,
     bornRound,
   };
@@ -1683,6 +1687,38 @@ export function tryEndTurn(match, username) {
           // before each of her attacks.
           if (unit && unit.baronBuff) {
             applyDawnBuff(match, name, events, unit.uid);
+          }
+          // Кузнец: at the end of every round he survives, always
+          // improves his OWN attack and armor by 1, and separately picks
+          // one random OTHER ally that currently has Armor > 0 and gives
+          // that one the same +1 attack / +1 armor too (a no-op for that
+          // second part if no other armored ally exists). Reuses the
+          // rallyBuff event/animation, now extended to carry buffArmor.
+          if (unit && unit.blacksmithBuff) {
+            unit.atk += 1;
+            unit.armor = (unit.armor || 0) + 1;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: unit.uid,
+            });
+            const targets = [];
+            for (let l2 = 0; l2 < LANES; l2++) {
+              for (let d2 = 0; d2 < DEPTH; d2++) {
+                if (l2 === l && d2 === d) continue; // never himself — already handled above
+                const candidate = board[l2][d2];
+                if (candidate && candidate.armor > 0) targets.push({ laneIdx: l2, depthIdx: d2 });
+              }
+            }
+            if (targets.length > 0) {
+              const chosen = targets[Math.floor(Math.random() * targets.length)];
+              const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+              targetUnit.atk += 1;
+              targetUnit.armor += 1;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
+                targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: unit.uid,
+              });
+            }
           }
         }
       }
