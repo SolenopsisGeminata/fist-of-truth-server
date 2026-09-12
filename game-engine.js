@@ -200,6 +200,9 @@ export const CARD_POOL = [
   // loop in tryEndTurn). explodeOnDeath: handled by the shared killUnit
   // helper, applied the instant he actually dies, from any cause.
   { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' },
+  // statueBuff: see the end-of-round loop in tryEndTurn — reuses
+  // adjacentAllyPositions (already used by Родная тетушка).
+  { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, statueBuff: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -516,6 +519,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     blacksmithBuff: !!card.blacksmithBuff,
     powderKeg: !!card.powderKeg,
     explodeOnDeath: !!card.explodeOnDeath,
+    statueBuff: !!card.statueBuff,
     placedThisRound,
     bornRound,
   };
@@ -1773,6 +1777,26 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
                 targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Статуя: at the end of every round she survives, picks one
+          // random ADJACENT ally (same cardinal-neighbour rule as
+          // Synergy/Родная тетушка — directly above/below/left/right, no
+          // diagonals) and permanently increases its hp by an amount
+          // equal to her own CURRENT attack. Does nothing if she has no
+          // neighbour right now. Reuses the rallyBuff event/animation.
+          if (unit && unit.statueBuff) {
+            const neighbours = adjacentAllyPositions(board, l, d);
+            if (neighbours.length > 0) {
+              const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+              const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+              const amount = unit.atk;
+              targetUnit.hp += amount;
+              targetUnit.maxHp += amount;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
+                targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: amount, sourceUid: unit.uid,
               });
             }
           }
