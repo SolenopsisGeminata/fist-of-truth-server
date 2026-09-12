@@ -75,6 +75,9 @@ export const CARD_POOL = [
   // own hero, then conditionally summons onto the SPECIFIC targeted
   // cell (not a random one) if that leaves the caster's hero ahead.
   { id: 's11', name: '\u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438', type: 'spell', cost: 4, lifeLight: true, healAmount: 10, summonCardId: 'c10', rarity: 'rare' },
+  // guardCall: see the guardCallQueue extraction in tryEndTurn (fires in
+  // the Мгновенный призыв phase, same as Отряд ополченцев).
+  { id: 's12', name: '\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'spell', cost: 4, guardCall: true, summonCardId: 'c11', rarity: 'epic' },
   { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
   { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
   { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
@@ -794,6 +797,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.guardCall) {
+    // Вызов стражи: same "any own cell" casting as Свет жизни — the
+    // targeted cell matters at resolution (the first summon lands there
+    // specifically, silently failing if occupied by then), the second
+    // summon lands on a random free cell regardless.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -801,7 +812,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : 'buff')))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : 'buff'))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1591,6 +1602,26 @@ export function tryEndTurn(match, username) {
     for (let i = 0; i < count; i++) {
       summonUnitToRandomFreeCell(match, summonSpell.side, summonSpell.summonCardId, events);
     }
+  }
+
+  // Вызов стражи: same "fires in the Мгновенный призыв phase" timing as
+  // Отряд ополченцев above, pulled out of pendingSpells the same way —
+  // summons ONE Страж дворца onto the specifically targeted cell
+  // (silently failing just that part if it's occupied by now) AND a
+  // SECOND one onto any random free cell, independently.
+  const guardCallQueue = match.pendingSpells.filter((sp) => sp.kind === 'guardCall');
+  match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'guardCall');
+  for (const guardSpell of guardCallQueue) {
+    const board = match.boards[guardSpell.side];
+    if (!board[guardSpell.laneIdx][guardSpell.depthIdx]) {
+      const summonedCard = cardById(guardSpell.summonCardId);
+      if (summonedCard) {
+        const unit = buildUnitFromCard(summonedCard, false, match.round);
+        board[guardSpell.laneIdx][guardSpell.depthIdx] = unit;
+        events.push({ type: 'summon', side: guardSpell.side, cardId: guardSpell.summonCardId, laneIdx: guardSpell.laneIdx, depthIdx: guardSpell.depthIdx, uid: unit.uid });
+      }
+    }
+    summonUnitToRandomFreeCell(match, guardSpell.side, guardSpell.summonCardId, events);
   }
 
   // Карающий ангел: right after Мгновенный призыв above (so a
