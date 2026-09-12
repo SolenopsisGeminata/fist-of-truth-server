@@ -234,6 +234,11 @@ export const CARD_POOL = [
   // legacy: see the legacyValue transfer mechanic in killUnit above —
   // first card of the Дзен faction.
   { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare' },
+  // bambooShotOnPlay: battlecry throw (see pendingBambooShots in
+  // tryEndTurn). bambooShotRecurring: pre-attack throw starting the
+  // round AFTER placement (see applyBambooRecurringShot, gated by
+  // match.round > bornRound).
+  { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -463,6 +468,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingRallyBuffs: [],
     pendingHeals: [],
     pendingShots: [],
+    pendingBambooShots: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -555,6 +561,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
+    bambooShotRecurring: card.bambooShotRecurring || 0,
     placedThisRound,
     bornRound,
   };
@@ -656,6 +663,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // then (more allies might get placed this same round).
   if (card.shootHero) {
     match.pendingShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Бамбуковый стрелок: battlecry throw — same deferred reasoning as
+  // every other battlecry, resolved at the start of the next resolution
+  // (see pendingBambooShots below). Fixed damage, unlike Арбалетчик's
+  // Synergy-based shot.
+  if (card.bambooShotOnPlay) {
+    match.pendingBambooShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.bambooShotOnPlay });
   }
 
   // Толстый караульный: battlecry summon — same deferred reasoning as
@@ -1465,6 +1480,38 @@ function countUnitsOnBoard(board) {
 // same as every other cross-side damage mechanic. Silently does
 // nothing if the enemy board is empty or the unit-count condition
 // isn't met.
+// Бамбуковый стрелок's recurring throw: right before his own attack in
+// a wave (same hook point as Мушкетер's musketShot), starting from the
+// round AFTER he was placed (gated by match.round > bornRound at the
+// call site, never the round he's placed in) — throws 1 spear at a
+// random depth within his own mirrored lane, fixed damage, empty
+// redirects to the hero, Чаростойкость blocks outright. Same shape as
+// his own battlecry throw above, just a smaller recurring amount.
+function applyBambooRecurringShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+  const targetBoard = match.boards[enemySide];
+  const targetDepth = Math.floor(Math.random() * DEPTH);
+  const cellUnit = targetBoard[sourceLaneIdx][targetDepth];
+  const resisted = !!(cellUnit && cellUnit.spellResist);
+  const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+  const amount = sourceUnit.bambooShotRecurring;
+  let died = false;
+  if (resisted) {
+    // no-op: the spear lands on her harmlessly
+  } else if (targetUnit) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  } else {
+    match.hp[enemySide] -= amount;
+  }
+  events.push({
+    type: 'bambooShot', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: sourceLaneIdx, targetDepthIdx: targetDepth,
+    sourceUid: sourceUnit.uid, targetHero: !cellUnit, died, resisted,
+  });
+  if (died) killUnit(match, enemySide, sourceLaneIdx, targetDepth, events);
+}
+
 function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
   const ownCount = countUnitsOnBoard(match.boards[side]);
   const enemyCount = countUnitsOnBoard(match.boards[enemySide]);
@@ -1520,6 +1567,8 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
       if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.bambooShotRecurring && match.round > aUnit.bornRound) applyBambooRecurringShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
@@ -1831,6 +1880,38 @@ export function tryEndTurn(match, username) {
       type: 'heroShot', side: shot.side, targetSide, amount,
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
     });
+  }
+
+  // Бамбуковый стрелок's battlecry throw: a random depth within the
+  // SAME lane on the enemy's side (his own mirrored lane, same
+  // convention as Имперская пушка), fixed damage, Чаростойкость blocks
+  // outright, an empty square redirects to the hero.
+  const bambooShotQueue = match.pendingBambooShots;
+  match.pendingBambooShots = [];
+  for (const shot of bambooShotQueue) {
+    const targetSide = otherPlayer(match, shot.side);
+    const targetBoard = match.boards[targetSide];
+    const targetDepth = Math.floor(Math.random() * DEPTH);
+    const cellUnit = targetBoard[shot.laneIdx][targetDepth];
+    const resisted = !!(cellUnit && cellUnit.spellResist);
+    const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+    const amount = shot.amount;
+    let died = false;
+    if (resisted) {
+      // no-op: the spear lands on her harmlessly
+    } else if (targetUnit) {
+      targetUnit.hp -= amount;
+      died = targetUnit.hp <= 0;
+    } else {
+      match.hp[targetSide] -= amount;
+    }
+    events.push({
+      type: 'bambooShot', side: shot.side, targetSide, amount: resisted ? 0 : amount,
+      laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
+      targetLaneIdx: shot.laneIdx, targetDepthIdx: targetDepth,
+      targetHero: !cellUnit, died, resisted,
+    });
+    if (died) killUnit(match, targetSide, shot.laneIdx, targetDepth, events);
   }
 
   // Толстый караульный's battlecry summon — same moment as everything
