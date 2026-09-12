@@ -219,6 +219,9 @@ export const CARD_POOL = [
   // redirects to hero, Чаростойкость blocks outright.
   { id: 'c54', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 2, hp: 1, armor: 1, weaponThrowOnDeath: true, rarity: 'epic' },
   { id: 'c55', name: '\u0421\u043b\u0435\u0434\u043e\u043f\u044b\u0442', type: 'creature', cost: 1, atk: 1, hp: 1, synergy: 1, rarity: 'rare' },
+  // musketShot: see applyMusketShot above, hooked in right before his
+  // own attack in resolveCombatPass (same spot as Аннабэль's dawnBuff).
+  { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: true, rarity: 'rare' },
 ];
 
 export function cardById(id) {
@@ -537,6 +540,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     explodeOnDeath: !!card.explodeOnDeath,
     statueBuff: !!card.statueBuff,
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
+    musketShot: !!card.musketShot,
     placedThisRound,
     bornRound,
   };
@@ -1343,6 +1347,54 @@ function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDep
   }
 }
 
+function countUnitsOnBoard(board) {
+  let count = 0;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (board[l][d]) count++;
+    }
+  }
+  return count;
+}
+
+// Мушкетер: right before his own attack in a given wave (same hook
+// point as Аннабэль's dawnBuff below), if his side currently has
+// STRICTLY MORE units on the battlefield than the enemy, shoots one
+// random enemy unit anywhere on the board for a small fixed 1 damage.
+// Чаростойкость blocks it outright (struck harmlessly, no redirect),
+// same as every other cross-side damage mechanic. Silently does
+// nothing if the enemy board is empty or the unit-count condition
+// isn't met.
+function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+  const ownCount = countUnitsOnBoard(match.boards[side]);
+  const enemyCount = countUnitsOnBoard(match.boards[enemySide]);
+  if (ownCount <= enemyCount) return;
+  const targetBoard = match.boards[enemySide];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (targetBoard[l][d]) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+  const resisted = !!targetUnit.spellResist;
+  const amount = resisted ? 0 : 1;
+  let died = false;
+  if (!resisted) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  }
+  events.push({
+    type: 'musketShot', side, targetSide: enemySide, amount,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+    sourceUid: sourceUnit.uid, resisted, died,
+  });
+  if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+}
+
 function resolveCombatPass(match, events, isEligible) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
@@ -1366,6 +1418,8 @@ function resolveCombatPass(match, events, isEligible) {
 
       if (aEligible && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
       if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
+      if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
