@@ -195,10 +195,10 @@ export const CARD_POOL = [
   // blacksmithBuff: see the end-of-round loop in tryEndTurn — always
   // improves himself +1atk/+1armor, plus a random OTHER armored ally.
   { id: 'c51', name: '\u041a\u0443\u0437\u043d\u0435\u0446', type: 'creature', cost: 4, atk: 1, hp: 6, armor: 1, blacksmithBuff: true, rarity: 'epic' },
-  // powderKeg: throws at a random occupied enemy unit anywhere on the
-  // board, 5 fixed damage (see the end-of-round loop in tryEndTurn).
-  // explodeOnDeath: checked via explodeOnDeathSnapshot at the very end
-  // of resolution, catching death from any source this round.
+  // powderKeg: throws at a random SQUARE anywhere on the enemy board —
+  // occupied or not, empty redirects to the hero (see the end-of-round
+  // loop in tryEndTurn). explodeOnDeath: handled by the shared killUnit
+  // helper, applied the instant he actually dies, from any cause.
   { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' },
 ];
 
@@ -804,6 +804,22 @@ function anyHeroDown(match) {
   return match.hp[nameA] <= 0 || match.hp[nameB] <= 0;
 }
 
+// Подрывник (explodeOnDeath): the ONE place a unit is ever removed from
+// a board because it died (as opposed to moving, being returned to
+// hand, or being bounced by a spell) — every such site in this file
+// routes through here so the self-damage and its explosion event fire
+// at the EXACT moment and EXACT cell of death, never deferred to any
+// later checkpoint.
+function killUnit(match, side, laneIdx, depthIdx, events) {
+  const board = match.boards[side];
+  const unit = board[laneIdx][depthIdx];
+  board[laneIdx][depthIdx] = null;
+  if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
+    match.hp[side] -= 5;
+    events.push({ type: 'selfExplosion', side, amount: 5, sourceUid: unit.uid, laneIdx, depthIdx });
+  }
+}
+
 // Двойное омоложение (Имперский патриарх): while he's alive anywhere on a
 // side's own board, EVERY heal that side's hero receives is doubled —
 // spells, lifesteal, end-of-round heals, battlecries, all of it. This is
@@ -921,7 +937,7 @@ function resolveSpells(match, events) {
             laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
             amount: applied, died, empty: false, resisted: false,
           });
-          if (died) board[spell.laneIdx][d] = null;
+          if (died) killUnit(match, defenderName, spell.laneIdx, d, events);
         }
       }
     } else if (spell.kind === 'skyWhirlwind') {
@@ -993,7 +1009,7 @@ function resolveSpells(match, events) {
           laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: info.depth,
           amount: applied, died,
         });
-        if (died) board[spell.laneIdx][info.depth] = null;
+        if (died) killUnit(match, defenderName, spell.laneIdx, info.depth, events);
       } else {
         match.hp[defenderName] -= spell.dmg;
         events.push({
@@ -1138,7 +1154,7 @@ function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDep
       laneIdx, targetDepth: d, amount: applied, died, sourceUid: attackerUnit.uid,
     });
     if (died) {
-      board[laneIdx][d] = null;
+      killUnit(match, defenderSide, laneIdx, d, events);
       remaining = Math.max(0, applied - beforeHp);
     } else {
       remaining = 0;
@@ -1255,8 +1271,8 @@ function resolveCombatPass(match, events, isEligible) {
         aDied, bDied,
       });
 
-      if (aDied) match.boards[nameB][l][aTarget.depth] = null;
-      if (bDied) match.boards[nameA][l][bTarget.depth] = null;
+      if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
+      if (bDied) killUnit(match, nameA, l, bTarget.depth, events);
 
       // Топот (Trample): the overkill from the primary hit (already
       // pushed above as the normal 'wave' event) cascades onward.
@@ -1336,22 +1352,6 @@ export function tryEndTurn(match, username) {
 
   const events = [];
 
-  // Подрывник: snapshot who currently has explodeOnDeath BEFORE
-  // anything this round can kill them — checked again at the very end
-  // of resolution (after combat, spells, cannon/siege shots,
-  // everything), so this catches death from ANY source this round
-  // without needing to hook into every individual damage site.
-  const explodeOnDeathSnapshot = [];
-  for (const side of match.players) {
-    const board = match.boards[side];
-    for (let l = 0; l < LANES; l++) {
-      for (let d = 0; d < DEPTH; d++) {
-        const u = board[l][d];
-        if (u && u.explodeOnDeath) explodeOnDeathSnapshot.push({ uid: u.uid, side });
-      }
-    }
-  }
-
   // Мгновенный призыв (Отряд ополченцев): fires before ANYTHING else in
   // resolution — even before rally buffs, heals, shots, and Епископ
   // below, let alone the normal spell phase. Pulled out of pendingSpells
@@ -1395,7 +1395,7 @@ export function tryEndTurn(match, username) {
       laneIdx: kill.laneIdx, targetDepth: targetInfo.depth,
       sourceUid: kill.sourceUid, resisted,
     });
-    if (!resisted) targetBoard[kill.laneIdx][targetInfo.depth] = null;
+    if (!resisted) killUnit(match, targetSide, kill.laneIdx, targetInfo.depth, events);
   }
 
   // Рейна Ослепительная: temporarily grants ALL current enemy units the
@@ -1532,27 +1532,6 @@ export function tryEndTurn(match, username) {
     }
   }
 
-  // Подрывник: checked against the snapshot taken at the very start of
-  // this function — anyone with explodeOnDeath who was alive then but
-  // isn't anywhere on their own board anymore (from combat, spells,
-  // cannon/siege shots, any of it) blows up, dealing 5 damage to their
-  // OWN hero. Catches death from every possible source this round
-  // without needing a check at each individual damage site.
-  for (const entry of explodeOnDeathSnapshot) {
-    if (anyHeroDown(match)) break;
-    const board = match.boards[entry.side];
-    let stillAlive = false;
-    for (let l = 0; l < LANES && !stillAlive; l++) {
-      for (let d = 0; d < DEPTH; d++) {
-        if (board[l][d] && board[l][d].uid === entry.uid) { stillAlive = true; break; }
-      }
-    }
-    if (!stillAlive) {
-      match.hp[entry.side] -= 5;
-      events.push({ type: 'selfExplosion', side: entry.side, amount: 5, sourceUid: entry.uid });
-    }
-  }
-
   let roundOver = true;
   let winner = null;
   if (match.hp[nameA] <= 0 || match.hp[nameB] <= 0) {
@@ -1631,35 +1610,41 @@ export function tryEndTurn(match, username) {
                 laneIdx: l, depthIdx: d, sourceUid: unit.uid,
                 targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
               });
-              if (died) targetBoard[chosen.laneIdx][chosen.depthIdx] = null;
+              if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
             }
           }
-          // Подрывник: throws a powder keg at a random OCCUPIED enemy
-          // unit anywhere on their board (same Чаростойкость exclusion
-          // as Осадная башня above) — explodes on contact for a fixed 5
-          // damage. Silently does nothing if there's no legal target.
+          // Подрывник: throws a powder keg at a random SQUARE anywhere
+          // on the enemy board — occupied or not. A Чаростойкость unit
+          // is never a legal square to land on at all (treated exactly
+          // like an empty one for the purposes of picking a square, same
+          // convention as cannonShot). If the picked square is empty,
+          // the keg explodes on the hero instead, for the same 5
+          // damage. Fixed damage, not attack-based.
           if (unit && unit.powderKeg) {
             const targetSide = match.players.find((p) => p !== name);
             const targetBoard = match.boards[targetSide];
-            const targets = [];
-            for (let l2 = 0; l2 < LANES; l2++) {
-              for (let d2 = 0; d2 < DEPTH; d2++) {
-                if (targetBoard[l2][d2] && !targetBoard[l2][d2].spellResist) targets.push({ laneIdx: l2, depthIdx: d2 });
-              }
-            }
-            if (targets.length > 0) {
-              const chosen = targets[Math.floor(Math.random() * targets.length)];
-              const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
-              const amount = 5;
+            const targetLaneIdx = Math.floor(Math.random() * LANES);
+            const targetDepthIdx = Math.floor(Math.random() * DEPTH);
+            const cellUnit = targetBoard[targetLaneIdx][targetDepthIdx];
+            const resisted = !!(cellUnit && cellUnit.spellResist);
+            const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+            const amount = 5;
+            let died = false;
+            if (resisted) {
+              // no-op: the keg explodes on her harmlessly, same pattern
+              // as every other cross-side mechanic checking this status.
+            } else if (targetUnit) {
               targetUnit.hp -= amount;
-              const died = targetUnit.hp <= 0;
-              events.push({
-                type: 'powderKegShot', side: name, targetSide, amount,
-                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
-                targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
-              });
-              if (died) targetBoard[chosen.laneIdx][chosen.depthIdx] = null;
+              died = targetUnit.hp <= 0;
+            } else {
+              match.hp[targetSide] -= amount;
             }
+            events.push({
+              type: 'powderKegShot', side: name, targetSide, amount: resisted ? 0 : amount,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+              targetLaneIdx, targetDepthIdx, targetHero: !cellUnit, died, resisted,
+            });
+            if (died) killUnit(match, targetSide, targetLaneIdx, targetDepthIdx, events);
           }
           // Лагерь ополченцев: same as her battlecry (see
           // pendingBattlecrySummons above) — summons another copy onto a
@@ -1703,7 +1688,6 @@ export function tryEndTurn(match, username) {
               } else if (targetUnit) {
                 targetUnit.hp -= amount;
                 died = targetUnit.hp <= 0;
-                if (died) targetBoard[l][targetDepth] = null;
               } else {
                 match.hp[targetSide] -= amount;
               }
@@ -1713,6 +1697,7 @@ export function tryEndTurn(match, username) {
                 targetLaneIdx: l, targetDepthIdx: targetDepth,
                 targetHero: !cellUnit, died, resisted,
               });
+              if (died) killUnit(match, targetSide, l, targetDepth, events);
             }
           }
           // Каменная Стена: grows sturdier at the end of every round she
