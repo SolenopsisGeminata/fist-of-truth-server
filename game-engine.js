@@ -284,6 +284,9 @@ export const CARD_POOL = [
   { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
   // waitressOnPlay: see the pendingWaitress queue in placeCard/tryEndTurn.
   { id: 'c73', name: '\u041f\u0440\u0435\u043a\u0440\u0430\u0441\u043d\u0430\u044f \u043e\u0444\u0438\u0446\u0438\u0430\u043d\u0442\u043a\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
+  // drunkenDisciple: see applyDrunkenDisciple above, hooked in at the
+  // same pre-attack point as Мушкетер's musketShot.
+  { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -639,6 +642,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bambooShotRecurring: card.bambooShotRecurring || 0,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
+    drunkenDisciple: !!card.drunkenDisciple,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -1759,6 +1763,56 @@ function countUnitsOnBoard(board) {
 // random depth within his own mirrored lane, fixed damage, empty
 // redirects to the hero, Чаростойкость blocks outright. Same shape as
 // his own battlecry throw above, just a smaller recurring amount.
+// Пьяный ученик: right before his own attack in a wave (same hook
+// point as Мушкетер's musketShot), damages himself by 1 AND deals 1
+// damage to one random unit anywhere on the board — either side,
+// himself included in that random pool too (nothing excludes him,
+// on top of his own guaranteed separate self-hit — an unlucky roll
+// can hit him a second time in the same trigger). If the self-damage
+// kills him outright, the wave's own aAtk/bAtk computation right after
+// this hook re-reads the board fresh and correctly sees him gone, so
+// the attack itself simply doesn't happen — no special-casing needed
+// here, effectiveAtk already returns 0 for an empty cell.
+function applyDrunkenDisciple(match, side, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+  sourceUnit.hp -= 1;
+  const selfDied = sourceUnit.hp <= 0;
+  events.push({
+    type: 'drunkenSelfHit', side, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    amount: 1, sourceUid: sourceUnit.uid, died: selfDied,
+  });
+  if (selfDied) {
+    killUnit(match, side, sourceLaneIdx, sourceDepthIdx, events);
+  }
+
+  const enemySide = otherPlayer(match, side);
+  const candidates = [];
+  for (const s of [side, enemySide]) {
+    const board = match.boards[s];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (board[l][d]) candidates.push({ side: s, laneIdx: l, depthIdx: d });
+      }
+    }
+  }
+  if (candidates.length === 0) return;
+  const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+  const targetUnit = match.boards[chosen.side][chosen.laneIdx][chosen.depthIdx];
+  const resisted = !!targetUnit.spellResist;
+  const amount = resisted ? 0 : 1;
+  let died = false;
+  if (!resisted) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  }
+  events.push({
+    type: 'drunkenRandomHit', side, targetSide: chosen.side, amount,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+    sourceUid: sourceUnit.uid, died, resisted,
+  });
+  if (died) killUnit(match, chosen.side, chosen.laneIdx, chosen.depthIdx, events);
+}
+
 function applyBambooRecurringShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
   const targetBoard = match.boards[enemySide];
   const targetDepth = Math.floor(Math.random() * DEPTH);
@@ -1839,6 +1893,8 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
       if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.drunkenDisciple) applyDrunkenDisciple(match, nameA, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.drunkenDisciple) applyDrunkenDisciple(match, nameB, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.bambooShotRecurring && match.round > aUnit.bornRound) applyBambooRecurringShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
