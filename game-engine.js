@@ -282,6 +282,8 @@ export const CARD_POOL = [
   // daoistSwordsman: see the hero-hit rally-buff hook in the wave
   // combat loop above.
   { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
+  // waitressOnPlay: see the pendingWaitress queue in placeCard/tryEndTurn.
+  { id: 'c73', name: '\u041f\u0440\u0435\u043a\u0440\u0430\u0441\u043d\u0430\u044f \u043e\u0444\u0438\u0446\u0438\u0430\u043d\u0442\u043a\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -541,6 +543,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBambooShots: [],
     pendingHerbalist: [],
     pendingFoxSword: [],
+    pendingWaitress: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -743,6 +746,21 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingHerbalist.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'damage' });
     }
     // depth === middle: no queued effect — she's just an ordinary body.
+  }
+
+  // Прекрасная официантка: same depth-based placement rule as
+  // Олень-мечник/Травница (first/last/middle of the lane, regardless
+  // of which lane), but the buff lands on a random ally ANYWHERE on
+  // her own board (herself included — nothing excludes her) rather
+  // than herself or her hero. Deferred to resolution (see
+  // pendingWaitress below) so it's visibly animated.
+  if (card.waitressOnPlay) {
+    if (depth === 0) {
+      match.pendingWaitress.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'atk' });
+    } else if (depth === DEPTH - 1) {
+      match.pendingWaitress.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'armor' });
+    }
+    // depth === middle: no queued effect at all.
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -2290,6 +2308,39 @@ export function tryEndTurn(match, username) {
       targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died, resisted,
     });
     if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
+  }
+
+  // Прекрасная официантка: same "start of resolution" battlecry moment
+  // as everything above — picks a random ally ANYWHERE on her own
+  // board (herself included, nothing excludes her) and permanently
+  // gives it +2 attack (if she was placed first) or +3 armor (if she
+  // was placed last). Reuses the existing rallyBuff event/animation.
+  const waitressQueue = match.pendingWaitress;
+  match.pendingWaitress = [];
+  for (const entry of waitressQueue) {
+    const board = match.boards[entry.side];
+    const allies = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (board[l][d]) allies.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    if (allies.length === 0) continue;
+    const chosen = allies[Math.floor(Math.random() * allies.length)];
+    const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+    if (entry.kind === 'atk') {
+      targetUnit.atk += 2;
+      events.push({
+        type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
+        targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: entry.sourceUid,
+      });
+    } else {
+      targetUnit.armor = (targetUnit.armor || 0) + 3;
+      events.push({
+        type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
+        targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: 0, buffArmor: 3, sourceUid: entry.sourceUid,
+      });
+    }
   }
 
 
