@@ -253,6 +253,10 @@ export const CARD_POOL = [
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   // monkGrow: see the end-of-round self-growth block above.
   { id: 'c65', name: '\u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, legacy: 1, monkGrow: true, rarity: 'common', locked: true },
+  // bounceCellAndNeighbor: see the 'bounceCellAndNeighbor' spell kind in
+  // resolveSpells — targets a specific enemy cell (new targeting shape,
+  // see the client's highlightEnemyCellsForSpell).
+  { id: 's14', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 2, bounceCellAndNeighbor: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -429,6 +433,21 @@ function countAdjacentAllies(board, laneIdx, depthIdx) {
     if (l >= 0 && l < LANES && d >= 0 && d < DEPTH && board[l][d]) count++;
   }
   return count;
+}
+
+// Same cardinal-neighbour rule as adjacentAllyPositions below, but
+// returns every valid grid-adjacent coordinate regardless of whether
+// it's occupied — used by Небесный вихрь, which picks a random
+// NEIGHBOURING CELL (empty or not) rather than a random neighbouring
+// ally.
+function adjacentCellPositions(laneIdx, depthIdx) {
+  const positions = [];
+  const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+  for (const [dl, dd] of deltas) {
+    const l = laneIdx + dl, d = depthIdx + dd;
+    if (l >= 0 && l < LANES && d >= 0 && d < DEPTH) positions.push({ laneIdx: l, depthIdx: d });
+  }
+  return positions;
 }
 
 // Same cardinal-neighbour rule as Synergy, but returns the actual
@@ -898,6 +917,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.bounceCellAndNeighbor) {
+    // Небесный вихрь: targets a SPECIFIC cell on the ENEMY's board —
+    // a brand new targeting shape (every prior enemy-targeting spell
+    // was lane-only or fully random). Just needs valid bounds; the
+    // cell can be empty or occupied, checked again at resolution.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -905,7 +932,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : 'buff')))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : 'buff'))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1297,6 +1324,49 @@ function resolveSpells(match, events) {
       // 2 instead of its default 1) — the same "buff everyone" loop
       // already used by Аннабэль/Барон/Имперский полководец.
       applyDawnBuff(match, spell.side, events, null, 2);
+    } else if (spell.kind === 'bounceCellAndNeighbor') {
+      // Небесный вихрь: bounces the unit at the specifically TARGETED
+      // enemy cell, plus the unit at ONE random ADJACENT cell
+      // (occupancy-agnostic — the random pick could land on an empty
+      // neighbour, in which case nothing happens for that part). Each
+      // returned unit becomes a fresh base card in its owner's hand,
+      // losing every buff/debuff — the exact same "return to hand"
+      // shape used elsewhere in this file. Чаростойкость units are
+      // simply skipped, staying exactly where they are.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const hand = match.hands[defenderName];
+      const cellsToCheck = [{ laneIdx: spell.laneIdx, depthIdx: spell.depthIdx }];
+      const neighbours = adjacentCellPositions(spell.laneIdx, spell.depthIdx);
+      if (neighbours.length > 0) {
+        cellsToCheck.push(neighbours[Math.floor(Math.random() * neighbours.length)]);
+      }
+      for (const cell of cellsToCheck) {
+        const targetUnit = board[cell.laneIdx][cell.depthIdx];
+        if (!targetUnit) {
+          events.push({
+            type: 'spell', kind: 'bounceCellAndNeighbor', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName,
+            targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: false, empty: true, resisted: false,
+          });
+          continue;
+        }
+        if (targetUnit.spellResist) {
+          events.push({
+            type: 'spell', kind: 'bounceCellAndNeighbor', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName,
+            targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: false, empty: false, resisted: true,
+          });
+          continue;
+        }
+        hand.push({ id: targetUnit.id, uid: nextUid('card') });
+        board[cell.laneIdx][cell.depthIdx] = null;
+        events.push({
+          type: 'spell', kind: 'bounceCellAndNeighbor', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName,
+          targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
+        });
+      }
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
