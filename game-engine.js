@@ -248,6 +248,8 @@ export const CARD_POOL = [
   { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare', locked: true },
   // counterattack: see the Контратака block in resolveCombatPass above.
   { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'rare', locked: true },
+  // bambooGuardian: see the Наследие-transfer reaction inside killUnit.
+  { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -584,6 +586,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
     counterattack: !!card.counterattack,
+    bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
   };
@@ -1011,6 +1014,51 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
         type: 'legacyTransfer', side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
         amount, newLegacyValue: targetUnit.legacyValue, sourceUid: unit.uid,
       });
+      // Бамбуковый страж: whenever THIS specific unit is the RECIPIENT
+      // of a Наследие transfer (not merely a unit that starts with the
+      // effect itself), it fires a bamboo spear at a random enemy unit
+      // anywhere on the board for a fixed 2 damage (reuses the exact
+      // bambooShot event/visual already built for Бамбуковый стрелок),
+      // and trades +1 attack for -1 health on itself — every single
+      // time this triggers, so it can stack repeatedly across a long
+      // chain of deaths. If that self-inflicted hp loss brings it to 0
+      // or below, it dies too, routed through killUnit itself so any of
+      // its OWN on-death effects (it doesn't have any right now, but a
+      // future card might) still correctly fire.
+      if (targetUnit.bambooGuardian) {
+        const enemySide = otherPlayer(match, side);
+        const enemyBoard = match.boards[enemySide];
+        const enemyTargets = [];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (enemyBoard[l2][d2]) enemyTargets.push({ laneIdx: l2, depthIdx: d2 });
+          }
+        }
+        if (enemyTargets.length > 0) {
+          const enemyChosen = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
+          const enemyUnit = enemyBoard[enemyChosen.laneIdx][enemyChosen.depthIdx];
+          const resisted = !!enemyUnit.spellResist;
+          const spearAmount = resisted ? 0 : 2;
+          let enemyDied = false;
+          if (!resisted) {
+            enemyUnit.hp -= spearAmount;
+            enemyDied = enemyUnit.hp <= 0;
+          }
+          events.push({
+            type: 'bambooShot', side, targetSide: enemySide, amount: spearAmount,
+            laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, sourceUid: targetUnit.uid,
+            targetLaneIdx: enemyChosen.laneIdx, targetDepthIdx: enemyChosen.depthIdx,
+            targetHero: false, died: enemyDied, resisted,
+          });
+          if (enemyDied) killUnit(match, enemySide, enemyChosen.laneIdx, enemyChosen.depthIdx, events);
+        }
+        targetUnit.atk += 1;
+        targetUnit.hp -= 1;
+        events.push({
+          type: 'bambooGuardianTrade', side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, sourceUid: targetUnit.uid,
+        });
+        if (targetUnit.hp <= 0) killUnit(match, side, chosen.laneIdx, chosen.depthIdx, events);
+      }
     }
   }
 }
