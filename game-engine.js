@@ -290,6 +290,7 @@ export const CARD_POOL = [
   { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare', locked: true },
   { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare', locked: true },
   { id: 's18', name: '\u041f\u0435\u0441\u043d\u044c \u041b\u0443\u043d\u0435', type: 'spell', cost: 3, songToTheMoon: true, rarity: 'rare', locked: true },
+  { id: 's19', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440', type: 'spell', cost: 3, mountainStrength: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -948,7 +949,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   } else if (card.instantSummon) {
@@ -1015,7 +1016,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : 'buff'))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : 'buff')))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1453,6 +1454,21 @@ function resolveSpells(match, events) {
         type: 'songToTheMoon', side: spell.side, targetSide: defenderName,
         allyLaneIdx, allyDepthIdx, enemyLaneIdx, enemyDepthIdx, enemyResisted, drewCard,
       });
+    } else if (spell.kind === 'mountainStrength') {
+      // Сила гор: increases the targeted unit's attack by an amount
+      // equal to its OWN CURRENT hp — computed fresh right here at
+      // resolution, not at cast time, so anything that changed her hp
+      // in between (a heal, a buff, combat damage even) is reflected.
+      const board = match.boards[spell.side];
+      const unit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
+      if (unit) {
+        const amount = unit.hp;
+        unit.atk += amount;
+        events.push({
+          type: 'mountainStrength', side: spell.side, laneIdx: spell.laneIdx,
+          depthIdx: spell.depthIdx, amount, sourceUid: unit.uid,
+        });
+      }
     } else if (spell.kind === 'bounceCellAndNeighbor') {
       // Небесный вихрь: bounces the unit at the specifically TARGETED
       // enemy cell, plus the unit at ONE random ADJACENT cell
