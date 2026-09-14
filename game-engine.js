@@ -277,6 +277,8 @@ export const CARD_POOL = [
   { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
   // foxSwordOnPlay: see pendingFoxSword above.
   { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'rare', locked: true },
+  // Part of the Дзен starter deck (see zenStarterDeckCounts below).
+  { id: 'c71', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0447\u0435\u0440\u0435\u043f\u0430\u0445\u0430-\u043c\u043e\u043d\u0430\u0445', type: 'creature', cost: 3, atk: 2, hp: 3, armor: 1, lifesteal: true, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -332,11 +334,12 @@ export function defaultOwnedCounts() {
 // The Дзен starter deck — granted to an account once it unlocks the
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
-// ready to call). Олень-Даос, Олень-мечник, Монах-аскет, and
-// Отшельник-Даос are confirmed part of it so far, at 3 copies each,
-// same as every card in the Empire starter deck.
+// ready to call). Олень-Даос, Олень-мечник, Монах-аскет,
+// Отшельник-Даос, and Божественная черепаха-монах are confirmed part
+// of it so far, at 3 copies each, same as every card in the Empire
+// starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3, c65: 3, c68: 3 };
+  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3 };
 }
 
 // ---------- Shop ----------
