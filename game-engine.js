@@ -298,6 +298,8 @@ export const CARD_POOL = [
   { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic', locked: true },
   { id: 'c78', name: '\u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 2, hp: 2, spellResist: true, steadfastDaoist: true, rarity: 'epic', locked: true },
   { id: 'c79', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 4, atk: 1, hp: 6, fixedHeal: 2, rarity: 'common', locked: true },
+  // bellOnPlay: see the pendingBellBounce queue in placeCard/tryEndTurn.
+  { id: 'c80', name: '\u0414\u0430\u043e\u0441 \u0441 \u043a\u043e\u043b\u043e\u043a\u043e\u043b\u044c\u0447\u0438\u043a\u043e\u043c', type: 'creature', cost: 4, atk: 2, hp: 1, bellOnPlay: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -559,6 +561,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingFoxSword: [],
     pendingWaitress: [],
     pendingBroomBounce: [],
+    pendingBellBounce: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -795,6 +798,14 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingBroomBounce.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
     }
     // depth === middle: no effect at all.
+  }
+
+  // Даос с колокольчиком: battlecry — bounces a RANDOM enemy unit
+  // anywhere on the board back to the opponent's hand. Same deferred
+  // reasoning as every other battlecry, resolved at the start of the
+  // next resolution (see pendingBellBounce below).
+  if (card.bellOnPlay) {
+    match.pendingBellBounce.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -2594,6 +2605,48 @@ export function tryEndTurn(match, username) {
       type: 'broomBounce', side: entry.side, targetSide: enemySide,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
       targetDepthIdx: info.depth, bounced: true, empty: false, resisted: false, bouncedCardId: info.unit.id,
+    });
+  }
+
+  // Даос с колокольчиком: battlecry — a random enemy unit anywhere on
+  // the board is bounced back to the opponent's hand as a fresh base
+  // card, losing every buff/debuff. Чаростойкость is skipped, staying
+  // exactly where it is; an empty enemy board is simply a no-op.
+  const bellQueue = match.pendingBellBounce;
+  match.pendingBellBounce = [];
+  for (const entry of bellQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const targets = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (enemyBoard[l][d]) targets.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    if (targets.length === 0) {
+      events.push({
+        type: 'bellBounce', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+        targetLaneIdx: null, targetDepthIdx: null, bounced: false, empty: true, resisted: false,
+      });
+      continue;
+    }
+    const chosen = targets[Math.floor(Math.random() * targets.length)];
+    const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+    if (targetUnit.spellResist) {
+      events.push({
+        type: 'bellBounce', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+        targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true,
+      });
+      continue;
+    }
+    match.hands[enemySide].push({ id: targetUnit.id, uid: nextUid('card') });
+    enemyBoard[chosen.laneIdx][chosen.depthIdx] = null;
+    events.push({
+      type: 'bellBounce', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
     });
   }
 
