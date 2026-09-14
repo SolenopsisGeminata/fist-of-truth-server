@@ -289,6 +289,7 @@ export const CARD_POOL = [
   { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
   { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare', locked: true },
   { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare', locked: true },
+  { id: 's18', name: '\u041f\u0435\u0441\u043d\u044c \u041b\u0443\u043d\u0435', type: 'spell', cost: 3, songToTheMoon: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -993,6 +994,12 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.songToTheMoon) {
+    // Песнь Луне: same "any own cell" casting as Небесные лучи — the
+    // player doesn't choose either target, both are picked randomly.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.bounceCellAndNeighbor) {
     // Небесный вихрь: targets a SPECIFIC cell on the ENEMY's board —
     // a brand new targeting shape (every prior enemy-targeting spell
@@ -1008,7 +1015,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : 'buff')))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : 'buff'))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1402,6 +1409,50 @@ function resolveSpells(match, events) {
       // 2 instead of its default 1) — the same "buff everyone" loop
       // already used by Аннабэль/Барон/Имперский полководец.
       applyDawnBuff(match, spell.side, events, null, 2);
+    } else if (spell.kind === 'songToTheMoon') {
+      // Песнь Луне: a random ally gets +1 attack, a random enemy gets
+      // -1 attack (floored at 0 — never negative), and the caster
+      // draws 1 card from their own deck. Each part independently
+      // no-ops if there's nobody to target on that side.
+      const defenderName = otherPlayer(match, spell.side);
+      const ownBoard = match.boards[spell.side];
+      const ownAllies = [];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          if (ownBoard[l][d]) ownAllies.push({ laneIdx: l, depthIdx: d });
+        }
+      }
+      let allyLaneIdx = null, allyDepthIdx = null;
+      if (ownAllies.length > 0) {
+        const chosen = ownAllies[Math.floor(Math.random() * ownAllies.length)];
+        const allyUnit = ownBoard[chosen.laneIdx][chosen.depthIdx];
+        allyUnit.atk += 1;
+        allyLaneIdx = chosen.laneIdx;
+        allyDepthIdx = chosen.depthIdx;
+      }
+      const enemyBoard = match.boards[defenderName];
+      const enemies = [];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          if (enemyBoard[l][d]) enemies.push({ laneIdx: l, depthIdx: d });
+        }
+      }
+      let enemyLaneIdx = null, enemyDepthIdx = null, enemyResisted = false;
+      if (enemies.length > 0) {
+        const chosen = enemies[Math.floor(Math.random() * enemies.length)];
+        const enemyUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+        enemyResisted = !!enemyUnit.spellResist;
+        if (!enemyResisted) enemyUnit.atk = Math.max(0, enemyUnit.atk - 1);
+        enemyLaneIdx = chosen.laneIdx;
+        enemyDepthIdx = chosen.depthIdx;
+      }
+      const beforeLen = match.hands[spell.side].length;
+      draw(match.decks[spell.side], match.hands[spell.side], 1);
+      const drewCard = match.hands[spell.side].length > beforeLen;
+      events.push({
+        type: 'songToTheMoon', side: spell.side, targetSide: defenderName,
+        allyLaneIdx, allyDepthIdx, enemyLaneIdx, enemyDepthIdx, enemyResisted, drewCard,
+      });
     } else if (spell.kind === 'bounceCellAndNeighbor') {
       // Небесный вихрь: bounces the unit at the specifically TARGETED
       // enemy cell, plus the unit at ONE random ADJACENT cell
