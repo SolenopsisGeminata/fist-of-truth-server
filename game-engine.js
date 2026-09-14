@@ -271,6 +271,8 @@ export const CARD_POOL = [
   { id: 'c66', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0441\u0430\u0434', type: 'creature', cost: 2, atk: 0, hp: 4, peachOrchard: 's16', rarity: 'epic', locked: true },
   // divineVines: see the end-of-round doubling block above.
   { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic', locked: true },
+  // Part of the Дзен starter deck (see zenStarterDeckCounts below).
+  { id: 'c68', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -326,11 +328,11 @@ export function defaultOwnedCounts() {
 // The Дзен starter deck — granted to an account once it unlocks the
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
-// ready to call). Олень-Даос, Олень-мечник, and Монах-аскет are
-// confirmed part of it so far, at 3 copies each, same as every card in
-// the Empire starter deck.
+// ready to call). Олень-Даос, Олень-мечник, Монах-аскет, and
+// Отшельник-Даос are confirmed part of it so far, at 3 copies each,
+// same as every card in the Empire starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3, c65: 3 };
+  return { c60: 3, c61: 3, c65: 3, c68: 3 };
 }
 
 // ---------- Shop ----------
