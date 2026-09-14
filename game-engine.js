@@ -288,6 +288,7 @@ export const CARD_POOL = [
   // same pre-attack point as Мушкетер's musketShot.
   { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
   { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare', locked: true },
+  { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -946,7 +947,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   } else if (card.instantSummon) {
@@ -1019,6 +1020,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffAtk: card.buffAtk,
     buffArmor: card.buffArmor,
     buffLifesteal: card.buffLifesteal,
+    buffDoubleStrike: card.buffDoubleStrike,
     drawIfArmored: card.drawIfArmored,
     summonCardId: card.summonCardId,
     summonCount: card.summonCount,
@@ -1538,6 +1540,11 @@ function resolveSpells(match, events) {
         if (spell.buffHp) { unit.hp += spell.buffHp; unit.maxHp += spell.buffHp; }
         if (spell.buffArmor) unit.armor = (unit.armor || 0) + spell.buffArmor;
         if (spell.buffLifesteal) unit.lifesteal = true;
+        // Двойной удар (the spell): permanently grants the SAME
+        // doubleStrike flag already used by Имперский полководец's
+        // warlordBuff — once set, actingOrder() keeps giving this unit
+        // two full turns every wave, forever.
+        if (spell.buffDoubleStrike) unit.doubleStrike = true;
         // Наплечник: if the TARGET already has Armor (her own, not from
         // this spell — buffArmor isn't set on this card at all), the
         // caster draws a card from their own deck as a bonus.
@@ -1551,7 +1558,7 @@ function resolveSpells(match, events) {
           type: 'spell', kind: 'buff', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
-          buffLifesteal: !!spell.buffLifesteal, drewCard,
+          buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike, drewCard,
         });
       }
     }
