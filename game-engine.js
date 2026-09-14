@@ -269,6 +269,8 @@ export const CARD_POOL = [
   // peachOrchard: see the end-of-round card-granting block above — the
   // value is the id of the card it hands out (Персик).
   { id: 'c66', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0441\u0430\u0434', type: 'creature', cost: 2, atk: 0, hp: 4, peachOrchard: 's16', rarity: 'epic', locked: true },
+  // divineVines: see the end-of-round doubling block above.
+  { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -2442,6 +2444,22 @@ export function tryEndTurn(match, username) {
               hand.push({ id: unit.peachOrchard, uid: nextUid('card') });
               events.push({ type: 'peachGiven', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid });
             }
+          }
+          // Божественные лозы: doubles her own CURRENT hp at the end of
+          // every round she survives — an intentionally explosive
+          // "snowball" epic effect (2 -> 4 -> 8 -> 16...), unlike every
+          // other self-growth mechanic in this file (Каменная Стена,
+          // Кузнец, Монах-аскет), which only ever adds a fixed amount.
+          // Reuses the same rallyBuff event/animation — the buff amount
+          // is however much hp was just gained (her pre-double value).
+          if (unit && unit.divineVines) {
+            const gained = unit.hp;
+            unit.hp += gained;
+            unit.maxHp += gained;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk: 0, buffHp: gained, sourceUid: unit.uid,
+            });
           }
           // Священник: at the end of every round, picks one random OTHER
           // ally anywhere on his own board (never himself) and permanently
