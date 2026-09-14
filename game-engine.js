@@ -275,6 +275,8 @@ export const CARD_POOL = [
   { id: 'c68', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
   // timeIllusionist: see the instant swap-on-play block above.
   { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
+  // foxSwordOnPlay: see pendingFoxSword above.
+  { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -532,6 +534,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingShots: [],
     pendingBambooShots: [],
     pendingHerbalist: [],
+    pendingFoxSword: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -709,6 +712,14 @@ export function placeCard(match, username, uid, lane, depth) {
       board[chosen.laneIdx][chosen.depthIdx] = unit;
       board[lane][depth] = otherUnit;
     }
+  }
+
+  // Лис с мечом: battlecry — deals fixed damage to a random enemy
+  // unit anywhere on the board. Same deferred reasoning as every other
+  // battlecry (opponent needs to actually see it happen), resolved at
+  // the start of the next resolution (see pendingFoxSword below).
+  if (card.foxSwordOnPlay) {
+    match.pendingFoxSword.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.foxSwordOnPlay });
   }
 
   // Травница: same depth-based placement rule as Олень-мечник (first/
@@ -2210,8 +2221,41 @@ export function tryEndTurn(match, username) {
     }
   }
 
-  // Толстый караульный's battlecry summon — same moment as everything
-  // above, resolved onto whatever's free right now.
+  // Лис с мечом: battlecry — a random enemy unit anywhere on the
+  // board takes a small fixed hit. Чаростойкость blocks it outright;
+  // no unit at all on the enemy board is simply a no-op (no hero
+  // redirect for this one).
+  const foxSwordQueue = match.pendingFoxSword;
+  match.pendingFoxSword = [];
+  for (const entry of foxSwordQueue) {
+    if (anyHeroDown(match)) break;
+    const targetSide = otherPlayer(match, entry.side);
+    const targetBoard = match.boards[targetSide];
+    const targets = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (targetBoard[l][d]) targets.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    if (targets.length === 0) continue;
+    const chosen = targets[Math.floor(Math.random() * targets.length)];
+    const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+    const resisted = !!targetUnit.spellResist;
+    const amount = resisted ? 0 : entry.amount;
+    let died = false;
+    if (!resisted) {
+      targetUnit.hp -= amount;
+      died = targetUnit.hp <= 0;
+    }
+    events.push({
+      type: 'foxSwordStrike', side: entry.side, targetSide, amount,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died, resisted,
+    });
+    if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
+  }
+
+
   const battlecrySummonQueue = match.pendingBattlecrySummons;
   match.pendingBattlecrySummons = [];
   for (const summon of battlecrySummonQueue) {
