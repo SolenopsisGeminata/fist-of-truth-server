@@ -297,6 +297,7 @@ export const CARD_POOL = [
   // musicalDaoist: see applyMusicalDaoist above, start-of-round hook.
   { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic', locked: true },
   { id: 'c78', name: '\u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 2, hp: 2, spellResist: true, steadfastDaoist: true, rarity: 'epic', locked: true },
+  { id: 'c79', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 4, atk: 1, hp: 6, fixedHeal: 2, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -353,11 +354,11 @@ export function defaultOwnedCounts() {
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
 // ready to call). Олень-Даос, Олень-мечник, Монах-аскет,
-// Отшельник-Даос, and Божественная черепаха-монах are confirmed part
-// of it so far, at 3 copies each, same as every card in the Empire
-// starter deck.
+// Отшельник-Даос, Божественная черепаха-монах, and Сосновый страж are
+// confirmed part of it so far, at 3 copies each, same as every card in
+// the Empire starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3 };
+  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3 };
 }
 
 // ---------- Shop ----------
