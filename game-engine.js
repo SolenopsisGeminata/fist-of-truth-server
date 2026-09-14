@@ -296,6 +296,7 @@ export const CARD_POOL = [
   { id: 'c76', name: '\u0414\u0430\u043e\u0441 \u0441 \u043c\u0435\u0442\u043b\u043e\u0439', type: 'creature', cost: 3, atk: 4, hp: 2, broomOnPlay: true, rarity: 'epic', locked: true },
   // musicalDaoist: see applyMusicalDaoist above, start-of-round hook.
   { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic', locked: true },
+  { id: 'c78', name: '\u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 2, hp: 2, spellResist: true, steadfastDaoist: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -654,6 +655,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
     musicalDaoist: !!card.musicalDaoist,
+    steadfastDaoist: !!card.steadfastDaoist,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -2139,6 +2141,23 @@ function resolveCombatPass(match, events, isEligible) {
             }
           }
         }
+      }
+
+      // Стойкий Даос: whenever his own normal attack lands directly on
+      // the enemy hero (not a unit), he permanently gains +1 attack
+      // AND +1 health HIMSELF — unlike Даос-мечник (buffs every ally,
+      // atk-only), this is a self-only +1/+1.
+      if (aAttacks && !aTarget && aUnit.steadfastDaoist) {
+        aUnit.atk += 1;
+        aUnit.hp += 1;
+        aUnit.maxHp += 1;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: aUnit.uid });
+      }
+      if (bAttacks && !bTarget && bUnit.steadfastDaoist) {
+        bUnit.atk += 1;
+        bUnit.hp += 1;
+        bUnit.maxHp += 1;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: bUnit.uid });
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
