@@ -279,6 +279,9 @@ export const CARD_POOL = [
   { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'rare', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   { id: 'c71', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0447\u0435\u0440\u0435\u043f\u0430\u0445\u0430-\u043c\u043e\u043d\u0430\u0445', type: 'creature', cost: 3, atk: 2, hp: 3, armor: 1, lifesteal: true, rarity: 'common', locked: true },
+  // daoistSwordsman: see the hero-hit rally-buff hook in the wave
+  // combat loop above.
+  { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -632,6 +635,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
     counterattack: !!card.counterattack,
+    daoistSwordsman: !!card.daoistSwordsman,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -1893,6 +1897,36 @@ function resolveCombatPass(match, events, isEligible) {
         bLifesteal,
         aDied, bDied,
       });
+
+      // Даос-мечник: whenever his OWN normal attack lands directly on
+      // the enemy hero (not a unit), every ally on his own side gains
+      // +1 attack (no hp change — unlike Аннабэль/Барон's own "buff
+      // everyone" effects, this one is atk-only, so a fresh small loop
+      // rather than reusing applyDawnBuff).
+      if (aAttacks && !aTarget && aUnit.daoistSwordsman) {
+        const board = match.boards[nameA];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            const u = board[l2][d2];
+            if (u) {
+              u.atk += 1;
+              events.push({ type: 'rallyBuff', side: nameA, laneIdx: l2, targetDepth: d2, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+            }
+          }
+        }
+      }
+      if (bAttacks && !bTarget && bUnit.daoistSwordsman) {
+        const board = match.boards[nameB];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            const u = board[l2][d2];
+            if (u) {
+              u.atk += 1;
+              events.push({ type: 'rallyBuff', side: nameB, laneIdx: l2, targetDepth: d2, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
+            }
+          }
+        }
+      }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
       if (bDied) killUnit(match, nameA, l, bTarget.depth, events);
