@@ -294,6 +294,8 @@ export const CARD_POOL = [
   // broomOnPlay: see the depth-based placement block above (instant
   // Наследие 2 on first cell; pendingBroomBounce on last cell).
   { id: 'c76', name: '\u0414\u0430\u043e\u0441 \u0441 \u043c\u0435\u0442\u043b\u043e\u0439', type: 'creature', cost: 3, atk: 4, hp: 2, broomOnPlay: true, rarity: 'epic', locked: true },
+  // musicalDaoist: see applyMusicalDaoist above, start-of-round hook.
+  { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -651,6 +653,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
+    musicalDaoist: !!card.musicalDaoist,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -1729,6 +1732,47 @@ function applyLunaBlind(match, events) {
   }
 }
 
+// Музыкальный Даос: at the start of every round he's alive, deals 1
+// damage to EVERY enemy unit anywhere on their board — Чаростойкость
+// blocks it outright, unit by unit. Multiple copies on the board each
+// trigger independently (two copies deal 2 total damage per enemy).
+function applyMusicalDaoist(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.musicalDaoist) continue;
+        const enemySide = otherPlayer(match, side);
+        const enemyBoard = match.boards[enemySide];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            const enemyUnit = enemyBoard[l2][d2];
+            if (!enemyUnit) continue;
+            const resisted = !!enemyUnit.spellResist;
+            if (resisted) {
+              events.push({
+                type: 'musicalDaoistHit', side, targetSide: enemySide,
+                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+                targetLaneIdx: l2, targetDepthIdx: d2, amount: 0, died: false, resisted: true,
+              });
+              continue;
+            }
+            enemyUnit.hp -= 1;
+            const died = enemyUnit.hp <= 0;
+            events.push({
+              type: 'musicalDaoistHit', side, targetSide: enemySide,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+              targetLaneIdx: l2, targetDepthIdx: d2, amount: 1, died, resisted: false,
+            });
+            if (died) killUnit(match, enemySide, l2, d2, events);
+          }
+        }
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -2551,6 +2595,9 @@ export function tryEndTurn(match, username) {
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
   applyLunaBlind(match, events);
+  // Музыкальный Даос also fires here — 1 damage to every enemy unit,
+  // every round he's alive.
+  applyMusicalDaoist(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
