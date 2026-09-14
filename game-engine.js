@@ -291,6 +291,9 @@ export const CARD_POOL = [
   { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare', locked: true },
   { id: 's18', name: '\u041f\u0435\u0441\u043d\u044c \u041b\u0443\u043d\u0435', type: 'spell', cost: 3, songToTheMoon: true, rarity: 'rare', locked: true },
   { id: 's19', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440', type: 'spell', cost: 3, mountainStrength: true, rarity: 'rare', locked: true },
+  // broomOnPlay: see the depth-based placement block above (instant
+  // Наследие 2 on first cell; pendingBroomBounce on last cell).
+  { id: 'c76', name: '\u0414\u0430\u043e\u0441 \u0441 \u043c\u0435\u0442\u043b\u043e\u0439', type: 'creature', cost: 3, atk: 4, hp: 2, broomOnPlay: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -551,6 +554,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHerbalist: [],
     pendingFoxSword: [],
     pendingWaitress: [],
+    pendingBroomBounce: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -769,6 +773,22 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingWaitress.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'armor' });
     }
     // depth === middle: no queued effect at all.
+  }
+
+  // Даос с метлой: same depth-based placement rule as Олень-мечник/
+  // Прекрасная официантка (first/last/middle of the lane, regardless
+  // of which lane). First cell is an instant, purely self-modifying
+  // effect (like Олень-мечник's own), applied immediately — permanent
+  // Наследие 2. Last cell queues a deferred bounce of the FIRST
+  // opposing unit in this SAME lane (see pendingBroomBounce below),
+  // since it affects the OPPONENT and needs to be visibly animated.
+  if (card.broomOnPlay) {
+    if (depth === 0) {
+      unit.legacyValue = (unit.legacyValue || 0) + 2;
+    } else if (depth === DEPTH - 1) {
+      match.pendingBroomBounce.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+    }
+    // depth === middle: no effect at all.
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -2474,6 +2494,44 @@ export function tryEndTurn(match, username) {
     }
   }
 
+
+  // Даос с метлой: same "start of resolution" moment as everything
+  // above — bounces the FIRST opposing unit standing in the same lane
+  // (reusing frontUnit, the exact "first standing unit" scan already
+  // used throughout combat) back to the opponent's hand as a fresh
+  // base card, losing every buff/debuff. Чаростойкость is skipped,
+  // staying exactly where it is; no opposing unit at all in that lane
+  // is simply a no-op.
+  const broomQueue = match.pendingBroomBounce;
+  match.pendingBroomBounce = [];
+  for (const entry of broomQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const info = frontUnit(enemyBoard, entry.laneIdx);
+    if (!info) {
+      events.push({
+        type: 'broomBounce', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+        targetDepthIdx: null, bounced: false, empty: true, resisted: false,
+      });
+      continue;
+    }
+    if (info.unit.spellResist) {
+      events.push({
+        type: 'broomBounce', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+        targetDepthIdx: info.depth, bounced: false, empty: false, resisted: true,
+      });
+      continue;
+    }
+    match.hands[enemySide].push({ id: info.unit.id, uid: nextUid('card') });
+    enemyBoard[entry.laneIdx][info.depth] = null;
+    events.push({
+      type: 'broomBounce', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetDepthIdx: info.depth, bounced: true, empty: false, resisted: false, bouncedCardId: info.unit.id,
+    });
+  }
 
   const battlecrySummonQueue = match.pendingBattlecrySummons;
   match.pendingBattlecrySummons = [];
