@@ -261,6 +261,14 @@ export const CARD_POOL = [
   // always takes it, a unit in the picked cell takes it TOO (not
   // instead of the hero).
   { id: 's15', name: '\u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430', type: 'spell', cost: 2, treeWrath: true, treeWrathAmount: 4, rarity: 'rare', locked: true },
+  // Персик: token spell, only ever obtainable via Персиковый сад — never
+  // part of any deck build, and permanently excluded from the shop
+  // (noShop) regardless of whether Дзен itself is unlocked, in addition
+  // to the temporary faction-wide lock.
+  { id: 's16', name: '\u041f\u0435\u0440\u0441\u0438\u043a', type: 'spell', cost: 0, buffHp: 1, rarity: 'common', locked: true, noShop: true },
+  // peachOrchard: see the end-of-round card-granting block above — the
+  // value is the id of the card it hands out (Персик).
+  { id: 'c66', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0441\u0430\u0434', type: 'creature', cost: 2, atk: 0, hp: 4, peachOrchard: 's16', rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -355,7 +363,7 @@ export function shopPriceForCard(card, currency) {
 // repeat cards. That's expected, not a bug.
 export function shoppableCards() {
   return CARD_POOL.filter((c) => {
-    if (c.locked) return false;
+    if (c.locked || c.noShop) return false;
     const r = shopRarityOf(c);
     return r === 'rare' || r === 'epic' || r === 'legendary';
   });
@@ -2421,6 +2429,19 @@ export function tryEndTurn(match, username) {
               type: 'rallyBuff', side: name, laneIdx: l,
               targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
             });
+          }
+          // Персиковый сад: at the end of every round he survives, adds
+          // a fresh Персик card directly to his owner's hand — NOT
+          // drawn from the deck (this card doesn't live in anyone's
+          // deck at all, it can only ever be obtained this way).
+          // Silently does nothing if the hand is already full, same
+          // MAX_HAND respect as every other card-granting mechanic.
+          if (unit && unit.peachOrchard) {
+            const hand = match.hands[name];
+            if (hand.length < MAX_HAND) {
+              hand.push({ id: unit.peachOrchard, uid: nextUid('card') });
+              events.push({ type: 'peachGiven', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid });
+            }
           }
           // Священник: at the end of every round, picks one random OTHER
           // ally anywhere on his own board (never himself) and permanently
