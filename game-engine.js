@@ -273,6 +273,8 @@ export const CARD_POOL = [
   { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   { id: 'c68', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
+  // timeIllusionist: see the instant swap-on-play block above.
+  { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -691,6 +693,22 @@ export function placeCard(match, username, uid, lane, depth) {
       unit.maxHp -= 1;
     }
     // depth === middle: no change at all.
+  }
+
+  // Иллюзионист времени: on play, instantly swaps places with a random
+  // adjacent ally — applied immediately at placement time, same as
+  // Олень-мечник's own instant (not deferred) effect above, since it's
+  // purely a positional change with nothing else to wait on. A safe
+  // no-op if she has no adjacent ally at all.
+  if (card.timeIllusionist) {
+    const board = match.boards[username];
+    const neighbours = adjacentAllyPositions(board, lane, depth);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      const otherUnit = board[chosen.laneIdx][chosen.depthIdx];
+      board[chosen.laneIdx][chosen.depthIdx] = unit;
+      board[lane][depth] = otherUnit;
+    }
   }
 
   // Травница: same depth-based placement rule as Олень-мечник (first/
