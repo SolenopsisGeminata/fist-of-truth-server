@@ -287,6 +287,7 @@ export const CARD_POOL = [
   // drunkenDisciple: see applyDrunkenDisciple above, hooked in at the
   // same pre-attack point as Мушкетер's musketShot.
   { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
+  { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
