@@ -244,6 +244,8 @@ export const CARD_POOL = [
   { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
   // deerSwordsman: see the depth-based stat shaping in placeCard above.
   { id: 'c61', name: '\u041e\u043b\u0435\u043d\u044c-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, deerSwordsman: true, rarity: 'common', locked: true },
+  // herbalist: see the pendingHerbalist queue in placeCard/tryEndTurn.
+  { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -485,6 +487,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHeals: [],
     pendingShots: [],
     pendingBambooShots: [],
+    pendingHerbalist: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -644,6 +647,22 @@ export function placeCard(match, username, uid, lane, depth) {
       unit.maxHp -= 1;
     }
     // depth === middle: no change at all.
+  }
+
+  // Травница: same depth-based placement rule as Олень-мечник (first/
+  // last/middle of the lane, regardless of which lane), but instead of
+  // reshaping her own stats it triggers a hero-affecting battlecry —
+  // deferred to resolution (see pendingHerbalist below) both so the
+  // client can reveal her placement first and so the amount reflects
+  // her CURRENT attack at resolution time, same reasoning as every
+  // other "amount equals attack" battlecry in this file.
+  if (card.herbalist) {
+    if (depth === 0) {
+      match.pendingHerbalist.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'heal' });
+    } else if (depth === DEPTH - 1) {
+      match.pendingHerbalist.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, kind: 'damage' });
+    }
+    // depth === middle: no queued effect — she's just an ordinary body.
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -1945,6 +1964,34 @@ export function tryEndTurn(match, username) {
       targetHero: !cellUnit, died, resisted,
     });
     if (died) killUnit(match, targetSide, shot.laneIdx, targetDepth, events);
+  }
+
+  // Травница: same depth-based placement trigger as Олень-мечник, but
+  // instead of reshaping her own stats she heals her own hero (first
+  // cell) or strikes the enemy hero directly (last cell) — amount equal
+  // to her CURRENT attack. Reuses the exact heroHeal/heroShot event
+  // types already used by Родник/Монахиня and Арбалетчик/Осадная
+  // башня, so no new client animation is needed. A safe no-op if she's
+  // somehow no longer there by resolution time.
+  const herbalistQueue = match.pendingHerbalist;
+  match.pendingHerbalist = [];
+  for (const entry of herbalistQueue) {
+    if (anyHeroDown(match)) break;
+    const board = match.boards[entry.side];
+    const unit = board[entry.laneIdx] && board[entry.laneIdx][entry.depthIdx];
+    if (!unit || unit.uid !== entry.sourceUid) continue;
+    const amount = unit.atk;
+    if (entry.kind === 'heal') {
+      const healed = healHero(match, entry.side, amount, events);
+      events.push({ type: 'heroHeal', side: entry.side, amount: healed, sourceUid: entry.sourceUid, laneIdx: entry.laneIdx, depthIdx: entry.depthIdx });
+    } else {
+      const targetSide = otherPlayer(match, entry.side);
+      match.hp[targetSide] -= amount;
+      events.push({
+        type: 'heroShot', side: entry.side, targetSide, amount,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      });
+    }
   }
 
   // Толстый караульный's battlecry summon — same moment as everything
