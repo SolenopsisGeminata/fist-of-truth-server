@@ -246,6 +246,8 @@ export const CARD_POOL = [
   { id: 'c61', name: '\u041e\u043b\u0435\u043d\u044c-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, deerSwordsman: true, rarity: 'common', locked: true },
   // herbalist: see the pendingHerbalist queue in placeCard/tryEndTurn.
   { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare', locked: true },
+  // counterattack: see the Контратака block in resolveCombatPass above.
+  { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -581,6 +583,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
+    counterattack: !!card.counterattack,
     placedThisRound,
     bornRound,
   };
@@ -1698,6 +1701,38 @@ function resolveCombatPass(match, events, isEligible) {
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
       if (bDied) killUnit(match, nameA, l, bTarget.depth, events);
+
+      // Контратака (Частокол): whenever a unit carrying this flag takes
+      // damage in this normal-combat exchange, it strikes back at
+      // whoever just hit it for an amount equal to its OWN current
+      // attack (armor-reduced on the attacker, same convention as
+      // every other combat hit) — regardless of whether it dealt any
+      // damage of its own this wave (this is how a Защитник unit, which
+      // never attacks normally, still punishes anyone who hits it) or
+      // whether it survives the initial hit itself (aTarget.unit is
+      // still a valid object reference even after killUnit above
+      // removed it from the board, so its atk/counterattack flag are
+      // still readable).
+      if (aTarget && aApplied > 0 && aTarget.unit.counterattack) {
+        const counterAmount = Math.max(0, aTarget.unit.atk - (aUnit.armor || 0));
+        aUnit.hp -= counterAmount;
+        events.push({
+          type: 'counterattack', side: nameB, targetSide: nameA, amount: counterAmount,
+          laneIdx: l, depthIdx: aTarget.depth, sourceUid: aTarget.unit.uid,
+          targetLaneIdx: l, targetDepthIdx: aInfo.depth,
+        });
+        if (aUnit.hp <= 0) killUnit(match, nameA, l, aInfo.depth, events);
+      }
+      if (bTarget && bApplied > 0 && bTarget.unit.counterattack) {
+        const counterAmount = Math.max(0, bTarget.unit.atk - (bUnit.armor || 0));
+        bUnit.hp -= counterAmount;
+        events.push({
+          type: 'counterattack', side: nameA, targetSide: nameB, amount: counterAmount,
+          laneIdx: l, depthIdx: bTarget.depth, sourceUid: bTarget.unit.uid,
+          targetLaneIdx: l, targetDepthIdx: bInfo.depth,
+        });
+        if (bUnit.hp <= 0) killUnit(match, nameB, l, bInfo.depth, events);
+      }
 
       // Топот (Trample): the overkill from the primary hit (already
       // pushed above as the normal 'wave' event) cascades onward.
