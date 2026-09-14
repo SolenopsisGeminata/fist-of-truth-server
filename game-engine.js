@@ -64,7 +64,7 @@ export const CARD_POOL = [
   // combat, not before.
   { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
   // bounceToHand: see the 'skyWhirlwind' spell kind in resolveSpells.
-  { id: 's7', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, bounceToHand: true, rarity: 'epic' },
+  { id: 's7', name: '\u0412\u043e\u0437\u0434\u0443\u0448\u043d\u0430\u044f \u0431\u0443\u0440\u044f', type: 'spell', cost: 4, bounceToHand: true, rarity: 'epic' },
   // randomBlind: see the 'randomBlind' spell kind in resolveSpells —
   // reuses match.blindedUids exactly like Рейна Ослепительная, just for
   // one random enemy unit instead of all of them.
@@ -250,6 +250,9 @@ export const CARD_POOL = [
   { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'rare', locked: true },
   // bambooGuardian: see the Наследие-transfer reaction inside killUnit.
   { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'rare', locked: true },
+  // Part of the Дзен starter deck (see zenStarterDeckCounts below).
+  // monkGrow: see the end-of-round self-growth block above.
+  { id: 'c65', name: '\u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, legacy: 1, monkGrow: true, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -305,11 +308,11 @@ export function defaultOwnedCounts() {
 // The Дзен starter deck — granted to an account once it unlocks the
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
-// ready to call). Both Олень-Даос and Олень-мечник are confirmed part
-// of it so far, at 3 copies each, same as every card in the Empire
-// starter deck.
+// ready to call). Олень-Даос, Олень-мечник, and Монах-аскет are
+// confirmed part of it so far, at 3 copies each, same as every card in
+// the Empire starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3 };
+  return { c60: 3, c61: 3, c65: 3 };
 }
 
 // ---------- Shop ----------
@@ -601,7 +604,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
 // no repositioning window — placing phase for this round is already
 // over by the time combat runs).
 // `onlyLaneIdx` (optional) restricts the free-cell scan to just that one
-// lane instead of the whole board — used by Небесный вихрь, which needs
+// lane instead of the whole board — used by Воздушная буря, which needs
 // its summon confined to the caster's own mirrored lane specifically.
 // Every existing caller omits it and keeps scanning the entire board.
 function summonUnitToRandomFreeCell(match, side, cardId, events, onlyLaneIdx) {
@@ -1184,7 +1187,7 @@ function resolveSpells(match, events) {
         }
       }
     } else if (spell.kind === 'skyWhirlwind') {
-      // Небесный вихрь: for every cell in the chosen enemy lane, a
+      // Воздушная буря: for every cell in the chosen enemy lane, a
       // non-Чаростойкость unit is bounced back to its OWNER's hand as a
       // fresh copy of its base card — losing every buff/debuff it had
       // accumulated, matching the exact "return to hand" shape already
@@ -2304,6 +2307,19 @@ export function tryEndTurn(match, username) {
             events.push({
               type: 'rallyBuff', side: name, laneIdx: l,
               targetDepth: d, buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
+            });
+          }
+          // Монах-аскет: grows in both attack and health at the end of
+          // every round he survives — permanently +1/+1 to himself.
+          // Same rallyBuff event/animation as Каменная Стена's own
+          // growth, just atk-and-hp instead of hp-only.
+          if (unit && unit.monkGrow) {
+            unit.atk += 1;
+            unit.hp += 1;
+            unit.maxHp += 1;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
             });
           }
           // Священник: at the end of every round, picks one random OTHER
