@@ -257,6 +257,10 @@ export const CARD_POOL = [
   // resolveSpells — targets a specific enemy cell (new targeting shape,
   // see the client's highlightEnemyCellsForSpell).
   { id: 's14', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 2, bounceCellAndNeighbor: true, rarity: 'rare', locked: true },
+  // treeWrath: see the 'treeWrath' spell kind in resolveSpells — hero
+  // always takes it, a unit in the picked cell takes it TOO (not
+  // instead of the hero).
+  { id: 's15', name: '\u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430', type: 'spell', cost: 2, treeWrath: true, treeWrathAmount: 4, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -862,7 +866,7 @@ export function castSpell(match, username, uid, lane, depth) {
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
   if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  if (card.dmg || card.wrathDmg || card.bounceToHand) {
+  if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.healHero) {
     // Родник: any cell works, occupied or empty, friendly or not — the
@@ -932,7 +936,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : 'buff'))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : 'buff')))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -948,6 +952,7 @@ export function castSpell(match, username, uid, lane, depth) {
     summonCardId: card.summonCardId,
     summonCount: card.summonCount,
     healAmount: card.healAmount,
+    treeWrathAmount: card.treeWrathAmount,
   });
   return { ok: true };
 }
@@ -1367,6 +1372,31 @@ function resolveSpells(match, events) {
           targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
         });
       }
+    } else if (spell.kind === 'treeWrath') {
+      // Ярость древа: a random depth within the chosen enemy lane —
+      // the ENEMY HERO always takes the full amount regardless of
+      // what's in that cell, and if a (non-Чаростойкость) unit is
+      // there too, it ALSO takes the same amount, on top of the hero
+      // damage rather than instead of it. Чаростойкость only shields
+      // the unit itself; the hero still takes the hit either way.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targetDepth = Math.floor(Math.random() * DEPTH);
+      const cellUnit = board[spell.laneIdx][targetDepth];
+      const resisted = !!(cellUnit && cellUnit.spellResist);
+      const amount = spell.treeWrathAmount;
+      match.hp[defenderName] -= amount;
+      let died = false;
+      if (cellUnit && !resisted) {
+        cellUnit.hp -= amount;
+        died = cellUnit.hp <= 0;
+      }
+      events.push({
+        type: 'treeWrath', side: spell.side, targetSide: defenderName, amount,
+        laneIdx: spell.laneIdx, targetDepthIdx: targetDepth,
+        targetHero: !cellUnit, died, resisted,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, targetDepth, events);
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
