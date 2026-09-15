@@ -307,6 +307,7 @@ export const CARD_POOL = [
   // Reuses the exact same bounceToHand mechanic as Воздушная буря, but
   // WITHOUT bounceMilitiaChance — no extra summon chance at all.
   { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare', locked: true },
+  { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -1089,6 +1090,7 @@ export function castSpell(match, username, uid, lane, depth) {
     healAmount: card.healAmount,
     treeWrathAmount: card.treeWrathAmount,
     bounceMilitiaChance: card.bounceMilitiaChance,
+    buffHeroHeal: card.buffHeroHeal,
   });
   return { ok: true };
 }
@@ -1682,6 +1684,16 @@ function resolveSpells(match, events) {
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
           buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike, drewCard,
         });
+        // Бурный рост: also heals the CASTER's own hero, alongside the
+        // stat buff on the target unit — reuses the exact same
+        // heroHeal event/animation already used by Родник/Монахиня.
+        if (spell.buffHeroHeal) {
+          const healed = healHero(match, spell.side, spell.buffHeroHeal, events);
+          events.push({
+            type: 'heroHeal', side: spell.side, amount: healed,
+            sourceUid: unit.uid, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx,
+          });
+        }
       }
     }
   }
