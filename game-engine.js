@@ -341,6 +341,7 @@ export const CARD_POOL = [
   // shurikenMaster: see applyShurikenMaster above, pre-attack hook.
   { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic', locked: true },
   { id: 'c93', name: '\u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 5, atk: 3, hp: 9, moneyTree: true, rarity: 'epic', locked: true },
+  { id: 's26', name: '\u0414\u0443\u0445\u043e\u0432\u043d\u044b\u0439 \u0449\u0438\u0442', type: 'spell', cost: 5, buffAtk: 2, buffHp: 2, buffSpellResist: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -1122,7 +1123,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   } else if (card.instantSummon) {
@@ -1211,6 +1212,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffHeroHeal: card.buffHeroHeal,
     mountainArmor: card.mountainArmor,
     buffTrample: card.buffTrample,
+    buffSpellResist: card.buffSpellResist,
     buffLegacy: card.buffLegacy,
   });
   return { ok: true };
@@ -1851,6 +1853,8 @@ function resolveSpells(match, events) {
         // it later by a spell).
         if (spell.buffTrample) unit.trample = true;
         if (spell.buffLegacy) unit.legacyValue = (unit.legacyValue || 0) + spell.buffLegacy;
+        // Духовный щит: permanently grants Чаростойкость (spellResist).
+        if (spell.buffSpellResist) unit.spellResist = true;
         // Двойной удар (the spell): permanently grants the SAME
         // doubleStrike flag already used by Имперский полководец's
         // warlordBuff — once set, actingOrder() keeps giving this unit
@@ -1870,7 +1874,8 @@ function resolveSpells(match, events) {
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
           buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike,
-          buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0, drewCard,
+          buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0,
+          buffSpellResist: !!spell.buffSpellResist, drewCard,
         });
         // Бурный рост: also heals the CASTER's own hero, alongside the
         // stat buff on the target unit — reuses the exact same
