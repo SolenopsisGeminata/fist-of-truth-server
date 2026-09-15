@@ -340,6 +340,7 @@ export const CARD_POOL = [
   { id: 'c91', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 5, atk: 7, hp: 3, drawOnDeath: true, copyOnLegacy: true, rarity: 'epic', locked: true },
   // shurikenMaster: see applyShurikenMaster above, pre-attack hook.
   { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic', locked: true },
+  { id: 'c93', name: '\u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 5, atk: 3, hp: 9, moneyTree: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -611,6 +612,11 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     // discarded, etc.), at which point it naturally stops appearing
     // (it's simply no longer IN the opponent's hand to match against).
     revealedTo: { [nameA]: [], [nameB]: [] },
+    // Денежное дерево: hp snapshot at the start of each round's
+    // resolution, re-populated fresh every round in tryEndTurn — starts
+    // empty here so a card placed before the very first resolution
+    // ever runs still has somewhere safe to record its own baseline.
+    roundStartHp: {},
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -718,6 +724,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     drawOnDeath: !!card.drawOnDeath,
     copyOnLegacy: !!card.copyOnLegacy,
     shurikenMaster: !!card.shurikenMaster,
+    moneyTree: !!card.moneyTree,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -893,6 +900,16 @@ export function placeCard(match, username, uid, lane, depth) {
   // CURRENT hand at resolution time, not whatever it was at cast time).
   if (card.mysteriousMaid) {
     match.pendingMysteriousMaid.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect || 0 });
+  }
+
+  // Денежное дерево: if she's placed THIS round (after the round-start
+  // hp snapshot in tryEndTurn already ran, or simply because match.round
+  // hasn't reached its own resolution yet for a first-ever placement),
+  // she has no baseline hp recorded yet — record it right now, at the
+  // moment she's placed, so "took damage this round" still works
+  // correctly even for a unit that was just played.
+  if (card.moneyTree) {
+    match.roundStartHp[unit.uid] = unit.hp;
   }
 
   // Трусливый убийца: checked instantly at placement (same "no
@@ -2624,6 +2641,23 @@ export function tryEndTurn(match, username) {
 
   match.phase = 'resolving';
 
+  // Денежное дерево (and any future "took damage this round" card):
+  // snapshot every unit's hp right now, before anything in this
+  // round's resolution can change it — compared at the very end of
+  // resolution to determine who actually took damage this round,
+  // without needing to touch every single damage-dealing site
+  // scattered throughout combat/spells/abilities.
+  match.roundStartHp = {};
+  for (const name of match.players) {
+    const board = match.boards[name];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (unit) match.roundStartHp[unit.uid] = unit.hp;
+      }
+    }
+  }
+
   // Both sides' placements are locked in the instant resolution starts —
   // units placed this round stop being "provisional" (dimmed and
   // repositionable client-side) right now, even though combat hasn't
@@ -3163,6 +3197,22 @@ export function tryEndTurn(match, username) {
           if (unit && unit.fixedHeal) {
             const healed = healHero(match, name, unit.fixedHeal, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
+          }
+          // Денежное дерево: at the end of the round, if this unit took
+          // damage THIS round (compared against the hp snapshot taken
+          // at the very start of resolution, before anything could
+          // change it), draws 1 card from her owner's own deck.
+          if (unit && unit.moneyTree) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              const hand = match.hands[name];
+              if (hand.length < MAX_HAND) {
+                const beforeLen = hand.length;
+                draw(match.decks[name], hand, 1);
+                const drew = hand.length > beforeLen;
+                events.push({ type: 'moneyTreeDraw', side: name, sourceUid: unit.uid, laneIdx: l, depthIdx: d, drew });
+              }
+            }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
