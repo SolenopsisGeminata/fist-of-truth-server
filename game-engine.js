@@ -330,6 +330,9 @@ export const CARD_POOL = [
   // hook) and applyInsight (Понимание) above.
   { id: 'c87', name: '\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c', type: 'creature', cost: 4, atk: 1, hp: 1, insightEffect: 1, mysteriousMaid: true, rarity: 'legendary', locked: true },
   { id: 'c88', name: '\u041f\u043e\u0432\u0430\u0440 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 5, atk: 2, hp: 3, cookBuff: true, rarity: 'common', locked: true },
+  // warriorSheep: see the Наследие-receiving heal reaction right next
+  // to Дракон в доспехах's own; her own battlecry reuses healOnPlay.
+  { id: 'c89', name: '\u041e\u0432\u0446\u0430-\u0432\u043e\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 6, healOnPlay: 6, warriorSheep: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -703,6 +706,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
+    warriorSheep: !!card.warriorSheep,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -1323,6 +1327,17 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
         events.push({
           type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
           targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 2, sourceUid: targetUnit.uid,
+        });
+      }
+      // Овца-воин: whenever THIS specific unit is the RECIPIENT of a
+      // Наследие transfer (same "recipient, not born-with" scoping as
+      // Бамбуковый страж/Дракон в доспехах above), heals her OWNER's
+      // own hero for 6 — same fixed amount as her own battlecry heal.
+      if (targetUnit.warriorSheep) {
+        const healed = healHero(match, side, 6, events);
+        events.push({
+          type: 'heroHeal', side, amount: healed,
+          sourceUid: targetUnit.uid, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
         });
       }
     }
