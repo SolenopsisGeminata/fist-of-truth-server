@@ -300,6 +300,8 @@ export const CARD_POOL = [
   { id: 'c79', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 4, atk: 1, hp: 6, fixedHeal: 2, rarity: 'common', locked: true },
   // bellOnPlay: see the pendingBellBounce queue in placeCard/tryEndTurn.
   { id: 'c80', name: '\u0414\u0430\u043e\u0441 \u0441 \u043a\u043e\u043b\u043e\u043a\u043e\u043b\u044c\u0447\u0438\u043a\u043e\u043c', type: 'creature', cost: 4, atk: 2, hp: 1, bellOnPlay: true, rarity: 'rare', locked: true },
+  // calmNunOnPlay: see the pendingCalmNun queue in placeCard/tryEndTurn.
+  { id: 'c81', name: '\u0421\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u043c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 4, atk: 2, hp: 3, legacy: 2, calmNunOnPlay: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -562,6 +564,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingWaitress: [],
     pendingBroomBounce: [],
     pendingBellBounce: [],
+    pendingCalmNun: [],
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -806,6 +809,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // next resolution (see pendingBellBounce below).
   if (card.bellOnPlay) {
     match.pendingBellBounce.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Спокойная монахиня: battlecry — doubles the hp of a random
+  // ADJACENT ally. Same deferred reasoning as every other battlecry
+  // (needs to be visibly animated), resolved at the start of the next
+  // resolution (see pendingCalmNun below).
+  if (card.calmNunOnPlay) {
+    match.pendingCalmNun.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -2647,6 +2658,26 @@ export function tryEndTurn(match, username) {
       type: 'bellBounce', side: entry.side, targetSide: enemySide,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
       targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
+    });
+  }
+
+  // Спокойная монахиня: battlecry — doubles the hp of a random
+  // ADJACENT ally (reuses adjacentAllyPositions). A safe no-op if she
+  // has no adjacent ally at all.
+  const calmNunQueue = match.pendingCalmNun;
+  match.pendingCalmNun = [];
+  for (const entry of calmNunQueue) {
+    const board = match.boards[entry.side];
+    const neighbours = adjacentAllyPositions(board, entry.laneIdx, entry.depthIdx);
+    if (neighbours.length === 0) continue;
+    const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+    const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+    const gained = targetUnit.hp;
+    targetUnit.hp += gained;
+    targetUnit.maxHp += gained;
+    events.push({
+      type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
+      targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: gained, sourceUid: entry.sourceUid,
     });
   }
 
