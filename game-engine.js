@@ -308,6 +308,7 @@ export const CARD_POOL = [
   // WITHOUT bounceMilitiaChance — no extra summon chance at all.
   { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare', locked: true },
   { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', locked: true },
+  { id: 'c83', name: '\u0422\u0440\u0443\u0441\u043b\u0438\u0432\u044b\u0439 \u0443\u0431\u0438\u0439\u0446\u0430', type: 'creature', cost: 4, atk: 3, hp: 5, doubleStrike: true, cowardlyAssassin: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -670,6 +671,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
     valleyBarn: !!card.valleyBarn,
+    cowardlyAssassin: !!card.cowardlyAssassin,
+    cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -824,6 +827,23 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution (see pendingCalmNun below).
   if (card.calmNunOnPlay) {
     match.pendingCalmNun.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Трусливый убийца: checked instantly at placement (same "no
+  // deferral needed" reasoning as Олень-мечник/Иллюзионист времени,
+  // since it's purely about board state) — if the OPPOSING lane (same
+  // lane index, enemy side) has ANY unit at all right now, he can't
+  // attack for the round he was placed in. Cleared right after that
+  // round's combat resolves (see the reset alongside Рейна's blind
+  // clearing in tryEndTurn), so the restriction only ever covers this
+  // one round.
+  if (card.cowardlyAssassin) {
+    const enemySide = otherPlayer(match, username);
+    const enemyBoard = match.boards[enemySide];
+    const hasOpposingUnit = enemyBoard[lane].some((cell) => !!cell);
+    if (hasOpposingUnit) {
+      unit.cantAttackThisRound = true;
+    }
   }
 
   // Battlecry: a one-time, permanent +2/+2 to every other allied unit
@@ -2307,8 +2327,8 @@ function resolveCombatPass(match, events, isEligible) {
 function resolveCombat(match, events) {
   const blinded = match.blindedUids;
   const isBlinded = (unit) => !!(blinded && blinded.has(unit.uid));
-  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !!unit.firstStrike);
-  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.cantAttackThisRound && !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.cantAttackThisRound && !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
@@ -2767,6 +2787,19 @@ export function tryEndTurn(match, username) {
   resolveSpells(match, events);
   resolveCombat(match, events);
   match.blindedUids = null; // Рейна's effect only ever covers the one round it's cast for
+  // Трусливый убийца: same "only covers the one round it applies to"
+  // scoping as Рейна's blind above — cleared right AFTER combat has
+  // already resolved for the round he was placed in, so the
+  // restriction actually protected him through that round's fights
+  // before disappearing for every round after.
+  for (const name of match.players) {
+    const board = match.boards[name];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (board[l][d]) board[l][d].cantAttackThisRound = false;
+      }
+    }
+  }
 
   // Крестьянское ополчение resolves here, genuinely after this round's
   // combat has already happened — summons land on whatever's free right
