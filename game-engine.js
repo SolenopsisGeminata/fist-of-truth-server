@@ -316,6 +316,9 @@ export const CARD_POOL = [
   // mechanic above. armoredDragon: see the Наследие-receiving reaction
   // right next to Бамбуковый страж's own.
   { id: 'c86', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 4, atk: 3, hp: 5, armor: 2, rockEffect: true, armoredDragon: true, rarity: 'epic', locked: true },
+  // Reuses the exact same instantSummon mechanic as Отряд ополченцев,
+  // just summoning Бамбуковый страж (c64) instead of Ополченец (c10).
+  { id: 's22', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u0430\u044f \u0437\u0430\u0449\u0438\u0442\u0430', type: 'spell', cost: 4, instantSummon: true, summonCardId: 'c64', summonCount: 3, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
