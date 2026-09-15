@@ -310,6 +310,8 @@ export const CARD_POOL = [
   { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', locked: true },
   { id: 'c83', name: '\u0422\u0440\u0443\u0441\u043b\u0438\u0432\u044b\u0439 \u0443\u0431\u0438\u0439\u0446\u0430', type: 'creature', cost: 4, atk: 3, hp: 5, doubleStrike: true, cowardlyAssassin: true, rarity: 'rare', locked: true },
   { id: 'c84', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, heavenlyWarrior: true, rarity: 'rare', locked: true },
+  // stork: see the end-of-round card-copying block above.
+  { id: 'c85', name: '\u0410\u0438\u0441\u0442 \u0441 \u043f\u0435\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 0, hp: 4, stork: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -3066,6 +3068,30 @@ export function tryEndTurn(match, username) {
             if (hand.length < MAX_HAND) {
               hand.push({ id: unit.peachOrchard, uid: nextUid('card') });
               events.push({ type: 'peachGiven', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid });
+            }
+          }
+          // Аист с пером: at the end of every round he survives, copies
+          // a random ENEMY unit currently on the board and adds THAT
+          // card to his OWNER's OWN hand (not the opponent's) — same
+          // MAX_HAND respect as Персиковый сад, but the card id is
+          // chosen dynamically from whatever the enemy has out right
+          // now, rather than being a single fixed card.
+          if (unit && unit.stork) {
+            const hand = match.hands[name];
+            if (hand.length < MAX_HAND) {
+              const enemySide = otherPlayer(match, name);
+              const enemyBoard = match.boards[enemySide];
+              const enemyUnits = [];
+              for (let l2 = 0; l2 < LANES; l2++) {
+                for (let d2 = 0; d2 < DEPTH; d2++) {
+                  if (enemyBoard[l2][d2]) enemyUnits.push(enemyBoard[l2][d2]);
+                }
+              }
+              if (enemyUnits.length > 0) {
+                const chosen = enemyUnits[Math.floor(Math.random() * enemyUnits.length)];
+                hand.push({ id: chosen.id, uid: nextUid('card') });
+                events.push({ type: 'storkCopy', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid, copiedCardId: chosen.id });
+              }
             }
           }
           // Божественные лозы: doubles her own CURRENT hp at the end of
