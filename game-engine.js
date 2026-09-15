@@ -319,6 +319,9 @@ export const CARD_POOL = [
   // Reuses the exact same instantSummon mechanic as Отряд ополченцев,
   // just summoning Бамбуковый страж (c64) instead of Ополченец (c10).
   { id: 's22', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u0430\u044f \u0437\u0430\u0449\u0438\u0442\u0430', type: 'spell', cost: 4, instantSummon: true, summonCardId: 'c64', summonCount: 3, rarity: 'epic', locked: true },
+  // Reuses the exact same wellspring mechanic as Родник, just with a
+  // bigger heal amount and a bigger draw amount.
+  { id: 's23', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0440\u0430\u0439', type: 'spell', cost: 4, healHero: 6, drawCard: 3, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
