@@ -309,6 +309,7 @@ export const CARD_POOL = [
   { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare', locked: true },
   { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', locked: true },
   { id: 'c83', name: '\u0422\u0440\u0443\u0441\u043b\u0438\u0432\u044b\u0439 \u0443\u0431\u0438\u0439\u0446\u0430', type: 'creature', cost: 4, atk: 3, hp: 5, doubleStrike: true, cowardlyAssassin: true, rarity: 'rare', locked: true },
+  { id: 'c84', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, heavenlyWarrior: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -672,6 +673,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     steadfastDaoist: !!card.steadfastDaoist,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
+    heavenlyWarrior: !!card.heavenlyWarrior,
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
@@ -1800,6 +1802,39 @@ function applyLunaBlind(match, events) {
 // damage to EVERY enemy unit anywhere on their board — Чаростойкость
 // blocks it outright, unit by unit. Multiple copies on the board each
 // trigger independently (two copies deal 2 total damage per enemy).
+// Небесный воин: whenever his own attack lands directly on the enemy
+// hero, 50% chance to bounce a random enemy unit anywhere on the
+// board back to hand — reuses the exact same random-target bounce
+// logic (and the 'bellBounce' event/animation) already built for
+// Даос с колокольчиком.
+function applyHeavenlyWarriorHeroBounce(match, side, events, sourceUid, sourceLaneIdx, sourceDepthIdx) {
+  if (Math.random() >= 0.5) return;
+  const enemySide = otherPlayer(match, side);
+  const enemyBoard = match.boards[enemySide];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (enemyBoard[l][d]) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+  if (targetUnit.spellResist) {
+    events.push({
+      type: 'bellBounce', side, targetSide: enemySide, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
+      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true,
+    });
+    return;
+  }
+  match.hands[enemySide].push({ id: targetUnit.id, uid: nextUid('card') });
+  enemyBoard[chosen.laneIdx][chosen.depthIdx] = null;
+  events.push({
+    type: 'bellBounce', side, targetSide: enemySide, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
+  });
+}
+
 function applyMusicalDaoist(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -2251,6 +2286,16 @@ function resolveCombatPass(match, events, isEligible) {
         bUnit.hp += 1;
         bUnit.maxHp += 1;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: bUnit.uid });
+      }
+
+      // Небесный воин: whenever his own attack lands directly on the
+      // enemy hero, 50% chance to bounce a random enemy unit back to
+      // hand.
+      if (aAttacks && !aTarget && aUnit.heavenlyWarrior) {
+        applyHeavenlyWarriorHeroBounce(match, nameA, events, aUnit.uid, l, aInfo.depth);
+      }
+      if (bAttacks && !bTarget && bUnit.heavenlyWarrior) {
+        applyHeavenlyWarriorHeroBounce(match, nameB, events, bUnit.uid, l, bInfo.depth);
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
