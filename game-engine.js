@@ -342,6 +342,11 @@ export const CARD_POOL = [
   { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic', locked: true },
   { id: 'c93', name: '\u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 5, atk: 3, hp: 9, moneyTree: true, rarity: 'epic', locked: true },
   { id: 's26', name: '\u0414\u0443\u0445\u043e\u0432\u043d\u044b\u0439 \u0449\u0438\u0442', type: 'spell', cost: 5, buffAtk: 2, buffHp: 2, buffSpellResist: true, rarity: 'epic', locked: true },
+  // Потомок дракона: never shows up in the shop or a starter deck —
+  // the ONLY way to get one is Странствующий ученик transforming into
+  // it upon receiving Наследие (see transformOnLegacy below).
+  { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, rarity: 'legendary', locked: true, noShop: true },
+  { id: 'c95', name: '\u0421\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, transformOnLegacy: 'c94', rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
@@ -726,6 +731,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     copyOnLegacy: !!card.copyOnLegacy,
     shurikenMaster: !!card.shurikenMaster,
     moneyTree: !!card.moneyTree,
+    transformOnLegacy: card.transformOnLegacy || null,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -1404,6 +1410,23 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
             type: 'hermitCopy', side, sourceLaneIdx: chosen.laneIdx, sourceDepthIdx: chosen.depthIdx,
             targetLaneIdx: dest.laneIdx, targetDepthIdx: dest.depthIdx, cardId: copy.id, sourceUid: targetUnit.uid,
             copyUid: copy.uid, atk: copy.atk, hp: copy.hp, maxHp: copy.maxHp, armor: copy.armor,
+          });
+        }
+      }
+      // Странствующий ученик: whenever THIS specific unit is the
+      // RECIPIENT of a Наследие transfer, transforms ENTIRELY into
+      // Потомок дракона — a full replacement, not a buff, so whatever
+      // +N/+N she just received above is simply discarded along with
+      // the rest of her old self (she's a different creature now).
+      if (targetUnit.transformOnLegacy) {
+        const newCard = cardById(targetUnit.transformOnLegacy);
+        if (newCard) {
+          const transformed = buildUnitFromCard(newCard, false, match.round);
+          board[chosen.laneIdx][chosen.depthIdx] = transformed;
+          events.push({
+            type: 'discipleTransform', side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
+            newCardId: newCard.id, newUid: transformed.uid, atk: transformed.atk, hp: transformed.hp,
+            maxHp: transformed.maxHp, armor: transformed.armor, sourceUid: targetUnit.uid,
           });
         }
       }
