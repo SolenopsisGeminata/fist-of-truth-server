@@ -312,6 +312,10 @@ export const CARD_POOL = [
   { id: 'c84', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, heavenlyWarrior: true, rarity: 'rare', locked: true },
   // stork: see the end-of-round card-copying block above.
   { id: 'c85', name: '\u0410\u0438\u0441\u0442 \u0441 \u043f\u0435\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 0, hp: 4, stork: true, rarity: 'epic', locked: true },
+  // rockEffect: see the immunity checks added to every bounce-to-hand
+  // mechanic above. armoredDragon: see the Наследие-receiving reaction
+  // right next to Бамбуковый страж's own.
+  { id: 'c86', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 4, atk: 3, hp: 5, armor: 2, rockEffect: true, armoredDragon: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -676,6 +680,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
     heavenlyWarrior: !!card.heavenlyWarrior,
+    rockEffect: !!card.rockEffect,
+    armoredDragon: !!card.armoredDragon,
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
@@ -1256,6 +1262,19 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
         });
         if (targetUnit.hp <= 0) killUnit(match, side, chosen.laneIdx, chosen.depthIdx, events);
       }
+      // Дракон в доспехах: whenever THIS specific unit is the RECIPIENT
+      // of a Наследие transfer (same "recipient, not born-with" scoping
+      // as Бамбуковый страж above), gains an ADDITIONAL permanent +2
+      // attack and +2 health on top of the transfer's own +N/+N.
+      if (targetUnit.armoredDragon) {
+        targetUnit.atk += 2;
+        targetUnit.hp += 2;
+        targetUnit.maxHp += 2;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+          targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 2, sourceUid: targetUnit.uid,
+        });
+      }
     }
   }
 }
@@ -1404,11 +1423,11 @@ function resolveSpells(match, events) {
           });
           continue;
         }
-        if (targetUnit.spellResist) {
+        if (targetUnit.spellResist || targetUnit.rockEffect) {
           events.push({
             type: 'spell', kind: 'skyWhirlwind', side: spell.side, cardId: spell.cardId,
             laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
-            bounced: false, empty: false, resisted: true,
+            bounced: false, empty: false, resisted: true, rockProtected: !!targetUnit.rockEffect,
           });
           continue;
         }
@@ -1577,11 +1596,11 @@ function resolveSpells(match, events) {
           });
           continue;
         }
-        if (targetUnit.spellResist) {
+        if (targetUnit.spellResist || targetUnit.rockEffect) {
           events.push({
             type: 'spell', kind: 'bounceCellAndNeighbor', side: spell.side, cardId: spell.cardId,
             laneIdx: spell.laneIdx, targetSide: defenderName,
-            targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: false, empty: false, resisted: true,
+            targetLaneIdx: cell.laneIdx, targetDepthIdx: cell.depthIdx, bounced: false, empty: false, resisted: true, rockProtected: !!targetUnit.rockEffect,
           });
           continue;
         }
@@ -1822,10 +1841,10 @@ function applyHeavenlyWarriorHeroBounce(match, side, events, sourceUid, sourceLa
   if (targets.length === 0) return;
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
-  if (targetUnit.spellResist) {
+  if (targetUnit.spellResist || targetUnit.rockEffect) {
     events.push({
       type: 'bellBounce', side, targetSide: enemySide, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
-      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true,
+      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true, rockProtected: !!targetUnit.rockEffect,
     });
     return;
   }
@@ -2719,11 +2738,11 @@ export function tryEndTurn(match, username) {
       });
       continue;
     }
-    if (info.unit.spellResist) {
+    if (info.unit.spellResist || info.unit.rockEffect) {
       events.push({
         type: 'broomBounce', side: entry.side, targetSide: enemySide,
         laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
-        targetDepthIdx: info.depth, bounced: false, empty: false, resisted: true,
+        targetDepthIdx: info.depth, bounced: false, empty: false, resisted: true, rockProtected: !!info.unit.rockEffect,
       });
       continue;
     }
@@ -2761,11 +2780,11 @@ export function tryEndTurn(match, username) {
     }
     const chosen = targets[Math.floor(Math.random() * targets.length)];
     const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
-    if (targetUnit.spellResist) {
+    if (targetUnit.spellResist || targetUnit.rockEffect) {
       events.push({
         type: 'bellBounce', side: entry.side, targetSide: enemySide,
         laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
-        targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true,
+        targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true, rockProtected: !!targetUnit.rockEffect,
       });
       continue;
     }
