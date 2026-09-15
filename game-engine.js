@@ -347,6 +347,11 @@ export const CARD_POOL = [
   // it upon receiving Наследие (see transformOnLegacy below).
   { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, rarity: 'legendary', locked: true, noShop: true },
   { id: 'c95', name: '\u0421\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, transformOnLegacy: 'c94', rarity: 'legendary', locked: true },
+  // Росток Женьшеня: never shows up in the shop or a starter deck —
+  // the ONLY way to get one is Бессмертный фикус generating it each
+  // round end (see peachOrchard below, same mechanic as Персиковый сад).
+  { id: 's27', name: '\u0420\u043e\u0441\u0442\u043e\u043a \u0416\u0435\u043d\u044c\u0448\u0435\u043d\u044f', type: 'spell', cost: 0, healHero: 6, rarity: 'common', locked: true, noShop: true },
+  { id: 'c96', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0444\u0438\u043a\u0443\u0441', type: 'creature', cost: 5, atk: 0, hp: 25, peachOrchard: 's27', rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
@@ -3414,7 +3419,7 @@ export function tryEndTurn(match, username) {
             const hand = match.hands[name];
             if (hand.length < MAX_HAND) {
               hand.push({ id: unit.peachOrchard, uid: nextUid('card') });
-              events.push({ type: 'peachGiven', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid });
+              events.push({ type: 'peachGiven', side: name, laneIdx: l, depthIdx: d, sourceUid: unit.uid, cardId: unit.peachOrchard });
             }
           }
           // Аист с пером: at the end of every round he survives, copies
