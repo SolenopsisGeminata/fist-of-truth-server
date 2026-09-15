@@ -338,6 +338,8 @@ export const CARD_POOL = [
   // посохом. drawOnDeath: see killUnit above. copyOnLegacy: see the
   // Наследие-receiving reaction right next to Овца-воин's own.
   { id: 'c91', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 5, atk: 7, hp: 3, drawOnDeath: true, copyOnLegacy: true, rarity: 'epic', locked: true },
+  // shurikenMaster: see applyShurikenMaster above, pre-attack hook.
+  { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -715,6 +717,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     warriorSheep: !!card.warriorSheep,
     drawOnDeath: !!card.drawOnDeath,
     copyOnLegacy: !!card.copyOnLegacy,
+    shurikenMaster: !!card.shurikenMaster,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -2238,6 +2241,32 @@ function countUnitsOnBoard(board) {
 // this hook re-reads the board fresh and correctly sees him gone, so
 // the attack itself simply doesn't happen — no special-casing needed
 // here, effectiveAtk already returns 0 for an empty cell.
+// Мастер сюрикенов: right before his own attack (same pre-attack hook
+// point as Мушкетер/Пьяный ученик), throws a shuriken into the
+// OPPOSING lane, dealing 2 damage sequentially to EVERY enemy unit
+// there, from nearest (depth 0) to farthest (depth 2) — Чаростойкость
+// blocks just that one hit, the shuriken still bounces on to the next
+// enemy in the lane. Disappears once it reaches the last enemy (or
+// there's nobody there at all — a safe no-op).
+function applyShurikenMaster(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+  const enemyBoard = match.boards[enemySide];
+  for (let d = 0; d < DEPTH; d++) {
+    const targetUnit = enemyBoard[sourceLaneIdx][d];
+    if (!targetUnit) continue;
+    const resisted = !!targetUnit.spellResist;
+    let died = false;
+    if (!resisted) {
+      targetUnit.hp -= 2;
+      died = targetUnit.hp <= 0;
+    }
+    events.push({
+      type: 'shurikenHit', side, targetSide: enemySide, laneIdx: sourceLaneIdx,
+      sourceDepthIdx, targetDepthIdx: d, amount: resisted ? 0 : 2, died, resisted, sourceUid: sourceUnit.uid,
+    });
+    if (died) killUnit(match, enemySide, sourceLaneIdx, d, events);
+  }
+}
+
 function applyDrunkenDisciple(match, side, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
   sourceUnit.hp -= 1;
   const selfDied = sourceUnit.hp <= 0;
@@ -2360,6 +2389,8 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.drunkenDisciple) applyDrunkenDisciple(match, nameA, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.drunkenDisciple) applyDrunkenDisciple(match, nameB, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.shurikenMaster) applyShurikenMaster(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.shurikenMaster) applyShurikenMaster(match, nameB, nameA, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.bambooShotRecurring && match.round > aUnit.bornRound) applyBambooRecurringShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
