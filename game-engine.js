@@ -326,6 +326,9 @@ export const CARD_POOL = [
   // the new optional mountainArmor field for the extra +3 armor.
   { id: 's24', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440 \u0422\u044f\u043d\u044c-\u0428\u0430\u043d\u044c', type: 'spell', cost: 4, mountainStrength: true, mountainArmor: 3, rarity: 'epic', locked: true },
   { id: 's25', name: '\u041f\u043e\u0441\u043e\u0445 \u0434\u0438\u043a\u043e\u0433\u043e \u0432\u0435\u043f\u0440\u044f', type: 'spell', cost: 4, buffAtk: 2, buffHp: 2, buffLifesteal: true, buffTrample: true, buffLegacy: 2, rarity: 'legendary', locked: true },
+  // mysteriousMaid: see applyMysteriousMaidShift (battlecry + hero-hit
+  // hook) and applyInsight (Понимание) above.
+  { id: 'c87', name: '\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c', type: 'creature', cost: 4, atk: 1, hp: 1, insightEffect: 1, mysteriousMaid: true, rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
@@ -589,6 +592,13 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBroomBounce: [],
     pendingBellBounce: [],
     pendingCalmNun: [],
+    pendingMysteriousMaid: [],
+    // Понимание (Insight): revealedTo[username] is the list of the
+    // OPPONENT's hand-card uids that `username` has been shown face-up
+    // — persists until that card leaves the opponent's hand (played,
+    // discarded, etc.), at which point it naturally stops appearing
+    // (it's simply no longer IN the opponent's hand to match against).
+    revealedTo: { [nameA]: [], [nameB]: [] },
     pendingBattlecrySummons: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
@@ -692,6 +702,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
+    mysteriousMaid: !!card.mysteriousMaid,
+    insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
@@ -847,6 +859,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution (see pendingCalmNun below).
   if (card.calmNunOnPlay) {
     match.pendingCalmNun.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Таинственная служанка Сюань: battlecry — triggers her own
+  // Понимание 1 AND the ally-buff/enemy-debuff shift, both deferred to
+  // resolution (same reasoning as every other battlecry: needs to be
+  // visibly animated, and Понимание specifically needs the opponent's
+  // CURRENT hand at resolution time, not whatever it was at cast time).
+  if (card.mysteriousMaid) {
+    match.pendingMysteriousMaid.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect || 0 });
   }
 
   // Трусливый убийца: checked instantly at placement (same "no
@@ -1923,6 +1944,56 @@ function applyMusicalDaoist(match, events) {
 
 // Амбар долины: at the start of every round he's alive, gives a
 // random OTHER ally (never himself) +1 attack and +1 health.
+// Понимание (Insight): when a card carrying this effect is played,
+// reveals N of the OPPONENT's current hand cards to the CASTER —
+// permanently, until that specific card leaves their hand (played,
+// etc.), at which point it naturally stops appearing (it's simply no
+// longer in the opponent's hand to match a revealed uid against).
+// Prioritizes cards not already revealed to this caster; if fewer than
+// N remain unrevealed, reveals whatever's left (capped, never crashes
+// on an empty or small hand).
+function applyInsight(match, casterSide, amount, events) {
+  const enemySide = otherPlayer(match, casterSide);
+  const enemyHand = match.hands[enemySide];
+  const alreadyRevealed = new Set(match.revealedTo[casterSide]);
+  const unrevealed = enemyHand.filter((c) => !alreadyRevealed.has(c.uid));
+  const count = Math.min(amount, unrevealed.length);
+  const pool = [...unrevealed];
+  const revealedUids = [];
+  for (let i = 0; i < count; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    const [chosen] = pool.splice(idx, 1);
+    match.revealedTo[casterSide].push(chosen.uid);
+    revealedUids.push(chosen.uid);
+  }
+  events.push({ type: 'insightReveal', side: casterSide, targetSide: enemySide, count, revealedUids });
+}
+
+// Таинственная служанка Сюань: +1 attack to every ally, -1 attack
+// (floored at 0) to every enemy — shared by both her battlecry
+// (played alongside her own Понимание 1) and her hero-hit trigger.
+function applyMysteriousMaidShift(match, side, events, sourceUid) {
+  const enemySide = otherPlayer(match, side);
+  const ownBoard = match.boards[side];
+  const enemyBoard = match.boards[enemySide];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = ownBoard[l][d];
+      if (u) {
+        u.atk += 1;
+        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid });
+      }
+    }
+  }
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = enemyBoard[l][d];
+      if (u) u.atk = Math.max(0, u.atk - 1);
+    }
+  }
+  events.push({ type: 'maidenShift', side, targetSide: enemySide, sourceUid });
+}
+
 function applyValleyBarn(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -2345,6 +2416,17 @@ function resolveCombatPass(match, events, isEligible) {
       }
       if (bAttacks && !bTarget && bUnit.heavenlyWarrior) {
         applyHeavenlyWarriorHeroBounce(match, nameB, events, bUnit.uid, l, bInfo.depth);
+      }
+
+      // Таинственная служанка Сюань: whenever her own attack lands
+      // directly on the enemy hero, the SAME ally-buff/enemy-debuff
+      // shift as her battlecry — but this does NOT re-trigger
+      // Понимание, only the atk shift.
+      if (aAttacks && !aTarget && aUnit.mysteriousMaid) {
+        applyMysteriousMaidShift(match, nameA, events, aUnit.uid);
+      }
+      if (bAttacks && !bTarget && bUnit.mysteriousMaid) {
+        applyMysteriousMaidShift(match, nameB, events, bUnit.uid);
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
@@ -2845,6 +2927,17 @@ export function tryEndTurn(match, username) {
     });
   }
 
+  // Таинственная служанка Сюань: same "start of resolution" battlecry
+  // moment as everything above — triggers her own Понимание first
+  // (using the OPPONENT's hand as it stands right now), then the
+  // ally-buff/enemy-debuff shift.
+  const mysteriousMaidQueue = match.pendingMysteriousMaid;
+  match.pendingMysteriousMaid = [];
+  for (const entry of mysteriousMaidQueue) {
+    if (entry.insightAmount > 0) applyInsight(match, entry.side, entry.insightAmount, events);
+    applyMysteriousMaidShift(match, entry.side, events, entry.sourceUid);
+  }
+
   const battlecrySummonQueue = match.pendingBattlecrySummons;
   match.pendingBattlecrySummons = [];
   for (const summon of battlecrySummonQueue) {
@@ -3284,6 +3377,8 @@ export function snapshotFor(match, username) {
   const pendingSpells = stillPlacing
     ? match.pendingSpells.filter((sp) => sp.side === username)
     : match.pendingSpells;
+  const revealedUids = new Set(match.revealedTo[username] || []);
+  const revealedOpponentCards = match.hands[other].filter((c) => revealedUids.has(c.uid));
   return {
     matchId: match.matchId,
     round: match.round,
@@ -3298,6 +3393,7 @@ export function snapshotFor(match, username) {
     opponentBoard,
     myHand: match.hands[username],
     opponentHandCount,
+    revealedOpponentCards,
     pendingSpells,
     opponentName: other,
     myReady: match.readyToEnd[username],
