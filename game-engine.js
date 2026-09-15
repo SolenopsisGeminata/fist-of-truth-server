@@ -329,6 +329,7 @@ export const CARD_POOL = [
   // mysteriousMaid: see applyMysteriousMaidShift (battlecry + hero-hit
   // hook) and applyInsight (Понимание) above.
   { id: 'c87', name: '\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c', type: 'creature', cost: 4, atk: 1, hp: 1, insightEffect: 1, mysteriousMaid: true, rarity: 'legendary', locked: true },
+  { id: 'c88', name: '\u041f\u043e\u0432\u0430\u0440 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 5, atk: 2, hp: 3, cookBuff: true, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -385,11 +386,11 @@ export function defaultOwnedCounts() {
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
 // ready to call). Олень-Даос, Олень-мечник, Монах-аскет,
-// Отшельник-Даос, Божественная черепаха-монах, and Сосновый страж are
-// confirmed part of it so far, at 3 copies each, same as every card in
-// the Empire starter deck.
+// Отшельник-Даос, Божественная черепаха-монах, Сосновый страж, and
+// Повар дома Вкуса are confirmed part of it so far, at 3 copies each,
+// same as every card in the Empire starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3 };
+  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3, c88: 3 };
 }
 
 // ---------- Shop ----------
@@ -901,6 +902,21 @@ export function placeCard(match, username, uid, lane, depth) {
         const other = board[l][d];
         if (other && other !== unit) {
           match.pendingRallyBuffs.push({ side: username, laneIdx: l, depthIdx: d, buffAtk: 2, buffHp: 2, sourceUid: unit.uid });
+        }
+      }
+    }
+
+  // Повар дома Вкуса: same deferred pendingRallyBuffs queue as Паладин
+  // above, but +1 attack ONLY (no hp change) and — unlike Паладин —
+  // INCLUDING himself, since he's already sitting on the board by the
+  // time this queue drains.
+  } else if (card.cookBuff) {
+    const board = match.boards[username];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const other = board[l][d];
+        if (other) {
+          match.pendingRallyBuffs.push({ side: username, laneIdx: l, depthIdx: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid });
         }
       }
     }
