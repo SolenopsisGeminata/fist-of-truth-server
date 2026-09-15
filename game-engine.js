@@ -272,7 +272,7 @@ export const CARD_POOL = [
   // divineVines: see the end-of-round doubling block above.
   { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
-  { id: 'c68', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
+  { id: 'c68', name: '\u0414\u0430\u043e\u0441 \u0441 \u043f\u043e\u0441\u043e\u0445\u043e\u043c', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
   // timeIllusionist: see the instant swap-on-play block above.
   { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
   // foxSwordOnPlay: see pendingFoxSword above.
@@ -333,6 +333,7 @@ export const CARD_POOL = [
   // warriorSheep: see the Наследие-receiving heal reaction right next
   // to Дракон в доспехах's own; her own battlecry reuses healOnPlay.
   { id: 'c89', name: '\u041e\u0432\u0446\u0430-\u0432\u043e\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 6, healOnPlay: 6, warriorSheep: true, rarity: 'rare', locked: true },
+  { id: 'c90', name: '\u0421\u043c\u0435\u043b\u044b\u0439 \u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 1, hp: 8, braveTeacher: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -389,7 +390,7 @@ export function defaultOwnedCounts() {
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
 // ready to call). Олень-Даос, Олень-мечник, Монах-аскет,
-// Отшельник-Даос, Божественная черепаха-монах, Сосновый страж, and
+// Даос с посохом (formerly Отшельник-Даос), Божественная черепаха-монах, Сосновый страж, and
 // Повар дома Вкуса are confirmed part of it so far, at 3 copies each,
 // same as every card in the Empire starter deck.
 export function zenStarterDeckCounts() {
@@ -597,6 +598,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBellBounce: [],
     pendingCalmNun: [],
     pendingMysteriousMaid: [],
+    pendingBraveTeacher: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -864,6 +866,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution (see pendingCalmNun below).
   if (card.calmNunOnPlay) {
     match.pendingCalmNun.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Смелый учитель: battlecry — increases a random ADJACENT ally's
+  // attack by an amount equal to THAT ally's own CURRENT hp. Same
+  // deferred reasoning as every other battlecry (needs to be visibly
+  // animated, and the amount must reflect the ally's hp at RESOLUTION
+  // time, not cast time).
+  if (card.braveTeacher) {
+    match.pendingBraveTeacher.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Таинственная служанка Сюань: battlecry — triggers her own
@@ -2955,6 +2966,28 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
       targetDepth: chosen.depthIdx, buffAtk: 0, buffHp: gained, sourceUid: entry.sourceUid,
+    });
+  }
+
+  // Смелый учитель: same "start of resolution" battlecry moment as
+  // everything above — increases a random ADJACENT ally's attack by
+  // an amount equal to THAT ally's own current hp (reuses the exact
+  // same dynamic-amount computation as Сила гор, just aimed at a
+  // neighbor instead of a spell-targeted unit). A safe no-op if he
+  // has no adjacent ally at all.
+  const braveTeacherQueue = match.pendingBraveTeacher;
+  match.pendingBraveTeacher = [];
+  for (const entry of braveTeacherQueue) {
+    const board = match.boards[entry.side];
+    const neighbours = adjacentAllyPositions(board, entry.laneIdx, entry.depthIdx);
+    if (neighbours.length === 0) continue;
+    const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+    const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+    const amount = targetUnit.hp;
+    targetUnit.atk += amount;
+    events.push({
+      type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
+      targetDepth: chosen.depthIdx, buffAtk: amount, buffHp: 0, sourceUid: entry.sourceUid,
     });
   }
 
