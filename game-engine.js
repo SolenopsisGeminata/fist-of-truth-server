@@ -352,6 +352,7 @@ export const CARD_POOL = [
   // round end (see peachOrchard below, same mechanic as Персиковый сад).
   { id: 's27', name: '\u0420\u043e\u0441\u0442\u043e\u043a \u0416\u0435\u043d\u044c\u0448\u0435\u043d\u044f', type: 'spell', cost: 0, healHero: 6, rarity: 'common', locked: true, noShop: true },
   { id: 'c96', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0444\u0438\u043a\u0443\u0441', type: 'creature', cost: 5, atk: 0, hp: 25, peachOrchard: 's27', rarity: 'legendary', locked: true },
+  { id: 'c97', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0442\u0438\u0433\u0440', type: 'creature', cost: 6, atk: 7, hp: 7, immortalTiger: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -737,6 +738,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     shurikenMaster: !!card.shurikenMaster,
     moneyTree: !!card.moneyTree,
     transformOnLegacy: card.transformOnLegacy || null,
+    immortalTiger: !!card.immortalTiger,
+    tigerBoostUsed: false,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -2298,6 +2301,32 @@ function countUnitsOnBoard(board) {
 // blocks just that one hit, the shuriken still bounces on to the next
 // enemy in the lane. Disappears once it reaches the last enemy (or
 // there's nobody there at all — a safe no-op).
+// Бессмертный тигр: right before his own attack, if there are exactly
+// 5 allies on his own board (himself included), gains a PERMANENT +3
+// attack, +3 health, and Топот (trample) — but only the very FIRST
+// time this condition is met across the whole match, tracked via his
+// own tigerBoostUsed flag so it can never fire a second time even if
+// the ally count returns to exactly 5 again later.
+function applyImmortalTiger(match, side, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+  if (sourceUnit.tigerBoostUsed) return;
+  const board = match.boards[side];
+  let allyCount = 0;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (board[l][d]) allyCount++;
+    }
+  }
+  if (allyCount !== 5) return;
+  sourceUnit.tigerBoostUsed = true;
+  sourceUnit.atk += 3;
+  sourceUnit.hp += 3;
+  sourceUnit.maxHp += 3;
+  sourceUnit.trample = true;
+  events.push({
+    type: 'tigerAwaken', side, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid: sourceUnit.uid,
+  });
+}
+
 function applyShurikenMaster(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
   const enemyBoard = match.boards[enemySide];
   for (let d = 0; d < DEPTH; d++) {
@@ -2441,6 +2470,8 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.drunkenDisciple) applyDrunkenDisciple(match, nameB, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.shurikenMaster) applyShurikenMaster(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.shurikenMaster) applyShurikenMaster(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.immortalTiger) applyImmortalTiger(match, nameA, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.immortalTiger) applyImmortalTiger(match, nameB, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.bambooShotRecurring && match.round > aUnit.bornRound) applyBambooRecurringShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
