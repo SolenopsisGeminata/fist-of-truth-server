@@ -325,6 +325,7 @@ export const CARD_POOL = [
   // Reuses the exact same mountainStrength mechanic as Сила гор, plus
   // the new optional mountainArmor field for the extra +3 armor.
   { id: 's24', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440 \u0422\u044f\u043d\u044c-\u0428\u0430\u043d\u044c', type: 'spell', cost: 4, mountainStrength: true, mountainArmor: 3, rarity: 'epic', locked: true },
+  { id: 's25', name: '\u041f\u043e\u0441\u043e\u0445 \u0434\u0438\u043a\u043e\u0433\u043e \u0432\u0435\u043f\u0440\u044f', type: 'spell', cost: 4, buffAtk: 2, buffHp: 2, buffLifesteal: true, buffTrample: true, buffLegacy: 2, rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
@@ -1043,7 +1044,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
   } else if (card.instantSummon) {
@@ -1131,6 +1132,8 @@ export function castSpell(match, username, uid, lane, depth) {
     bounceMilitiaChance: card.bounceMilitiaChance,
     buffHeroHeal: card.buffHeroHeal,
     mountainArmor: card.mountainArmor,
+    buffTrample: card.buffTrample,
+    buffLegacy: card.buffLegacy,
   });
   return { ok: true };
 }
@@ -1722,6 +1725,15 @@ function resolveSpells(match, events) {
         if (spell.buffHp) { unit.hp += spell.buffHp; unit.maxHp += spell.buffHp; }
         if (spell.buffArmor) unit.armor = (unit.armor || 0) + spell.buffArmor;
         if (spell.buffLifesteal) unit.lifesteal = true;
+        // Посох дикого вепря: also grants Топот (trample) permanently,
+        // and TRANSFERS the Наследие effect at the given value — using
+        // the exact same legacyValue field already used by every other
+        // Наследие-carrying card, so it stacks/behaves identically on
+        // death (killUnit already handles legacyValue generically,
+        // regardless of whether the unit was born with it or granted
+        // it later by a spell).
+        if (spell.buffTrample) unit.trample = true;
+        if (spell.buffLegacy) unit.legacyValue = (unit.legacyValue || 0) + spell.buffLegacy;
         // Двойной удар (the spell): permanently grants the SAME
         // doubleStrike flag already used by Имперский полководец's
         // warlordBuff — once set, actingOrder() keeps giving this unit
@@ -1740,7 +1752,8 @@ function resolveSpells(match, events) {
           type: 'spell', kind: 'buff', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: spell.side, targetDepth: spell.depthIdx,
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
-          buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike, drewCard,
+          buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike,
+          buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0, drewCard,
         });
         // Бурный рост: also heals the CASTER's own hero, alongside the
         // stat buff on the target unit — reuses the exact same
