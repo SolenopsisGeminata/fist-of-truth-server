@@ -334,6 +334,10 @@ export const CARD_POOL = [
   // to Дракон в доспехах's own; her own battlecry reuses healOnPlay.
   { id: 'c89', name: '\u041e\u0432\u0446\u0430-\u0432\u043e\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 6, healOnPlay: 6, warriorSheep: true, rarity: 'rare', locked: true },
   { id: 'c90', name: '\u0421\u043c\u0435\u043b\u044b\u0439 \u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 1, hp: 8, braveTeacher: true, rarity: 'rare', locked: true },
+  // New card reusing the name freed up by c68's rename to Даос с
+  // посохом. drawOnDeath: see killUnit above. copyOnLegacy: see the
+  // Наследие-receiving reaction right next to Овца-воин's own.
+  { id: 'c91', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 5, atk: 7, hp: 3, drawOnDeath: true, copyOnLegacy: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -709,6 +713,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
     warriorSheep: !!card.warriorSheep,
+    drawOnDeath: !!card.drawOnDeath,
+    copyOnLegacy: !!card.copyOnLegacy,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -1228,6 +1234,13 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     match.hp[side] -= 5;
     events.push({ type: 'selfExplosion', side, amount: 5, sourceUid: unit.uid, laneIdx, depthIdx });
   }
+  // Отшельник-Даос: on death, draws 1 card from her OWNER's own deck.
+  if (unit && unit.drawOnDeath) {
+    const beforeLen = match.hands[side].length;
+    draw(match.decks[side], match.hands[side], 1);
+    const drew = match.hands[side].length > beforeLen;
+    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, laneIdx, depthIdx, drew });
+  }
   // Метеоритный страж: on death, throws his weapon at a random depth
   // within the SAME lane index on the enemy's board — his own mirrored
   // lane, same convention as Имперская пушка. Damage equals his own
@@ -1350,6 +1363,27 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           type: 'heroHeal', side, amount: healed,
           sourceUid: targetUnit.uid, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
         });
+      }
+      // Отшельник-Даос: whenever THIS specific unit is the RECIPIENT of
+      // a Наследие transfer (same "recipient, not born-with" scoping as
+      // Бамбуковый страж/Дракон в доспехах/Овца-воин above), copies
+      // herself onto a random ADJACENT EMPTY cell — the copy does NOT
+      // carry the Наследие she just received (legacyValue reset to 0),
+      // matching everything else about her at that exact moment
+      // (current atk/hp/armor snapshot, not her base stats).
+      if (targetUnit.copyOnLegacy) {
+        const emptyNeighbours = adjacentCellPositions(chosen.laneIdx, chosen.depthIdx)
+          .filter((pos) => !board[pos.laneIdx][pos.depthIdx]);
+        if (emptyNeighbours.length > 0) {
+          const dest = emptyNeighbours[Math.floor(Math.random() * emptyNeighbours.length)];
+          const copy = { ...targetUnit, uid: nextUid('unit'), legacyValue: 0, placedThisRound: true };
+          board[dest.laneIdx][dest.depthIdx] = copy;
+          events.push({
+            type: 'hermitCopy', side, sourceLaneIdx: chosen.laneIdx, sourceDepthIdx: chosen.depthIdx,
+            targetLaneIdx: dest.laneIdx, targetDepthIdx: dest.depthIdx, cardId: copy.id, sourceUid: targetUnit.uid,
+            copyUid: copy.uid, atk: copy.atk, hp: copy.hp, maxHp: copy.maxHp, armor: copy.armor,
+          });
+        }
       }
     }
   }
