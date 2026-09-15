@@ -322,6 +322,9 @@ export const CARD_POOL = [
   // Reuses the exact same wellspring mechanic as Родник, just with a
   // bigger heal amount and a bigger draw amount.
   { id: 's23', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0440\u0430\u0439', type: 'spell', cost: 4, healHero: 6, drawCard: 3, rarity: 'epic', locked: true },
+  // Reuses the exact same mountainStrength mechanic as Сила гор, plus
+  // the new optional mountainArmor field for the extra +3 armor.
+  { id: 's24', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440 \u0422\u044f\u043d\u044c-\u0428\u0430\u043d\u044c', type: 'spell', cost: 4, mountainStrength: true, mountainArmor: 3, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -1127,6 +1130,7 @@ export function castSpell(match, username, uid, lane, depth) {
     treeWrathAmount: card.treeWrathAmount,
     bounceMilitiaChance: card.bounceMilitiaChance,
     buffHeroHeal: card.buffHeroHeal,
+    mountainArmor: card.mountainArmor,
   });
   return { ok: true };
 }
@@ -1565,14 +1569,19 @@ function resolveSpells(match, events) {
       // equal to its OWN CURRENT hp — computed fresh right here at
       // resolution, not at cast time, so anything that changed her hp
       // in between (a heal, a buff, combat damage even) is reflected.
+      // Сила гор Тянь-Шань additionally grants a fixed armor bonus
+      // (mountainArmor) on top of that — a separate, optional field so
+      // the original Сила гор (with no armor bonus at all) is
+      // completely unaffected.
       const board = match.boards[spell.side];
       const unit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
       if (unit) {
         const amount = unit.hp;
         unit.atk += amount;
+        if (spell.mountainArmor) unit.armor = (unit.armor || 0) + spell.mountainArmor;
         events.push({
-          type: 'mountainStrength', side: spell.side, laneIdx: spell.laneIdx,
-          depthIdx: spell.depthIdx, amount, sourceUid: unit.uid,
+          type: 'mountainStrength', side: spell.side, cardId: spell.cardId, laneIdx: spell.laneIdx,
+          depthIdx: spell.depthIdx, amount, sourceUid: unit.uid, armorAmount: spell.mountainArmor || 0,
         });
       }
     } else if (spell.kind === 'bounceCellAndNeighbor') {
