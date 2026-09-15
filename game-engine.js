@@ -353,6 +353,7 @@ export const CARD_POOL = [
   { id: 's27', name: '\u0420\u043e\u0441\u0442\u043e\u043a \u0416\u0435\u043d\u044c\u0448\u0435\u043d\u044f', type: 'spell', cost: 0, healHero: 6, rarity: 'common', locked: true, noShop: true },
   { id: 'c96', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0444\u0438\u043a\u0443\u0441', type: 'creature', cost: 5, atk: 0, hp: 25, peachOrchard: 's27', rarity: 'legendary', locked: true },
   { id: 'c97', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0442\u0438\u0433\u0440', type: 'creature', cost: 6, atk: 7, hp: 7, immortalTiger: true, rarity: 'epic', locked: true },
+  { id: 'c98', name: '\u0410\u0440\u0445\u0430\u0442 \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 6, atk: 6, hp: 6, armor: 4, armoredArhat: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -550,12 +551,19 @@ function adjacentCellPositions(laneIdx, depthIdx) {
 // Same cardinal-neighbour rule as Synergy, but returns the actual
 // coordinates of each occupied neighbour instead of just a count — used
 // by Родная тетушка to pick which adjacent ally to bless.
+// Same cardinal-neighbour rule as Synergy, but returns the actual
+// coordinates of each occupied neighbour instead of just a count — used
+// by Родная тетушка to pick which adjacent ally to bless. Shielded
+// units (Щит) are never eligible, on either side of the pool: this is
+// the single most-reused "random ally neighbour" selector in the game
+// (Родная тетушка, Спокойная монахиня, Смелый учитель, etc.), so
+// excluding them here protects all of them at once.
 function adjacentAllyPositions(board, laneIdx, depthIdx) {
   const positions = [];
   const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   for (const [dl, dd] of deltas) {
     const l = laneIdx + dl, d = depthIdx + dd;
-    if (l >= 0 && l < LANES && d >= 0 && d < DEPTH && board[l][d]) positions.push({ laneIdx: l, depthIdx: d });
+    if (l >= 0 && l < LANES && d >= 0 && d < DEPTH && board[l][d] && !board[l][d].shieldEffect) positions.push({ laneIdx: l, depthIdx: d });
   }
   return positions;
 }
@@ -740,6 +748,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     transformOnLegacy: card.transformOnLegacy || null,
     immortalTiger: !!card.immortalTiger,
     tigerBoostUsed: false,
+    armoredArhat: !!card.armoredArhat,
+    shieldEffect: !!card.shieldEffect,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -1140,6 +1150,11 @@ export function castSpell(match, username, uid, lane, depth) {
   } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
+    // Архат в доспехах: Щит makes a unit immune to being the TARGET of
+    // ANY spell at all — checked here, right at cast validation, since
+    // every "buff a specific own unit" spell in the game funnels
+    // through this exact same branch.
+    if (unit.shieldEffect) return { error: '\u042e\u043d\u0438\u0442 \u0437\u0430\u0449\u0438\u0449\u0451\u043d \u044d\u0444\u0444\u0435\u043a\u0442\u043e\u043c \u0429\u0438\u0442.' };
   } else if (card.instantSummon) {
     // Отряд ополченцев: any cell works, occupied or empty, friendly or
     // not — same as Родник, the cell is purely where the player points
@@ -1400,6 +1415,20 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           sourceUid: targetUnit.uid, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
         });
       }
+      // Архат в доспехах: whenever THIS specific unit is the RECIPIENT
+      // of a Наследие transfer, ON TOP OF the standard +N/+N and
+      // legacyValue she already received above (unchanged, standard
+      // behavior for every Наследие recipient), she ALSO permanently
+      // gains Щит and Кража жизни (lifesteal) — a one-time grant, not
+      // reapplied on subsequent transfers (though re-setting an
+      // already-true flag is harmless either way).
+      if (targetUnit.armoredArhat) {
+        targetUnit.shieldEffect = true;
+        targetUnit.lifesteal = true;
+        events.push({
+          type: 'arhatShield', side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, sourceUid: targetUnit.uid,
+        });
+      }
       // Отшельник-Даос: whenever THIS specific unit is the RECIPIENT of
       // a Наследие transfer (same "recipient, not born-with" scoping as
       // Бамбуковый страж/Дракон в доспехах/Овца-воин above), copies
@@ -1586,7 +1615,7 @@ function resolveSpells(match, events) {
           });
           continue;
         }
-        if (targetUnit.spellResist || targetUnit.rockEffect) {
+        if (targetUnit.spellResist || targetUnit.rockEffect || targetUnit.shieldEffect) {
           events.push({
             type: 'spell', kind: 'skyWhirlwind', side: spell.side, cardId: spell.cardId,
             laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
@@ -1683,7 +1712,7 @@ function resolveSpells(match, events) {
       const ownAllies = [];
       for (let l = 0; l < LANES; l++) {
         for (let d = 0; d < DEPTH; d++) {
-          if (ownBoard[l][d]) ownAllies.push({ laneIdx: l, depthIdx: d });
+          if (ownBoard[l][d] && !ownBoard[l][d].shieldEffect) ownAllies.push({ laneIdx: l, depthIdx: d });
         }
       }
       let allyLaneIdx = null, allyDepthIdx = null;
@@ -1698,7 +1727,7 @@ function resolveSpells(match, events) {
       const enemies = [];
       for (let l = 0; l < LANES; l++) {
         for (let d = 0; d < DEPTH; d++) {
-          if (enemyBoard[l][d]) enemies.push({ laneIdx: l, depthIdx: d });
+          if (enemyBoard[l][d] && !enemyBoard[l][d].shieldEffect) enemies.push({ laneIdx: l, depthIdx: d });
         }
       }
       let enemyLaneIdx = null, enemyDepthIdx = null, enemyResisted = false;
@@ -1764,7 +1793,7 @@ function resolveSpells(match, events) {
           });
           continue;
         }
-        if (targetUnit.spellResist || targetUnit.rockEffect) {
+        if (targetUnit.spellResist || targetUnit.rockEffect || targetUnit.shieldEffect) {
           events.push({
             type: 'spell', kind: 'bounceCellAndNeighbor', side: spell.side, cardId: spell.cardId,
             laneIdx: spell.laneIdx, targetSide: defenderName,
@@ -2022,7 +2051,7 @@ function applyHeavenlyWarriorHeroBounce(match, side, events, sourceUid, sourceLa
   if (targets.length === 0) return;
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
-  if (targetUnit.spellResist || targetUnit.rockEffect) {
+  if (targetUnit.spellResist || targetUnit.rockEffect || targetUnit.shieldEffect) {
     events.push({
       type: 'bellBounce', side, targetSide: enemySide, laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
       targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, bounced: false, empty: false, resisted: true, rockProtected: !!targetUnit.rockEffect,
@@ -3053,7 +3082,7 @@ export function tryEndTurn(match, username) {
       });
       continue;
     }
-    if (info.unit.spellResist || info.unit.rockEffect) {
+    if (info.unit.spellResist || info.unit.rockEffect || info.unit.shieldEffect) {
       events.push({
         type: 'broomBounce', side: entry.side, targetSide: enemySide,
         laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
@@ -3095,7 +3124,7 @@ export function tryEndTurn(match, username) {
     }
     const chosen = targets[Math.floor(Math.random() * targets.length)];
     const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
-    if (targetUnit.spellResist || targetUnit.rockEffect) {
+    if (targetUnit.spellResist || targetUnit.rockEffect || targetUnit.shieldEffect) {
       events.push({
         type: 'bellBounce', side: entry.side, targetSide: enemySide,
         laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
