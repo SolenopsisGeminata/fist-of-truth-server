@@ -64,7 +64,7 @@ export const CARD_POOL = [
   // combat, not before.
   { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
   // bounceToHand: see the 'skyWhirlwind' spell kind in resolveSpells.
-  { id: 's7', name: '\u0412\u043e\u0437\u0434\u0443\u0448\u043d\u0430\u044f \u0431\u0443\u0440\u044f', type: 'spell', cost: 4, bounceToHand: true, rarity: 'epic' },
+  { id: 's7', name: '\u0412\u043e\u0437\u0434\u0443\u0448\u043d\u0430\u044f \u0431\u0443\u0440\u044f', type: 'spell', cost: 4, bounceToHand: true, bounceMilitiaChance: 0.3, rarity: 'epic' },
   // randomBlind: see the 'randomBlind' spell kind in resolveSpells —
   // reuses match.blindedUids exactly like Рейна Ослепительная, just for
   // one random enemy unit instead of all of them.
@@ -304,6 +304,9 @@ export const CARD_POOL = [
   { id: 'c81', name: '\u0421\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u043c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 4, atk: 2, hp: 3, legacy: 2, calmNunOnPlay: true, rarity: 'rare', locked: true },
   // valleyBarn: see applyValleyBarn above, start-of-round hook.
   { id: 'c82', name: '\u0410\u043c\u0431\u0430\u0440 \u0434\u043e\u043b\u0438\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 8, valleyBarn: true, rarity: 'rare', locked: true },
+  // Reuses the exact same bounceToHand mechanic as Воздушная буря, but
+  // WITHOUT bounceMilitiaChance — no extra summon chance at all.
+  { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -1085,6 +1088,7 @@ export function castSpell(match, username, uid, lane, depth) {
     summonCount: card.summonCount,
     healAmount: card.healAmount,
     treeWrathAmount: card.treeWrathAmount,
+    bounceMilitiaChance: card.bounceMilitiaChance,
   });
   return { ok: true };
 }
@@ -1390,7 +1394,7 @@ function resolveSpells(match, events) {
           bounced: true, empty: false, resisted: false, bouncedCardId: targetUnit.id,
         });
       }
-      if (Math.random() < 0.3) {
+      if (spell.bounceMilitiaChance && Math.random() < spell.bounceMilitiaChance) {
         summonUnitToRandomFreeCell(match, spell.side, 'c10', events, spell.laneIdx);
       }
     } else if (spell.kind === 'randomBlind') {
