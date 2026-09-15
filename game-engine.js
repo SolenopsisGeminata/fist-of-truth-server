@@ -302,6 +302,8 @@ export const CARD_POOL = [
   { id: 'c80', name: '\u0414\u0430\u043e\u0441 \u0441 \u043a\u043e\u043b\u043e\u043a\u043e\u043b\u044c\u0447\u0438\u043a\u043e\u043c', type: 'creature', cost: 4, atk: 2, hp: 1, bellOnPlay: true, rarity: 'rare', locked: true },
   // calmNunOnPlay: see the pendingCalmNun queue in placeCard/tryEndTurn.
   { id: 'c81', name: '\u0421\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u043c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 4, atk: 2, hp: 3, legacy: 2, calmNunOnPlay: true, rarity: 'rare', locked: true },
+  // valleyBarn: see applyValleyBarn above, start-of-round hook.
+  { id: 'c82', name: '\u0410\u043c\u0431\u0430\u0440 \u0434\u043e\u043b\u0438\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 8, valleyBarn: true, rarity: 'rare', locked: true },
 ];
 
 export function cardById(id) {
@@ -663,6 +665,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     drunkenDisciple: !!card.drunkenDisciple,
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
+    valleyBarn: !!card.valleyBarn,
     bambooGuardian: !!card.bambooGuardian,
     placedThisRound,
     bornRound,
@@ -1798,6 +1801,37 @@ function applyMusicalDaoist(match, events) {
   }
 }
 
+// Амбар долины: at the start of every round he's alive, gives a
+// random OTHER ally (never himself) +1 attack and +1 health.
+function applyValleyBarn(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.valleyBarn) continue;
+        const others = [];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (l2 === l && d2 === d) continue;
+            if (board[l2][d2]) others.push({ laneIdx: l2, depthIdx: d2 });
+          }
+        }
+        if (others.length === 0) continue;
+        const chosen = others[Math.floor(Math.random() * others.length)];
+        const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+        targetUnit.atk += 1;
+        targetUnit.hp += 1;
+        targetUnit.maxHp += 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+          targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+        });
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -2702,6 +2736,9 @@ export function tryEndTurn(match, username) {
   // Музыкальный Даос also fires here — 1 damage to every enemy unit,
   // every round he's alive.
   applyMusicalDaoist(match, events);
+  // Амбар долины also fires here — +1/+1 to a random OTHER ally,
+  // every round he's alive.
+  applyValleyBarn(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
