@@ -247,9 +247,9 @@ export const CARD_POOL = [
   // herbalist: see the pendingHerbalist queue in placeCard/tryEndTurn.
   { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare', locked: true },
   // counterattack: see the Контратака block in resolveCombatPass above.
-  { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'rare', locked: true },
+  { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'common', locked: true },
   // bambooGuardian: see the Наследие-transfer reaction inside killUnit.
-  { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'rare', locked: true },
+  { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'common', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   // monkGrow: see the end-of-round self-growth block above.
   { id: 'c65', name: '\u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, legacy: 1, monkGrow: true, rarity: 'common', locked: true },
@@ -276,7 +276,7 @@ export const CARD_POOL = [
   // timeIllusionist: see the instant swap-on-play block above.
   { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
   // foxSwordOnPlay: see pendingFoxSword above.
-  { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'rare', locked: true },
+  { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'common', locked: true },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   { id: 'c71', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0447\u0435\u0440\u0435\u043f\u0430\u0445\u0430-\u043c\u043e\u043d\u0430\u0445', type: 'creature', cost: 3, atk: 2, hp: 3, armor: 1, lifesteal: true, rarity: 'common', locked: true },
   // daoistSwordsman: see the hero-hit rally-buff hook in the wave
@@ -416,11 +416,12 @@ export function defaultOwnedCounts() {
 // Дзен faction (not built yet; this is just the composition the future
 // unlock step will hand out, kept here so that step has something
 // ready to call). Олень-Даос, Олень-мечник, Монах-аскет,
-// Даос с посохом (formerly Отшельник-Даос), Божественная черепаха-монах, Сосновый отшельник (formerly Сосновый страж), and
-// Повар дома Вкуса are confirmed part of it so far, at 3 copies each,
-// same as every card in the Empire starter deck.
+// Даос с посохом (formerly Отшельник-Даос), Божественная черепаха-монах, Сосновый отшельник (formerly Сосновый страж),
+// Повар дома Вкуса, Частокол, Бамбуковый страж, and Лис с мечом are
+// confirmed part of it so far, at 3 copies each, same as every card in
+// the Empire starter deck.
 export function zenStarterDeckCounts() {
-  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3, c88: 3 };
+  return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3, c88: 3, c63: 3, c64: 3, c70: 3 };
 }
 
 // ---------- Shop ----------
