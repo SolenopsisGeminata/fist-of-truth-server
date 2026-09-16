@@ -359,6 +359,7 @@ export const CARD_POOL = [
   { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic', locked: true },
   { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic', locked: true },
   { id: 'c102', name: '\u041d\u0443\u0430\u043b\u044c \u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0439', type: 'creature', cost: 7, atk: 10, hp: 5, nualOnPlay: true, rarity: 'legendary', locked: true },
+  { id: 'c103', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, wiseDeerOnPlay: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -633,6 +634,8 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBraveTeacher: [],
     pendingNualFrontStab: [],
     pendingNualQuadStab: [],
+    pendingWiseDeerDebuff: [],
+    pendingWiseDeerBuff: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -946,6 +949,19 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingNualFrontStab.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
     } else if (depth === DEPTH - 1) {
       match.pendingNualQuadStab.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+    }
+    // depth === middle: no queued effect at all.
+  }
+
+  // Мудрый олень: same depth-based placement rule as Нуаль Облачный/
+  // Сестра дома Вкуса (first/last/middle, any lane) — first cell
+  // debuffs every enemy, last cell buffs every ally, both deferred to
+  // resolution for visible animation.
+  if (card.wiseDeerOnPlay) {
+    if (depth === 0) {
+      match.pendingWiseDeerDebuff.push({ side: username, sourceUid: unit.uid });
+    } else if (depth === DEPTH - 1) {
+      match.pendingWiseDeerBuff.push({ side: username, sourceUid: unit.uid });
     }
     // depth === middle: no queued effect at all.
   }
@@ -2408,6 +2424,14 @@ function countUnitsOnBoard(board) {
 // time this condition is met across the whole match, tracked via his
 // own tigerBoostUsed flag so it can never fire a second time even if
 // the ally count returns to exactly 5 again later.
+// Мудрый олень (first cell): reduces EVERY enemy unit's attack AND
+// health by 1 — a shielded (Щит) unit is skipped entirely (no
+// reduction at all, matching Щит's broad "immune to debuffs directed
+// against it" wording), attack floors at 0, and a unit whose health
+// reaches 0 or below dies exactly like any other hp loss. All the
+// individual debuff events are pushed FIRST, then deaths are resolved
+// afterward, so the client sees every stat change land before any
+// death animation plays.
 function applyImmortalTiger(match, side, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
   if (sourceUnit.tigerBoostUsed) return;
   const board = match.boards[side];
@@ -3311,6 +3335,57 @@ export function tryEndTurn(match, username) {
         targetDepthIdx: chosen.depthIdx, amount: resisted ? 0 : 3, resisted, died, sourceUid: entry.sourceUid,
       });
       if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+    }
+  }
+
+  // Мудрый олень (first cell): -1 attack (floored at 0) and -1 health
+  // to EVERY enemy unit on the board — Чаростойкость/Щит protects
+  // individual units from just their own hit, the rest still get
+  // debuffed. A unit whose hp reaches 0 from this dies normally.
+  const wiseDeerDebuffQueue = match.pendingWiseDeerDebuff;
+  match.pendingWiseDeerDebuff = [];
+  for (const entry of wiseDeerDebuffQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const targetUnit = enemyBoard[l][d];
+        if (!targetUnit) continue;
+        const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
+        let died = false;
+        if (!resisted) {
+          targetUnit.atk = Math.max(0, targetUnit.atk - 1);
+          targetUnit.hp -= 1;
+          died = targetUnit.hp <= 0;
+        }
+        events.push({
+          type: 'wiseDeerDebuff', side: entry.side, targetSide: enemySide, laneIdx: l,
+          depthIdx: d, resisted, died, sourceUid: entry.sourceUid,
+        });
+        if (died) killUnit(match, enemySide, l, d, events);
+      }
+    }
+  }
+
+  // Мудрый олень (last cell): +2 attack and +2 health to EVERY ally
+  // unit on the board (himself included) — same Щит exclusion as
+  // everywhere else, since Щит blocks beneficial effects too.
+  const wiseDeerBuffQueue = match.pendingWiseDeerBuff;
+  match.pendingWiseDeerBuff = [];
+  for (const entry of wiseDeerBuffQueue) {
+    const ownBoard = match.boards[entry.side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const targetUnit = ownBoard[l][d];
+        if (!targetUnit || targetUnit.shieldEffect) continue;
+        targetUnit.atk += 2;
+        targetUnit.hp += 2;
+        targetUnit.maxHp += 2;
+        events.push({
+          type: 'rallyBuff', side: entry.side, laneIdx: l,
+          targetDepth: d, buffAtk: 2, buffHp: 2, sourceUid: entry.sourceUid,
+        });
+      }
     }
   }
 
