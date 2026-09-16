@@ -28,7 +28,7 @@ const DB_PATH = process.env.DB_PATH || 'db.json';
 
 // ---------- Database ----------
 const adapter = new JSONFileSync(DB_PATH);
-const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {}, mail: {} });
+const db = new LowSync(adapter, { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {}, mail: {}, unlockedFactions: {} });
 db.read();
 db.data ||= { users: [], decks: {}, matches: [], tournament: {}, resources: {}, pveProgress: {}, ownedCards: {}, shop: {}, activeDeck: {}, pvpProgress: {}, treasureRace: {}, pveStats: {}, pvpStats: {}, treasureRaceBoard: {}, mail: {} };
 db.data.decks ||= {};
@@ -530,6 +530,45 @@ function getResources(username) {
   return rec;
 }
 
+// Which factions this account can see/buy/play cards from — a
+// server-authoritative array of faction ids, backfilled to the default
+// set (see engine.defaultUnlockedFactions) for any account that
+// predates this feature or was never initialized for some other
+// reason. New factions (Дикари/savages, Дзен/zen right now) stay
+// excluded until unlockFactionForAccount below actually grants them —
+// there's no unlock CONDITION wired up yet (that's a later step), only
+// the mechanism itself.
+function getUnlockedFactions(username) {
+  if (!db.data.unlockedFactions) db.data.unlockedFactions = {};
+  let rec = db.data.unlockedFactions[username];
+  if (!Array.isArray(rec)) {
+    rec = engine.defaultUnlockedFactions();
+    db.data.unlockedFactions[username] = rec;
+    db.write();
+  }
+  return rec;
+}
+
+// Actually grants a faction: adds it to the account's unlocked list (a
+// safe no-op if already unlocked) and merges in that faction's starter
+// deck counts on top of whatever cards the account already owns (never
+// overwrites — a card already owned in some quantity just gets that
+// quantity ADDED to, same as buying a duplicate in the shop). Nothing
+// currently calls this outside of the admin test endpoint below, since
+// real unlock conditions haven't been built yet.
+function unlockFactionForAccount(username, factionId) {
+  const unlocked = getUnlockedFactions(username);
+  if (unlocked.includes(factionId)) return { alreadyUnlocked: true, unlocked };
+  unlocked.push(factionId);
+  const owned = getOwnedCounts(username);
+  const starterCounts = engine.starterDeckCountsForFaction(factionId);
+  for (const [cardId, count] of Object.entries(starterCounts)) {
+    owned[cardId] = (owned[cardId] || 0) + count;
+  }
+  db.write();
+  return { alreadyUnlocked: false, unlocked, grantedCounts: starterCounts };
+}
+
 // How many copies of each card this account owns — a map of cardId to
 // count. Every new account starts with exactly the starter deck's own
 // counts (see engine.defaultOwnedCounts); everything else starts at 0
@@ -597,7 +636,7 @@ const SHOP_LIST_SIZE = 6;
 const SHOP_REFRESH_COST = 12; // crystals — same cost regardless of which tab is being refreshed
 
 function regenerateShopTab(username, tab) {
-  const pool = engine.shoppableCards();
+  const pool = engine.shoppableCards(getUnlockedFactions(username));
   const cardIds = engine.pickRandomShopCards(pool, SHOP_LIST_SIZE);
   if (!db.data.shop[username]) db.data.shop[username] = {};
   db.data.shop[username][tab] = { day: utcDateString(), cardIds };
@@ -933,6 +972,8 @@ app.post('/api/register', (req, res) => {
   db.data.pveProgress[name] = { iteration: 1, matchesPlayed: 0 };
   db.data.pvpProgress[name] = { iteration: 1, matchesPlayed: 0 };
   db.data.ownedCards[name] = engine.defaultOwnedCounts();
+  if (!db.data.unlockedFactions) db.data.unlockedFactions = {};
+  db.data.unlockedFactions[name] = engine.defaultUnlockedFactions();
   db.write();
 
   res.status(201).json({ ok: true });
@@ -1064,6 +1105,17 @@ app.post('/api/decks/delete', (req, res) => {
   }
   db.write();
   res.json({ ok: true, decks, activeDeckId });
+});
+
+// The full canonical faction id list (so the client always knows which
+// tabs to render, even for factions with no cards yet) plus which ones
+// THIS account has unlocked. A faction id present in `all` but absent
+// from `unlocked` is locked — the client shows its tab/button as
+// disabled rather than hiding it, per how faction locking now works.
+app.get('/api/factions', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  res.json({ all: engine.FACTION_IDS, unlocked: getUnlockedFactions(username) });
 });
 
 // How many copies of each card this account owns (cardId -> count).
@@ -1222,6 +1274,25 @@ app.post('/api/admin/grant-test-resources', (req, res) => {
   resources.crystals = 999999;
   db.write();
   res.json({ ok: true, resources });
+});
+
+// Admin-only TESTING tool for the unlockFactionForAccount mechanism —
+// real unlock conditions (whatever eventually triggers a faction
+// unlocking for a real account) aren't built yet, so this is the only
+// way to exercise the mechanism end to end until that later step
+// exists. Unlocks the faction for the CALLING admin account itself
+// (not an arbitrary target username), same scope as the resources
+// grant right above.
+app.post('/api/admin/unlock-faction', (req, res) => {
+  const username = usernameFromRequest(req);
+  if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
+  if (username !== 'admin') return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
+  const factionId = req.body && req.body.faction;
+  if (!engine.FACTION_IDS.includes(factionId)) {
+    return res.status(400).json({ error: '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0444\u0440\u0430\u043a\u0446\u0438\u044f.' });
+  }
+  const result = unlockFactionForAccount(username, factionId);
+  res.json({ ok: true, ...result });
 });
 
 // Current standing on the PVE match-count reward ladder. Read-only —

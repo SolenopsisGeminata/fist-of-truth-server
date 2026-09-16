@@ -31,76 +31,76 @@ export const MAX_ROUNDS = 15;
 // never a fixed mythic-specific number. No skins exist yet, so no card
 // currently sets `baseRarity`; this is scaffolding for when one does.
 export const CARD_POOL = [
-  { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 1, hp: 3, rarity: 'common' },
-  { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1, rarity: 'common' },
-  { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1, rarity: 'common' },
-  { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, rarity: 'common' },
-  { id: 'c6', name: '\u041c\u043e\u043b\u043e\u0442\u043e\u0431\u043e\u0435\u0446', type: 'creature', cost: 4, atk: 5, hp: 2, rarity: 'common' },
-  { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, wallGrow: true, rarity: 'rare' },
-  { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true, rarity: 'rare' },
-  { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1, rarity: 'common' },
-  { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true, rarity: 'rare' },
-  { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: 1, rarity: 'epic' },
-  { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1, rarity: 'common' },
+  { id: 'c1', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 1, hp: 3, rarity: 'common' , faction: 'empire' },
+  { id: 'c2', name: '\u0429\u0438\u0442\u043e\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 1, hp: 5, armor: 1, rarity: 'common' , faction: 'empire' },
+  { id: 'c3', name: '\u0421\u0442\u0440\u0430\u0436\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 1, rarity: 'common' , faction: 'empire' },
+  { id: 'c4', name: '\u041d\u0430\u0451\u043c\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, rarity: 'common' , faction: 'empire' },
+  { id: 'c6', name: '\u041c\u043e\u043b\u043e\u0442\u043e\u0431\u043e\u0435\u0446', type: 'creature', cost: 4, atk: 5, hp: 2, rarity: 'common' , faction: 'empire' },
+  { id: 'c7', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u0430\u044f \u0421\u0442\u0435\u043d\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, wallGrow: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c8', name: '\u041f\u0430\u043b\u0430\u0434\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 2, rallyBuff: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c10', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446', type: 'creature', cost: 1, atk: 1, hp: 1, rarity: 'common' , faction: 'empire' },
+  { id: 'c11', name: '\u0421\u0442\u0440\u0430\u0436 \u0434\u0432\u043e\u0440\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, lifesteal: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c12', name: '\u041b\u0435\u0433\u0438\u043e\u043d\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 3, lifesteal: true, synergy: 1, rarity: 'epic' , faction: 'empire' },
+  { id: 's1', name: '\u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430', type: 'spell', cost: 2, buffHp: 3, buffAtk: 1, rarity: 'common' , faction: 'empire' },
   // Unlike every other spell, this one can target ANY cell — empty or
   // occupied by anyone — because it doesn't actually touch whatever's
   // there; the cell is just where the player points it. Heals the
   // caster's own hero and draws them a card from their own deck. See
   // castSpell()'s `card.healHero` branch and resolveSpells()'s
   // 'wellspring' kind further down.
-  { id: 's2', name: '\u0420\u043e\u0434\u043d\u0438\u043a', type: 'spell', cost: 2, healHero: 2, drawCard: 1, rarity: 'rare' },
-  { id: 's3', name: '\u0414\u043e\u0441\u043f\u0435\u0445\u0438', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffArmor: 1, rarity: 'epic' },
+  { id: 's2', name: '\u0420\u043e\u0434\u043d\u0438\u043a', type: 'spell', cost: 2, healHero: 2, drawCard: 1, rarity: 'rare' , faction: 'empire' },
+  { id: 's3', name: '\u0414\u043e\u0441\u043f\u0435\u0445\u0438', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffArmor: 1, rarity: 'epic' , faction: 'empire' },
   // Мгновенный призыв: see castSpell/tryEndTurn — resolves before rally
   // buffs, heals, shots, Епископ, and the normal spell phase, calling
   // summonUnitToRandomFreeCell 3 times to fill up to 3 random empty
   // cells with a fresh c10 each (fewer if less room is available).
-  { id: 's4', name: '\u041e\u0442\u0440\u044f\u0434 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'spell', cost: 3, instantSummon: true, summonCardId: 'c10', summonCount: 3, rarity: 'rare' },
+  { id: 's4', name: '\u041e\u0442\u0440\u044f\u0434 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'spell', cost: 3, instantSummon: true, summonCardId: 'c10', summonCount: 3, rarity: 'rare' , faction: 'empire' },
   // Targets an entire enemy lane (all 3 depth positions), not a single
   // cell — see the 'wrath' spell kind in resolveSpells, which hits every
   // cell in the lane with its own sequential event.
-  { id: 's5', name: '\u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441', type: 'spell', cost: 5, wrathDmg: 7, rarity: 'rare' },
+  { id: 's5', name: '\u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441', type: 'spell', cost: 5, wrathDmg: 7, rarity: 'rare' , faction: 'empire' },
   // endOfRoundSpell: see the endOfRoundSpellQueue extraction/resolution
   // in tryEndTurn — unlike every other spell, this one resolves AFTER
   // combat, not before.
-  { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' },
+  { id: 's6', name: '\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435', type: 'spell', cost: 5, endOfRoundSpell: true, summonCardId: 'c1', summonCount: 5, healAmount: 5, rarity: 'epic' , faction: 'empire' },
   // bounceToHand: see the 'skyWhirlwind' spell kind in resolveSpells.
-  { id: 's7', name: '\u0412\u043e\u0437\u0434\u0443\u0448\u043d\u0430\u044f \u0431\u0443\u0440\u044f', type: 'spell', cost: 4, bounceToHand: true, bounceMilitiaChance: 0.3, rarity: 'epic' },
+  { id: 's7', name: '\u0412\u043e\u0437\u0434\u0443\u0448\u043d\u0430\u044f \u0431\u0443\u0440\u044f', type: 'spell', cost: 4, bounceToHand: true, bounceMilitiaChance: 0.3, rarity: 'epic' , faction: 'empire' },
   // randomBlind: see the 'randomBlind' spell kind in resolveSpells —
   // reuses match.blindedUids exactly like Рейна Ослепительная, just for
   // one random enemy unit instead of all of them.
-  { id: 's8', name: '\u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442', type: 'spell', cost: 2, randomBlind: true, rarity: 'rare' },
-  { id: 's9', name: '\u0421\u0443\u043c\u043a\u0430 \u0441 \u043f\u0440\u0438\u043f\u0430\u0441\u0430\u043c\u0438', type: 'spell', cost: 2, buffAtk: 1, buffHp: 1, buffLifesteal: true, rarity: 'rare' },
-  { id: 's10', name: '\u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a', type: 'spell', cost: 1, buffHp: 1, drawIfArmored: true, rarity: 'rare' },
+  { id: 's8', name: '\u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442', type: 'spell', cost: 2, randomBlind: true, rarity: 'rare' , faction: 'empire' },
+  { id: 's9', name: '\u0421\u0443\u043c\u043a\u0430 \u0441 \u043f\u0440\u0438\u043f\u0430\u0441\u0430\u043c\u0438', type: 'spell', cost: 2, buffAtk: 1, buffHp: 1, buffLifesteal: true, rarity: 'rare' , faction: 'empire' },
+  { id: 's10', name: '\u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a', type: 'spell', cost: 1, buffHp: 1, drawIfArmored: true, rarity: 'rare' , faction: 'empire' },
   // lifeLight: see the 'lifeLight' spell kind in resolveSpells — heals
   // own hero, then conditionally summons onto the SPECIFIC targeted
   // cell (not a random one) if that leaves the caster's hero ahead.
-  { id: 's11', name: '\u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438', type: 'spell', cost: 4, lifeLight: true, healAmount: 10, summonCardId: 'c10', rarity: 'rare' },
+  { id: 's11', name: '\u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438', type: 'spell', cost: 4, lifeLight: true, healAmount: 10, summonCardId: 'c10', rarity: 'rare' , faction: 'empire' },
   // guardCall: see the guardCallQueue extraction in tryEndTurn (fires in
   // the Мгновенный призыв phase, same as Отряд ополченцев).
-  { id: 's12', name: '\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'spell', cost: 4, guardCall: true, summonCardId: 'c11', rarity: 'epic' },
+  { id: 's12', name: '\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'spell', cost: 4, guardCall: true, summonCardId: 'c11', rarity: 'epic' , faction: 'empire' },
   // heavenlyRays: see the 'heavenlyRays' spell kind in resolveSpells —
   // reuses applyDawnBuff (parametrized to 2) for the "buff everyone" loop.
-  { id: 's13', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0435 \u043b\u0443\u0447\u0438', type: 'spell', cost: 4, heavenlyRays: true, rarity: 'epic' },
-  { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' },
-  { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' },
-  { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' },
-  { id: 'c16', name: '\u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 1, hp: 2, auntBuff: true, rarity: 'common' },
+  { id: 's13', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0435 \u043b\u0443\u0447\u0438', type: 'spell', cost: 4, heavenlyRays: true, rarity: 'epic' , faction: 'empire' },
+  { id: 'c13', name: '\u041f\u043e\u0432\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, cookHeal: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c14', name: '\u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 \u0441 \u0434\u0443\u0431\u0438\u043d\u043e\u0439', type: 'creature', cost: 3, atk: 3, hp: 1, rarity: 'common' , faction: 'empire' },
+  { id: 'c15', name: '\u041a\u0440\u0435\u043f\u043a\u0438\u0439 \u0440\u0430\u0431\u043e\u0442\u044f\u0433\u0430', type: 'creature', cost: 4, atk: 3, hp: 4, rarity: 'common' , faction: 'empire' },
+  { id: 'c16', name: '\u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 1, hp: 2, auntBuff: true, rarity: 'common' , faction: 'empire' },
   // Перед своей атакой в бою (каждый раунд, пока жива) навсегда даёт +1/+1
   // всем союзным юнитам на поле, включая себя — см. applyDawnBuff() в
   // resolveCombat() ниже. Эффект накопительный: чем дольше она остаётся
   // в бою, тем сильнее становится вся команда.
-  { id: 'c17', name: '\u0410\u043d\u043d\u0430\u0431\u044d\u043b\u044c \u0420\u0430\u0441\u0441\u0432\u0435\u0442\u043d\u0430\u044f', type: 'creature', cost: 2, atk: 1, hp: 1, dawnBuff: true, rarity: 'legendary' },
+  { id: 'c17', name: '\u0410\u043d\u043d\u0430\u0431\u044d\u043b\u044c \u0420\u0430\u0441\u0441\u0432\u0435\u0442\u043d\u0430\u044f', type: 'creature', cost: 2, atk: 1, hp: 1, dawnBuff: true, rarity: 'legendary' , faction: 'empire' },
   // Battlecry: heals her owner's hero by a fixed amount the instant she's
   // placed (see placeCard() below) — immediate, not deferred like
   // rallyBuff/auntBuff, since the hero's own HP is already visible to its
   // owner during their own placing phase (nothing dramatic to reveal).
-  { id: 'c18', name: '\u041c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, healOnPlay: 2, rarity: 'rare' },
+  { id: 'c18', name: '\u041c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, healOnPlay: 2, rarity: 'rare' , faction: 'empire' },
   // End-of-round trigger, 50% chance per round: heals her owner's hero by
   // an amount equal to HER OWN current HP at that exact moment (not a
   // fixed number, and not attack like Повар's cookHeal) — see the
   // cowHeal check alongside cookHeal's, further down.
-  { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' },
-  { id: 'c20', name: '\u0421\u0442\u0440\u0430\u0436 \u0432\u043e\u0440\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, armor: 1, rarity: 'rare' },
+  { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c20', name: '\u0421\u0442\u0440\u0430\u0436 \u0432\u043e\u0440\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, armor: 1, rarity: 'rare' , faction: 'empire' },
   // Synergy 1 = +1 atk per adjacent ally, same rule as Легионер. On top
   // of that, shootHero fires TWICE per lifetime-in-a-round-cycle: once as
   // a battlecry the instant she's placed (queued via match.pendingShots,
@@ -109,261 +109,261 @@ export const CARD_POOL = [
   // cowHeal, further down) — both times hitting the enemy hero for
   // damage equal to her CURRENT effective attack (base + synergy) at
   // that exact moment.
-  { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHero: true, rarity: 'rare' },
+  { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHero: true, rarity: 'rare' , faction: 'empire' },
   // Same permanent +1/+1-to-a-random-ally idea as Паладин/Родная тетушка,
   // but recurring instead of a one-time battlecry: fires again at the
   // START of every round he's still alive (see applyBishopBuffs() in
   // tryEndTurn, same moment rallyBuff/heal/shot queues are drained), each
   // time picking a fresh random OTHER ally anywhere on the board — same
   // self-exclusion rule as Паладин, never buffs himself.
-  { id: 'c22', name: '\u0415\u043f\u0438\u0441\u043a\u043e\u043f', type: 'creature', cost: 3, atk: 1, hp: 3, bishopBuff: true, rarity: 'epic' },
+  { id: 'c22', name: '\u0415\u043f\u0438\u0441\u043a\u043e\u043f', type: 'creature', cost: 3, atk: 1, hp: 3, bishopBuff: true, rarity: 'epic' , faction: 'empire' },
   // 0 base attack — per the zero-attack rule, she never acts alone. Her
   // synergy is double Легионер/Арбалетчик's (+2 per adjacent ally
   // instead of +1), so even a single neighbour already gets her
   // swinging, and a full ring of four makes her hit as hard as +8.
-  { id: 'c23', name: '\u0411\u0430\u043b\u043b\u0438\u0441\u0442\u0430', type: 'creature', cost: 3, atk: 0, hp: 4, synergy: 2, rarity: 'rare' },
+  { id: 'c23', name: '\u0411\u0430\u043b\u043b\u0438\u0441\u0442\u0430', type: 'creature', cost: 3, atk: 0, hp: 4, synergy: 2, rarity: 'rare' , faction: 'empire' },
   // Первый удар (First Strike): fights in its own combat pass BEFORE
   // every other unit — see resolveCombat()/resolveCombatPass() below,
   // which runs a firstStrike-only pass first, then a second pass for
   // everyone else. A target this kills in that first pass is already
   // gone by the time normal units get their turn.
-  { id: 'c24', name: '\u041b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, firstStrike: true, rarity: 'rare' },
-  { id: 'c25', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 3, atk: 0, hp: 10, armor: 1, rarity: 'epic' },
+  { id: 'c24', name: '\u041b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, firstStrike: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c25', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 3, atk: 0, hp: 10, armor: 1, rarity: 'epic' , faction: 'empire' },
   // See buildUnitFromCard/summonUnitToRandomFreeCell/resolveCombatPass:
   // every time its attack lands directly on the enemy hero, calls in a
   // fresh Ополченец (c10) onto a random empty cell of its own board.
-  { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: 'c10', rarity: 'epic' },
+  { id: 'c26', name: '\u0425\u0440\u0430\u043c\u043e\u0432\u044b\u0439 \u0431\u043e\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, summonOnHeroHit: 'c10', rarity: 'epic' , faction: 'empire' },
   // Ends every round by permanently healing (+2 hp/maxHp) one random
   // OTHER ally on his own board — see the priestHeal branch inlined in
   // the end-of-round loop right next to Каменная Стена's wallGrow,
   // reusing the exact same rallyBuff event/animation.
-  { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' },
-  { id: 'c28', name: '\u042d\u043b\u0438\u0442\u0430 \u0445\u0440\u0430\u043c\u0430', type: 'creature', cost: 4, atk: 2, hp: 4, synergy: 2, rarity: 'rare' },
-  { id: 'c29', name: '\u0413\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, lifesteal: true, rarity: 'rare' },
+  { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c28', name: '\u042d\u043b\u0438\u0442\u0430 \u0445\u0440\u0430\u043c\u0430', type: 'creature', cost: 4, atk: 2, hp: 4, synergy: 2, rarity: 'rare' , faction: 'empire' },
+  { id: 'c29', name: '\u0413\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, lifesteal: true, rarity: 'rare' , faction: 'empire' },
   // siegeShot: same end-of-round trigger as Арбалетчик's shootHero, but
   // fires a fixed 2 damage at a random ENEMY UNIT instead of the hero —
   // see the siegeShot branch in tryEndTurn's end-of-round loop.
-  { id: 'c30', name: '\u041e\u0441\u0430\u0434\u043d\u0430\u044f \u0431\u0430\u0448\u043d\u044f', type: 'creature', cost: 4, atk: 1, hp: 8, siegeShot: true, rarity: 'rare' },
+  { id: 'c30', name: '\u041e\u0441\u0430\u0434\u043d\u0430\u044f \u0431\u0430\u0448\u043d\u044f', type: 'creature', cost: 4, atk: 1, hp: 8, siegeShot: true, rarity: 'rare' , faction: 'empire' },
   // battlecrySummon: on placement, queues a summon (see pendingBattlecrySummons
   // in tryEndTurn) resolved onto a random free cell at the start of the
   // next resolution, same deferred-reveal pattern as Монахиня/Арбалетчик.
-  { id: 'c31', name: '\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, battlecrySummon: 'c10', rarity: 'rare' },
-  { id: 'c32', name: '\u042d\u043b\u0438\u0442\u043d\u044b\u0439 \u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, rarity: 'rare' },
+  { id: 'c31', name: '\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, battlecrySummon: 'c10', rarity: 'rare' , faction: 'empire' },
+  { id: 'c32', name: '\u042d\u043b\u0438\u0442\u043d\u044b\u0439 \u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, rarity: 'rare' , faction: 'empire' },
   // Combines two existing mechanics: battlecrySummon (once, on placement)
   // and endOfRoundSummon (repeating, every round she survives) — see
   // pendingBattlecrySummons in tryEndTurn for the former, the
   // endOfRoundSummon branch in the end-of-round loop for the latter.
-  { id: 'c33', name: '\u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'creature', cost: 4, atk: 0, hp: 6, battlecrySummon: 'c10', endOfRoundSummon: 'c10', rarity: 'rare' },
+  { id: 'c33', name: '\u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432', type: 'creature', cost: 4, atk: 0, hp: 6, battlecrySummon: 'c10', endOfRoundSummon: 'c10', rarity: 'rare' , faction: 'empire' },
   // Защитник (Defender): never attacks in normal combat (see the
   // resolveCombat wrapper above). Her own mechanic — cannonShot — fires
   // in the end-of-round loop instead, striking her OWN lane's mirror on
   // the enemy side.
-  { id: 'c34', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 4, atk: 4, hp: 9, defender: true, cannonShot: true, rarity: 'rare' },
-  { id: 'c35', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u041b\u0443\u043d\u044b', type: 'creature', cost: 4, atk: 1, hp: 3, fixedHeal: 7, rarity: 'epic' },
+  { id: 'c34', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 4, atk: 4, hp: 9, defender: true, cannonShot: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c35', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u041b\u0443\u043d\u044b', type: 'creature', cost: 4, atk: 1, hp: 3, fixedHeal: 7, rarity: 'epic' , faction: 'empire' },
   // summonOnHeroHit now stores WHICH card to summon (see the c26 refactor
   // above) — this one calls in a Страж дворца instead of an Ополченец.
-  { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' },
-  { id: 'c37', name: '\u041a\u0430\u043d\u043e\u043d\u0438\u0441\u0441\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, lifesteal: true, spellResist: true, rarity: 'legendary' },
-  { id: 'c38', name: '\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d', type: 'creature', cost: 5, atk: 5, hp: 5, armor: 3, synergy: 1, rarity: 'epic' },
+  { id: 'c36', name: '\u041a\u0430\u043f\u0438\u0442\u0430\u043d \u0434\u0432\u043e\u0440\u0446\u043e\u0432\u043e\u0439 \u0441\u0442\u0440\u0430\u0436\u0438', type: 'creature', cost: 4, atk: 3, hp: 6, lifesteal: true, summonOnHeroHit: 'c11', rarity: 'epic' , faction: 'empire' },
+  { id: 'c37', name: '\u041a\u0430\u043d\u043e\u043d\u0438\u0441\u0441\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, lifesteal: true, spellResist: true, rarity: 'legendary' , faction: 'empire' },
+  { id: 'c38', name: '\u0426\u0435\u043d\u0442\u0443\u0440\u0438\u043e\u043d', type: 'creature', cost: 5, atk: 5, hp: 5, armor: 3, synergy: 1, rarity: 'epic' , faction: 'empire' },
   // Топот (Trample): see applyTrampleCascade — an overkill from her
   // primary hit continues onward through the same lane, then the hero.
-  { id: 'c39', name: '\u042f\u0440\u043b \u0416\u0435\u043b\u0435\u0437\u043d\u043e\u0431\u043e\u043a\u0438\u0439', type: 'creature', cost: 5, atk: 5, hp: 10, armor: 1, synergy: 3, trample: true, rarity: 'legendary' },
+  { id: 'c39', name: '\u042f\u0440\u043b \u0416\u0435\u043b\u0435\u0437\u043d\u043e\u0431\u043e\u043a\u0438\u0439', type: 'creature', cost: 5, atk: 5, hp: 10, armor: 1, synergy: 3, trample: true, rarity: 'legendary' , faction: 'empire' },
   // punisherKill: see pendingPunisherKills in tryEndTurn — battlecry
   // instantly kills the first bornRound-this-turn enemy unit in the
   // mirrored lane, Чаростойкость blocks it outright (no redirect).
-  { id: 'c40', name: '\u041a\u0430\u0440\u0430\u044e\u0449\u0438\u0439 \u0430\u043d\u0433\u0435\u043b', type: 'creature', cost: 6, atk: 4, hp: 6, lifesteal: true, punisherKill: true, rarity: 'epic' },
+  { id: 'c40', name: '\u041a\u0430\u0440\u0430\u044e\u0449\u0438\u0439 \u0430\u043d\u0433\u0435\u043b', type: 'creature', cost: 6, atk: 4, hp: 6, lifesteal: true, punisherKill: true, rarity: 'epic' , faction: 'empire' },
   // Двойное омоложение (doubleHeal): see hasDoubleHeal/healHero above —
   // every hero-heal source in the file routes through that shared
   // function, so this doubles every single one of them uniformly, not
   // just her own battlecry. She's already on the board by the time her
   // own healOnPlay resolves (see pendingHeals in tryEndTurn), so it
   // doubles too.
-  { id: 'c41', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u0430\u0442\u0440\u0438\u0430\u0440\u0445', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' },
-  { id: 'c42', name: '\u0420\u044b\u0446\u0430\u0440\u044c', type: 'creature', cost: 6, atk: 5, hp: 5, armor: 2, healOnPlay: 6, rarity: 'epic' },
+  { id: 'c41', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u0430\u0442\u0440\u0438\u0430\u0440\u0445', type: 'creature', cost: 6, atk: 2, hp: 6, doubleHeal: true, healOnPlay: 10, rarity: 'legendary' , faction: 'empire' },
+  { id: 'c42', name: '\u0420\u044b\u0446\u0430\u0440\u044c', type: 'creature', cost: 6, atk: 5, hp: 5, armor: 2, healOnPlay: 6, rarity: 'epic' , faction: 'empire' },
   // baronBuff: see applyDawnBuff (reused as-is, just triggered at
   // end-of-round instead of before each attack) — buffs every ally on
   // the board, himself included, by +1/+1 permanently.
-  { id: 'c43', name: '\u0411\u0430\u0440\u043e\u043d', type: 'creature', cost: 6, atk: 4, hp: 6, armor: 1, synergy: 1, baronBuff: true, rarity: 'epic' },
+  { id: 'c43', name: '\u0411\u0430\u0440\u043e\u043d', type: 'creature', cost: 6, atk: 4, hp: 6, armor: 1, synergy: 1, baronBuff: true, rarity: 'epic' , faction: 'empire' },
   // battlecrySummonCount parametrizes battlecrySummon's quantity (was
   // hardcoded to 1) — calls in TWO Грифоны instead of one.
-  { id: 'c44', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 7, atk: 6, hp: 4, lifesteal: true, battlecrySummon: 'c29', battlecrySummonCount: 2, rarity: 'epic' },
-  { id: 'c45', name: '\u0410\u0445\u0438\u043b\u043b\u0435\u0441-\u043a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 7, atk: 0, hp: 18, armor: 2, synergy: 5, rarity: 'epic' },
+  { id: 'c44', name: '\u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 7, atk: 6, hp: 4, lifesteal: true, battlecrySummon: 'c29', battlecrySummonCount: 2, rarity: 'epic' , faction: 'empire' },
+  { id: 'c45', name: '\u0410\u0445\u0438\u043b\u043b\u0435\u0441-\u043a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 7, atk: 0, hp: 18, armor: 2, synergy: 5, rarity: 'epic' , faction: 'empire' },
   // blindEnemiesOnPlay: see pendingBlinds/match.blindedUids in tryEndTurn
   // — a ONE-ROUND version of Защитник applied to every current enemy
   // unit (except spellResist ones), cleared right after this round's
   // combat resolves.
-  { id: 'c46', name: '\u0420\u0435\u0439\u043d\u0430 \u041e\u0441\u043b\u0435\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u0430\u044f', type: 'creature', cost: 7, atk: 7, hp: 10, healOnPlay: 7, blindEnemiesOnPlay: true, rarity: 'legendary' },
+  { id: 'c46', name: '\u0420\u0435\u0439\u043d\u0430 \u041e\u0441\u043b\u0435\u043f\u0438\u0442\u0435\u043b\u044c\u043d\u0430\u044f', type: 'creature', cost: 7, atk: 7, hp: 10, healOnPlay: 7, blindEnemiesOnPlay: true, rarity: 'legendary' , faction: 'empire' },
   // Same cannonShot mechanic as Имперская пушка, but with a fixed damage
   // amount (not attack-based, since she has 0 atk) and a 30% chance of a
   // second, independent shot.
-  { id: 'c47', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u0431\u0430\u0441\u0442\u0438\u043e\u043d', type: 'creature', cost: 8, atk: 0, hp: 25, armor: 1, cannonShot: true, cannonShotFixed: 6, cannonShotExtraChance: 0.3, rarity: 'epic' },
+  { id: 'c47', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u0431\u0430\u0441\u0442\u0438\u043e\u043d', type: 'creature', cost: 8, atk: 0, hp: 25, armor: 1, cannonShot: true, cannonShotFixed: 6, cannonShotExtraChance: 0.3, rarity: 'epic' , faction: 'empire' },
   // warlordBuff: see pendingWarlordBuffs in tryEndTurn — buffs every ally
   // +1/+1 (applyDawnBuff), then permanently grants Двойной удар to every
   // currently-armored ally (himself included). Двойной удар itself is
   // implemented in actingOrder — see the comment there.
-  { id: 'c48', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', type: 'creature', cost: 8, atk: 5, hp: 10, armor: 1, warlordBuff: true, rarity: 'legendary' },
+  { id: 'c48', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043f\u043e\u043b\u043a\u043e\u0432\u043e\u0434\u0435\u0446', type: 'creature', cost: 8, atk: 5, hp: 10, armor: 1, warlordBuff: true, rarity: 'legendary' , faction: 'empire' },
   // Same punisherKill mechanic as Карающий ангел — see pendingPunisherKills
   // in tryEndTurn for the full implementation.
-  { id: 'c49', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043a\u0430\u0432\u0430\u043b\u0435\u0440\u0438\u0441\u0442', type: 'creature', cost: 5, atk: 6, hp: 3, punisherKill: true, rarity: 'rare' },
+  { id: 'c49', name: '\u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0438\u0439 \u043a\u0430\u0432\u0430\u043b\u0435\u0440\u0438\u0441\u0442', type: 'creature', cost: 5, atk: 6, hp: 3, punisherKill: true, rarity: 'rare' , faction: 'empire' },
   // healTrigger: see healHero above — every time healing lands for his
   // own side, permanently buffs a random OTHER ally +1atk/+3hp.
-  { id: 'c50', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u0441\u0432\u044f\u0442\u043e\u0433\u043e \u0421\u0432\u0435\u0442\u0430', type: 'creature', cost: 5, atk: 2, hp: 5, healOnPlay: 3, healTrigger: true, rarity: 'epic' },
+  { id: 'c50', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a \u0441\u0432\u044f\u0442\u043e\u0433\u043e \u0421\u0432\u0435\u0442\u0430', type: 'creature', cost: 5, atk: 2, hp: 5, healOnPlay: 3, healTrigger: true, rarity: 'epic' , faction: 'empire' },
   // blacksmithBuff: see the end-of-round loop in tryEndTurn — always
   // improves himself +1atk/+1armor, plus a random OTHER armored ally.
-  { id: 'c51', name: '\u041a\u0443\u0437\u043d\u0435\u0446', type: 'creature', cost: 4, atk: 1, hp: 6, armor: 1, blacksmithBuff: true, rarity: 'epic' },
+  { id: 'c51', name: '\u041a\u0443\u0437\u043d\u0435\u0446', type: 'creature', cost: 4, atk: 1, hp: 6, armor: 1, blacksmithBuff: true, rarity: 'epic' , faction: 'empire' },
   // powderKeg: throws at a random SQUARE anywhere on the enemy board —
   // occupied or not, empty redirects to the hero (see the end-of-round
   // loop in tryEndTurn). explodeOnDeath: handled by the shared killUnit
   // helper, applied the instant he actually dies, from any cause.
-  { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' },
+  { id: 'c52', name: '\u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, powderKeg: true, explodeOnDeath: true, rarity: 'rare' , faction: 'empire' },
   // statueBuff: see applyStatueBuffs — now fires at the START of every
   // round (moved from end-of-round), reuses adjacentAllyPositions
   // (already used by Родная тетушка). Also a Защитник — never attacks.
-  { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, defender: true, statueBuff: true, rarity: 'rare' },
+  { id: 'c53', name: '\u0421\u0442\u0430\u0442\u0443\u044f', type: 'creature', cost: 3, atk: 1, hp: 6, defender: true, statueBuff: true, rarity: 'rare' , faction: 'empire' },
   // weaponThrowOnDeath: see killUnit above — on death, throws his
   // weapon at a random depth in HIS OWN lane on the enemy side, empty
   // redirects to hero, Чаростойкость blocks outright.
-  { id: 'c54', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 2, hp: 1, armor: 1, weaponThrowOnDeath: true, rarity: 'epic' },
-  { id: 'c55', name: '\u0421\u043b\u0435\u0434\u043e\u043f\u044b\u0442', type: 'creature', cost: 1, atk: 1, hp: 1, synergy: 1, rarity: 'rare' },
+  { id: 'c54', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 2, hp: 1, armor: 1, weaponThrowOnDeath: true, rarity: 'epic' , faction: 'empire' },
+  { id: 'c55', name: '\u0421\u043b\u0435\u0434\u043e\u043f\u044b\u0442', type: 'creature', cost: 1, atk: 1, hp: 1, synergy: 1, rarity: 'rare' , faction: 'empire' },
   // musketShot: see applyMusketShot above, hooked in right before his
   // own attack in resolveCombatPass (same spot as Аннабэль's dawnBuff).
-  { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: true, rarity: 'rare' },
+  { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: true, rarity: 'rare' , faction: 'empire' },
   // lunaBlind: see applyLunaBlind above — persistent aura, re-evaluated
   // every round she's alive, checking her CURRENT lane each time.
-  { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' },
+  { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' , faction: 'empire' },
   // legacy: see the legacyValue transfer mechanic in killUnit above —
   // first card of the Дзен faction.
-  { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare', locked: true },
+  { id: 'c58', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, legacy: 1, rarity: 'rare' , faction: 'zen' },
   // bambooShotOnPlay: battlecry throw (see pendingBambooShots in
   // tryEndTurn). bambooShotRecurring: pre-attack throw starting the
   // round AFTER placement (see applyBambooRecurringShot, gated by
   // match.round > bornRound).
-  { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare', locked: true },
+  { id: 'c59', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 1, atk: 2, hp: 1, bambooShotOnPlay: 2, bambooShotRecurring: 1, rarity: 'rare' , faction: 'zen' },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below) —
   // granted once the faction is unlocked, a mechanism not built yet.
-  { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 1, legacy: 1, rarity: 'common', locked: true },
+  { id: 'c60', name: '\u041e\u043b\u0435\u043d\u044c-\u0414\u0430\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 1, legacy: 1, rarity: 'common' , faction: 'zen' },
   // deerSwordsman: see the depth-based stat shaping in placeCard above.
-  { id: 'c61', name: '\u041e\u043b\u0435\u043d\u044c-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, deerSwordsman: true, rarity: 'common', locked: true },
+  { id: 'c61', name: '\u041e\u043b\u0435\u043d\u044c-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, deerSwordsman: true, rarity: 'common' , faction: 'zen' },
   // herbalist: see the pendingHerbalist queue in placeCard/tryEndTurn.
-  { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare', locked: true },
+  { id: 'c62', name: '\u0422\u0440\u0430\u0432\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, herbalist: true, rarity: 'rare' , faction: 'zen' },
   // counterattack: see the Контратака block in resolveCombatPass above.
-  { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'common', locked: true },
+  { id: 'c63', name: '\u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b', type: 'creature', cost: 2, atk: 1, hp: 5, defender: true, counterattack: true, rarity: 'common' , faction: 'zen' },
   // bambooGuardian: see the Наследие-transfer reaction inside killUnit.
-  { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'common', locked: true },
+  { id: 'c64', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 2, atk: 1, hp: 5, bambooGuardian: true, rarity: 'common' , faction: 'zen' },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
   // monkGrow: see the end-of-round self-growth block above.
-  { id: 'c65', name: '\u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, legacy: 1, monkGrow: true, rarity: 'common', locked: true },
+  { id: 'c65', name: '\u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, legacy: 1, monkGrow: true, rarity: 'common' , faction: 'zen' },
   // bounceCellAndNeighbor: see the 'bounceCellAndNeighbor' spell kind in
   // resolveSpells — targets a specific enemy cell (new targeting shape,
   // see the client's highlightEnemyCellsForSpell).
-  { id: 's14', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 2, bounceCellAndNeighbor: true, rarity: 'rare', locked: true },
+  { id: 's14', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 2, bounceCellAndNeighbor: true, rarity: 'rare' , faction: 'zen' },
   // treeWrath: see the 'treeWrath' spell kind in resolveSpells — hero
   // always takes it, a unit in the picked cell takes it TOO (not
   // instead of the hero).
-  { id: 's15', name: '\u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430', type: 'spell', cost: 2, treeWrath: true, treeWrathAmount: 4, rarity: 'rare', locked: true },
+  { id: 's15', name: '\u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430', type: 'spell', cost: 2, treeWrath: true, treeWrathAmount: 4, rarity: 'rare' , faction: 'zen' },
   // Персик: token spell, only ever obtainable via Персиковый сад — never
   // part of any deck build, and permanently excluded from the shop
   // (noShop) regardless of whether Дзен itself is unlocked, in addition
   // to the temporary faction-wide lock.
-  { id: 's16', name: '\u041f\u0435\u0440\u0441\u0438\u043a', type: 'spell', cost: 0, buffHp: 1, rarity: 'common', locked: true, noShop: true },
+  { id: 's16', name: '\u041f\u0435\u0440\u0441\u0438\u043a', type: 'spell', cost: 0, buffHp: 1, rarity: 'common', noShop: true , faction: 'zen' },
   // peachOrchard: see the end-of-round card-granting block above — the
   // value is the id of the card it hands out (Персик).
-  { id: 'c66', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0441\u0430\u0434', type: 'creature', cost: 2, atk: 0, hp: 4, peachOrchard: 's16', rarity: 'epic', locked: true },
+  { id: 'c66', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0441\u0430\u0434', type: 'creature', cost: 2, atk: 0, hp: 4, peachOrchard: 's16', rarity: 'epic' , faction: 'zen' },
   // divineVines: see the end-of-round doubling block above.
-  { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic', locked: true },
+  { id: 'c67', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u043b\u043e\u0437\u044b', type: 'creature', cost: 2, atk: 0, hp: 2, divineVines: true, rarity: 'epic' , faction: 'zen' },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
-  { id: 'c68', name: '\u0414\u0430\u043e\u0441 \u0441 \u043f\u043e\u0441\u043e\u0445\u043e\u043c', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common', locked: true },
+  { id: 'c68', name: '\u0414\u0430\u043e\u0441 \u0441 \u043f\u043e\u0441\u043e\u0445\u043e\u043c', type: 'creature', cost: 3, atk: 1, hp: 4, legacy: 1, rarity: 'common' , faction: 'zen' },
   // timeIllusionist: see the instant swap-on-play block above.
-  { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare', locked: true },
+  { id: 'c69', name: '\u0418\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 3, atk: 3, hp: 1, legacy: 1, timeIllusionist: true, rarity: 'rare' , faction: 'zen' },
   // foxSwordOnPlay: see pendingFoxSword above.
-  { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'common', locked: true },
+  { id: 'c70', name: '\u041b\u0438\u0441 \u0441 \u043c\u0435\u0447\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, foxSwordOnPlay: 1, rarity: 'common' , faction: 'zen' },
   // Part of the Дзен starter deck (see zenStarterDeckCounts below).
-  { id: 'c71', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0447\u0435\u0440\u0435\u043f\u0430\u0445\u0430-\u043c\u043e\u043d\u0430\u0445', type: 'creature', cost: 3, atk: 2, hp: 3, armor: 1, lifesteal: true, rarity: 'common', locked: true },
+  { id: 'c71', name: '\u0411\u043e\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0447\u0435\u0440\u0435\u043f\u0430\u0445\u0430-\u043c\u043e\u043d\u0430\u0445', type: 'creature', cost: 3, atk: 2, hp: 3, armor: 1, lifesteal: true, rarity: 'common' , faction: 'zen' },
   // daoistSwordsman: see the hero-hit rally-buff hook in the wave
   // combat loop above.
-  { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
+  { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare' , faction: 'zen' },
   // waitressOnPlay: see the pendingWaitress queue in placeCard/tryEndTurn.
-  { id: 'c73', name: '\u0421\u0435\u0441\u0442\u0440\u0430 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
+  { id: 'c73', name: '\u0421\u0435\u0441\u0442\u0440\u0430 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare' , faction: 'zen' },
   // drunkenDisciple: see applyDrunkenDisciple above, hooked in at the
   // same pre-attack point as Мушкетер's musketShot.
-  { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
-  { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare', locked: true },
-  { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare', locked: true },
-  { id: 's18', name: '\u041f\u0435\u0441\u043d\u044c \u041b\u0443\u043d\u0435', type: 'spell', cost: 3, songToTheMoon: true, rarity: 'rare', locked: true },
-  { id: 's19', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440', type: 'spell', cost: 3, mountainStrength: true, rarity: 'rare', locked: true },
+  { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare' , faction: 'zen' },
+  { id: 'c75', name: '\u0421\u0431\u043e\u0440\u0449\u0438\u043a \u0442\u0440\u0430\u0432', type: 'creature', cost: 3, atk: 2, hp: 3, legacy: 1, healOnPlay: 2, rarity: 'rare' , faction: 'zen' },
+  { id: 's17', name: '\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffDoubleStrike: true, rarity: 'rare' , faction: 'zen' },
+  { id: 's18', name: '\u041f\u0435\u0441\u043d\u044c \u041b\u0443\u043d\u0435', type: 'spell', cost: 3, songToTheMoon: true, rarity: 'rare' , faction: 'zen' },
+  { id: 's19', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440', type: 'spell', cost: 3, mountainStrength: true, rarity: 'rare' , faction: 'zen' },
   // broomOnPlay: see the depth-based placement block above (instant
   // Наследие 2 on first cell; pendingBroomBounce on last cell).
-  { id: 'c76', name: '\u0414\u0430\u043e\u0441 \u0441 \u043c\u0435\u0442\u043b\u043e\u0439', type: 'creature', cost: 3, atk: 4, hp: 2, broomOnPlay: true, rarity: 'epic', locked: true },
+  { id: 'c76', name: '\u0414\u0430\u043e\u0441 \u0441 \u043c\u0435\u0442\u043b\u043e\u0439', type: 'creature', cost: 3, atk: 4, hp: 2, broomOnPlay: true, rarity: 'epic' , faction: 'zen' },
   // musicalDaoist: see applyMusicalDaoist above, start-of-round hook.
-  { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic', locked: true },
-  { id: 'c78', name: '\u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 2, hp: 2, spellResist: true, steadfastDaoist: true, rarity: 'epic', locked: true },
-  { id: 'c79', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 6, fixedHeal: 2, rarity: 'common', locked: true },
+  { id: 'c77', name: '\u041c\u0443\u0437\u044b\u043a\u0430\u043b\u044c\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 3, hp: 3, musicalDaoist: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c78', name: '\u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 3, atk: 2, hp: 2, spellResist: true, steadfastDaoist: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c79', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 6, fixedHeal: 2, rarity: 'common' , faction: 'zen' },
   // bellOnPlay: see the pendingBellBounce queue in placeCard/tryEndTurn.
-  { id: 'c80', name: '\u0414\u0430\u043e\u0441 \u0441 \u043a\u043e\u043b\u043e\u043a\u043e\u043b\u044c\u0447\u0438\u043a\u043e\u043c', type: 'creature', cost: 4, atk: 2, hp: 1, bellOnPlay: true, rarity: 'rare', locked: true },
+  { id: 'c80', name: '\u0414\u0430\u043e\u0441 \u0441 \u043a\u043e\u043b\u043e\u043a\u043e\u043b\u044c\u0447\u0438\u043a\u043e\u043c', type: 'creature', cost: 4, atk: 2, hp: 1, bellOnPlay: true, rarity: 'rare' , faction: 'zen' },
   // calmNunOnPlay: see the pendingCalmNun queue in placeCard/tryEndTurn.
-  { id: 'c81', name: '\u0421\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u043c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 4, atk: 2, hp: 3, legacy: 2, calmNunOnPlay: true, rarity: 'rare', locked: true },
+  { id: 'c81', name: '\u0421\u043f\u043e\u043a\u043e\u0439\u043d\u0430\u044f \u043c\u043e\u043d\u0430\u0445\u0438\u043d\u044f', type: 'creature', cost: 4, atk: 2, hp: 3, legacy: 2, calmNunOnPlay: true, rarity: 'rare' , faction: 'zen' },
   // valleyBarn: see applyValleyBarn above, start-of-round hook.
-  { id: 'c82', name: '\u0410\u043c\u0431\u0430\u0440 \u0434\u043e\u043b\u0438\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 8, valleyBarn: true, rarity: 'rare', locked: true },
+  { id: 'c82', name: '\u0410\u043c\u0431\u0430\u0440 \u0434\u043e\u043b\u0438\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 8, valleyBarn: true, rarity: 'rare' , faction: 'zen' },
   // Reuses the exact same bounceToHand mechanic as Воздушная буря, but
   // WITHOUT bounceMilitiaChance — no extra summon chance at all.
-  { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare', locked: true },
-  { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', locked: true },
-  { id: 'c83', name: '\u0422\u0440\u0443\u0441\u043b\u0438\u0432\u044b\u0439 \u0443\u0431\u0438\u0439\u0446\u0430', type: 'creature', cost: 4, atk: 3, hp: 5, doubleStrike: true, cowardlyAssassin: true, rarity: 'rare', locked: true },
-  { id: 'c84', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, heavenlyWarrior: true, rarity: 'rare', locked: true },
+  { id: 's20', name: '\u0423\u0440\u0430\u0433\u0430\u043d', type: 'spell', cost: 4, bounceToHand: true, rarity: 'rare' , faction: 'zen' },
+  { id: 's21', name: '\u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442', type: 'spell', cost: 4, buffAtk: 2, buffHp: 4, buffHeroHeal: 4, rarity: 'rare' , faction: 'zen' },
+  { id: 'c83', name: '\u0422\u0440\u0443\u0441\u043b\u0438\u0432\u044b\u0439 \u0443\u0431\u0438\u0439\u0446\u0430', type: 'creature', cost: 4, atk: 3, hp: 5, doubleStrike: true, cowardlyAssassin: true, rarity: 'rare' , faction: 'zen' },
+  { id: 'c84', name: '\u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 3, firstStrike: true, heavenlyWarrior: true, rarity: 'rare' , faction: 'zen' },
   // stork: see the end-of-round card-copying block above.
-  { id: 'c85', name: '\u0410\u0438\u0441\u0442 \u0441 \u043f\u0435\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 0, hp: 4, stork: true, rarity: 'epic', locked: true },
+  { id: 'c85', name: '\u0410\u0438\u0441\u0442 \u0441 \u043f\u0435\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 0, hp: 4, stork: true, rarity: 'epic' , faction: 'zen' },
   // rockEffect: see the immunity checks added to every bounce-to-hand
   // mechanic above. armoredDragon: see the Наследие-receiving reaction
   // right next to Бамбуковый страж's own.
-  { id: 'c86', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 4, atk: 3, hp: 5, armor: 2, rockEffect: true, armoredDragon: true, rarity: 'epic', locked: true },
+  { id: 'c86', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 4, atk: 3, hp: 5, armor: 2, rockEffect: true, armoredDragon: true, rarity: 'epic' , faction: 'zen' },
   // Reuses the exact same instantSummon mechanic as Отряд ополченцев,
   // just summoning Бамбуковый страж (c64) instead of Ополченец (c10).
-  { id: 's22', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u0430\u044f \u0437\u0430\u0449\u0438\u0442\u0430', type: 'spell', cost: 4, instantSummon: true, summonCardId: 'c64', summonCount: 3, rarity: 'epic', locked: true },
+  { id: 's22', name: '\u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u0430\u044f \u0437\u0430\u0449\u0438\u0442\u0430', type: 'spell', cost: 4, instantSummon: true, summonCardId: 'c64', summonCount: 3, rarity: 'epic' , faction: 'zen' },
   // Reuses the exact same wellspring mechanic as Родник, just with a
   // bigger heal amount and a bigger draw amount.
-  { id: 's23', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0440\u0430\u0439', type: 'spell', cost: 4, healHero: 6, drawCard: 3, rarity: 'epic', locked: true },
+  { id: 's23', name: '\u041f\u0435\u0440\u0441\u0438\u043a\u043e\u0432\u044b\u0439 \u0440\u0430\u0439', type: 'spell', cost: 4, healHero: 6, drawCard: 3, rarity: 'epic' , faction: 'zen' },
   // Reuses the exact same mountainStrength mechanic as Сила гор, plus
   // the new optional mountainArmor field for the extra +3 armor.
-  { id: 's24', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440 \u0422\u044f\u043d\u044c-\u0428\u0430\u043d\u044c', type: 'spell', cost: 4, mountainStrength: true, mountainArmor: 3, rarity: 'epic', locked: true },
-  { id: 's25', name: '\u041f\u043e\u0441\u043e\u0445 \u0434\u0438\u043a\u043e\u0433\u043e \u0432\u0435\u043f\u0440\u044f', type: 'spell', cost: 4, buffAtk: 2, buffHp: 2, buffLifesteal: true, buffTrample: true, buffLegacy: 2, rarity: 'legendary', locked: true },
+  { id: 's24', name: '\u0421\u0438\u043b\u0430 \u0433\u043e\u0440 \u0422\u044f\u043d\u044c-\u0428\u0430\u043d\u044c', type: 'spell', cost: 4, mountainStrength: true, mountainArmor: 3, rarity: 'epic' , faction: 'zen' },
+  { id: 's25', name: '\u041f\u043e\u0441\u043e\u0445 \u0434\u0438\u043a\u043e\u0433\u043e \u0432\u0435\u043f\u0440\u044f', type: 'spell', cost: 4, buffAtk: 2, buffHp: 2, buffLifesteal: true, buffTrample: true, buffLegacy: 2, rarity: 'legendary' , faction: 'zen' },
   // mysteriousMaid: see applyMysteriousMaidShift (battlecry + hero-hit
   // hook) and applyInsight (Понимание) above.
-  { id: 'c87', name: '\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c', type: 'creature', cost: 4, atk: 1, hp: 1, insightEffect: 1, mysteriousMaid: true, rarity: 'legendary', locked: true },
-  { id: 'c88', name: '\u041f\u043e\u0432\u0430\u0440 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 5, atk: 2, hp: 3, cookBuff: true, rarity: 'common', locked: true },
+  { id: 'c87', name: '\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c', type: 'creature', cost: 4, atk: 1, hp: 1, insightEffect: 1, mysteriousMaid: true, rarity: 'legendary' , faction: 'zen' },
+  { id: 'c88', name: '\u041f\u043e\u0432\u0430\u0440 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 5, atk: 2, hp: 3, cookBuff: true, rarity: 'common' , faction: 'zen' },
   // warriorSheep: see the Наследие-receiving heal reaction right next
   // to Дракон в доспехах's own; her own battlecry reuses healOnPlay.
-  { id: 'c89', name: '\u041e\u0432\u0446\u0430-\u0432\u043e\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 6, healOnPlay: 6, warriorSheep: true, rarity: 'rare', locked: true },
-  { id: 'c90', name: '\u0421\u043c\u0435\u043b\u044b\u0439 \u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 1, hp: 8, braveTeacher: true, rarity: 'rare', locked: true },
+  { id: 'c89', name: '\u041e\u0432\u0446\u0430-\u0432\u043e\u0438\u043d', type: 'creature', cost: 5, atk: 4, hp: 6, healOnPlay: 6, warriorSheep: true, rarity: 'rare' , faction: 'zen' },
+  { id: 'c90', name: '\u0421\u043c\u0435\u043b\u044b\u0439 \u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 1, hp: 8, braveTeacher: true, rarity: 'rare' , faction: 'zen' },
   // New card reusing the name freed up by c68's rename to Даос с
   // посохом. drawOnDeath: see killUnit above. copyOnLegacy: see the
   // Наследие-receiving reaction right next to Овца-воин's own.
-  { id: 'c91', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 5, atk: 7, hp: 3, drawOnDeath: true, copyOnLegacy: true, rarity: 'epic', locked: true },
+  { id: 'c91', name: '\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441', type: 'creature', cost: 5, atk: 7, hp: 3, drawOnDeath: true, copyOnLegacy: true, rarity: 'epic' , faction: 'zen' },
   // shurikenMaster: see applyShurikenMaster above, pre-attack hook.
-  { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic', locked: true },
-  { id: 'c93', name: '\u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 5, atk: 3, hp: 9, moneyTree: true, rarity: 'epic', locked: true },
-  { id: 's26', name: '\u0414\u0443\u0445\u043e\u0432\u043d\u044b\u0439 \u0449\u0438\u0442', type: 'spell', cost: 5, buffAtk: 2, buffHp: 2, buffSpellResist: true, rarity: 'epic', locked: true },
+  { id: 'c92', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0441\u044e\u0440\u0438\u043a\u0435\u043d\u043e\u0432', type: 'creature', cost: 5, atk: 5, hp: 2, shurikenMaster: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c93', name: '\u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 5, atk: 3, hp: 9, moneyTree: true, rarity: 'epic' , faction: 'zen' },
+  { id: 's26', name: '\u0414\u0443\u0445\u043e\u0432\u043d\u044b\u0439 \u0449\u0438\u0442', type: 'spell', cost: 5, buffAtk: 2, buffHp: 2, buffSpellResist: true, rarity: 'epic' , faction: 'zen' },
   // Потомок дракона: never shows up in the shop or a starter deck —
   // the ONLY way to get one is Странствующий ученик transforming into
   // it upon receiving Наследие (see transformOnLegacy below).
-  { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, rarity: 'legendary', locked: true, noShop: true },
-  { id: 'c95', name: '\u0421\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, transformOnLegacy: 'c94', rarity: 'legendary', locked: true },
+  { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, rarity: 'legendary', noShop: true , faction: 'zen' },
+  { id: 'c95', name: '\u0421\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, transformOnLegacy: 'c94', rarity: 'legendary' , faction: 'zen' },
   // Росток Женьшеня: never shows up in the shop or a starter deck —
   // the ONLY way to get one is Бессмертный фикус generating it each
   // round end (see peachOrchard below, same mechanic as Персиковый сад).
-  { id: 's27', name: '\u0420\u043e\u0441\u0442\u043e\u043a \u0416\u0435\u043d\u044c\u0448\u0435\u043d\u044f', type: 'spell', cost: 0, healHero: 6, rarity: 'common', locked: true, noShop: true },
-  { id: 'c96', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0444\u0438\u043a\u0443\u0441', type: 'creature', cost: 5, atk: 0, hp: 25, peachOrchard: 's27', rarity: 'legendary', locked: true },
-  { id: 'c97', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0442\u0438\u0433\u0440', type: 'creature', cost: 6, atk: 7, hp: 7, immortalTiger: true, rarity: 'epic', locked: true },
-  { id: 'c98', name: '\u0410\u0440\u0445\u0430\u0442 \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 6, atk: 6, hp: 6, armor: 4, armoredArhat: true, rarity: 'epic', locked: true },
-  { id: 's28', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043b\u0435\u0441', type: 'spell', cost: 6, pineForest: true, rarity: 'epic', locked: true },
-  { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary', locked: true },
-  { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic', locked: true },
-  { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic', locked: true },
-  { id: 'c102', name: '\u041d\u0443\u0430\u043b\u044c \u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0439', type: 'creature', cost: 7, atk: 10, hp: 5, nualOnPlay: true, rarity: 'legendary', locked: true },
-  { id: 'c103', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, wiseDeerOnPlay: true, rarity: 'epic', locked: true },
+  { id: 's27', name: '\u0420\u043e\u0441\u0442\u043e\u043a \u0416\u0435\u043d\u044c\u0448\u0435\u043d\u044f', type: 'spell', cost: 0, healHero: 6, rarity: 'common', noShop: true , faction: 'zen' },
+  { id: 'c96', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0444\u0438\u043a\u0443\u0441', type: 'creature', cost: 5, atk: 0, hp: 25, peachOrchard: 's27', rarity: 'legendary' , faction: 'zen' },
+  { id: 'c97', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0442\u0438\u0433\u0440', type: 'creature', cost: 6, atk: 7, hp: 7, immortalTiger: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c98', name: '\u0410\u0440\u0445\u0430\u0442 \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 6, atk: 6, hp: 6, armor: 4, armoredArhat: true, rarity: 'epic' , faction: 'zen' },
+  { id: 's28', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043b\u0435\u0441', type: 'spell', cost: 6, pineForest: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary' , faction: 'zen' },
+  { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic' , faction: 'zen' },
+  { id: 'c102', name: '\u041d\u0443\u0430\u043b\u044c \u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0439', type: 'creature', cost: 7, atk: 10, hp: 5, nualOnPlay: true, rarity: 'legendary' , faction: 'zen' },
+  { id: 'c103', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, wiseDeerOnPlay: true, rarity: 'epic' , faction: 'zen' },
   // First card of the new (locked, not-yet-unlockable) Дикари faction
   // — see savagesStarterDeckCounts below, same "future unlock step"
   // placeholder pattern already established for zenStarterDeckCounts.
-  { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common', locked: true },
+  { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common' , faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -437,6 +437,35 @@ export function savagesStarterDeckCounts() {
   return { c104: 3 };
 }
 
+// ---------- Factions ----------
+// The full canonical set of faction ids that exist in the client's own
+// UI (tabs), whether or not they have any cards yet. Server-authoritative
+// list so the client never has to guess which factions to render tabs
+// for — it asks the server (see /api/factions in server.js).
+export const FACTION_IDS = ['empire', 'pirates', 'savages', 'inferno', 'frost', 'zen', 'mystery'];
+
+// Which factions every account starts unlocked with, day one — every
+// OTHER faction in FACTION_IDS is locked by default until some future
+// unlock condition (not built yet) grants it. Right now that's just
+// Дикари (savages) and Дзен (zen); Пираты/Инферно/Холод/Мистерия have
+// tabs already but no cards yet, and are treated as unlocked (never
+// locked) same as Империя.
+export function defaultUnlockedFactions() {
+  return FACTION_IDS.filter((f) => f !== 'savages' && f !== 'zen');
+}
+
+// Dispatches to whichever starter-deck function matches a given faction
+// id — used when actually granting a faction's starter deck to an
+// account upon unlock. Factions with no dedicated starter deck function
+// (no cards yet, or never meant to grant one) return an empty object,
+// which is a safe no-op to merge into an account's owned cards.
+export function starterDeckCountsForFaction(factionId) {
+  if (factionId === 'empire') return defaultDeckCounts();
+  if (factionId === 'zen') return zenStarterDeckCounts();
+  if (factionId === 'savages') return savagesStarterDeckCounts();
+  return {};
+}
+
 // ---------- Shop ----------
 // Only Rare/Epic/Legendary cards are ever sold — Common has no defined
 // shop price (every account already starts owning most Commons anyway),
@@ -467,9 +496,17 @@ export function shopPriceForCard(card, currency) {
 // like Ополченец are excluded, having no defined shop price) — until
 // more Rare+ cards exist, the 6-slot daily lists below necessarily
 // repeat cards. That's expected, not a bug.
-export function shoppableCards() {
+// `unlockedFactions`, when provided (an array or Set of faction ids),
+// additionally excludes any card whose faction isn't in that set — this
+// is how a locked faction's cards stay out of an account's shop
+// entirely, server-side, rather than relying on the client to hide
+// them. Omitting it (or passing nothing) skips the faction check
+// entirely, for any caller that doesn't need it.
+export function shoppableCards(unlockedFactions) {
+  const unlockedSet = unlockedFactions ? new Set(unlockedFactions) : null;
   return CARD_POOL.filter((c) => {
     if (c.locked || c.noShop) return false;
+    if (unlockedSet && !unlockedSet.has(c.faction)) return false;
     const r = shopRarityOf(c);
     return r === 'rare' || r === 'epic' || r === 'legendary';
   });
