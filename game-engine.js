@@ -355,6 +355,7 @@ export const CARD_POOL = [
   { id: 'c97', name: '\u0411\u0435\u0441\u0441\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0442\u0438\u0433\u0440', type: 'creature', cost: 6, atk: 7, hp: 7, immortalTiger: true, rarity: 'epic', locked: true },
   { id: 'c98', name: '\u0410\u0440\u0445\u0430\u0442 \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 6, atk: 6, hp: 6, armor: 4, armoredArhat: true, rarity: 'epic', locked: true },
   { id: 's28', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043b\u0435\u0441', type: 'spell', cost: 6, pineForest: true, rarity: 'epic', locked: true },
+  { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
