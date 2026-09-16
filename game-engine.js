@@ -283,7 +283,7 @@ export const CARD_POOL = [
   // combat loop above.
   { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
   // waitressOnPlay: see the pendingWaitress queue in placeCard/tryEndTurn.
-  { id: 'c73', name: '\u041f\u0440\u0435\u043a\u0440\u0430\u0441\u043d\u0430\u044f \u043e\u0444\u0438\u0446\u0438\u0430\u043d\u0442\u043a\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
+  { id: 'c73', name: '\u0421\u0435\u0441\u0442\u0440\u0430 \u0434\u043e\u043c\u0430 \u0432\u043a\u0443\u0441\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
   // drunkenDisciple: see applyDrunkenDisciple above, hooked in at the
   // same pre-attack point as Мушкетер's musketShot.
   { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
@@ -356,6 +356,7 @@ export const CARD_POOL = [
   { id: 'c98', name: '\u0410\u0440\u0445\u0430\u0442 \u0432 \u0434\u043e\u0441\u043f\u0435\u0445\u0430\u0445', type: 'creature', cost: 6, atk: 6, hp: 6, armor: 4, armoredArhat: true, rarity: 'epic', locked: true },
   { id: 's28', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043b\u0435\u0441', type: 'spell', cost: 6, pineForest: true, rarity: 'epic', locked: true },
   { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary', locked: true },
+  { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -864,7 +865,7 @@ export function placeCard(match, username, uid, lane, depth) {
     // depth === middle: no queued effect — she's just an ordinary body.
   }
 
-  // Прекрасная официантка: same depth-based placement rule as
+  // Сестра дома вкуса: same depth-based placement rule as
   // Олень-мечник/Травница (first/last/middle of the lane, regardless
   // of which lane), but the buff lands on a random ally ANYWHERE on
   // her own board (herself included — nothing excludes her) rather
@@ -880,7 +881,7 @@ export function placeCard(match, username, uid, lane, depth) {
   }
 
   // Даос с метлой: same depth-based placement rule as Олень-мечник/
-  // Прекрасная официантка (first/last/middle of the lane, regardless
+  // Сестра дома вкуса (first/last/middle of the lane, regardless
   // of which lane). First cell is an instant, purely self-modifying
   // effect (like Олень-мечник's own), applied immediately — permanent
   // Наследие 2. Last cell queues a deferred bounce of the FIRST
@@ -927,6 +928,25 @@ export function placeCard(match, username, uid, lane, depth) {
   // CURRENT hand at resolution time, not whatever it was at cast time).
   if (card.mysteriousMaid) {
     match.pendingMysteriousMaid.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect || 0 });
+  }
+
+  // Пьяный Даос: checked instantly at placement (same "no deferral
+  // needed" reasoning as Олень-мечник/Иллюзионист времени, since it's
+  // purely a self-modifying stat change based on board state right
+  // now) — gains +1 attack and +2 health for EACH enemy currently
+  // standing in the OPPOSING lane (same lane index, enemy side).
+  if (card.drunkenDaoistOnPlay) {
+    const enemySide = otherPlayer(match, username);
+    const enemyBoard = match.boards[enemySide];
+    let enemyCount = 0;
+    for (let d = 0; d < DEPTH; d++) {
+      if (enemyBoard[lane][d]) enemyCount++;
+    }
+    if (enemyCount > 0) {
+      unit.atk += enemyCount * 1;
+      unit.hp += enemyCount * 2;
+      unit.maxHp += enemyCount * 2;
+    }
   }
 
   // Денежное дерево: if she's placed THIS round (after the round-start
@@ -3059,7 +3079,7 @@ export function tryEndTurn(match, username) {
     if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
   }
 
-  // Прекрасная официантка: same "start of resolution" battlecry moment
+  // Сестра дома вкуса: same "start of resolution" battlecry moment
   // as everything above — picks a random ally ANYWHERE on her own
   // board (herself included, nothing excludes her) and permanently
   // gives it +2 attack (if she was placed first) or +3 armor (if she
