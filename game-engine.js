@@ -446,12 +446,12 @@ export const FACTION_IDS = ['empire', 'pirates', 'savages', 'inferno', 'frost', 
 
 // Which factions every account starts unlocked with, day one — every
 // OTHER faction in FACTION_IDS is locked by default until some future
-// unlock condition (not built yet) grants it. Right now that's just
-// Дикари (savages) and Дзен (zen); Пираты/Инферно/Холод/Мистерия have
-// tabs already but no cards yet, and are treated as unlocked (never
-// locked) same as Империя.
+// unlock condition (not built yet) grants it. Only Империя (empire)
+// starts unlocked; everything else — Пираты, Дикари, Инферно, Холод,
+// Дзен, Мистерия — is locked from day one, whether or not it has any
+// cards yet.
 export function defaultUnlockedFactions() {
-  return FACTION_IDS.filter((f) => f !== 'savages' && f !== 'zen');
+  return ['empire'];
 }
 
 // Dispatches to whichever starter-deck function matches a given faction
