@@ -358,6 +358,7 @@ export const CARD_POOL = [
   { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary', locked: true },
   { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic', locked: true },
   { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic', locked: true },
+  { id: 'c102', name: '\u041d\u0443\u0430\u043b\u044c \u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0439', type: 'creature', cost: 7, atk: 10, hp: 5, nualOnPlay: true, rarity: 'legendary', locked: true },
 ];
 
 export function cardById(id) {
@@ -630,6 +631,8 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingCalmNun: [],
     pendingMysteriousMaid: [],
     pendingBraveTeacher: [],
+    pendingNualFrontStab: [],
+    pendingNualQuadStab: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -931,6 +934,20 @@ export function placeCard(match, username, uid, lane, depth) {
   // CURRENT hand at resolution time, not whatever it was at cast time).
   if (card.mysteriousMaid) {
     match.pendingMysteriousMaid.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect || 0 });
+  }
+
+  // Нуаль Облачный: same depth-based placement rule as Олень-мечник/
+  // Сестра дома Вкуса (first/last/middle of the lane, regardless of
+  // which lane) — but here BOTH ends do damage to the ENEMY, so both
+  // need deferring to resolution for visible animation (unlike a
+  // purely self-modifying instant effect).
+  if (card.nualOnPlay) {
+    if (depth === 0) {
+      match.pendingNualFrontStab.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+    } else if (depth === DEPTH - 1) {
+      match.pendingNualQuadStab.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+    }
+    // depth === middle: no queued effect at all.
   }
 
   // Пьяный Даос: checked instantly at placement (same "no deferral
@@ -3236,6 +3253,65 @@ export function tryEndTurn(match, username) {
       type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
       targetDepth: chosen.depthIdx, buffAtk: amount, buffHp: 0, sourceUid: entry.sourceUid,
     });
+  }
+
+  // Нуаль Облачный (first cell): 9 damage to the first enemy directly
+  // opposite in the SAME lane — Чаростойкость/Щит blocks the hit but
+  // the battlecry itself still "happened" (matching every other
+  // resisted-hit precedent in this file).
+  const nualFrontQueue = match.pendingNualFrontStab;
+  match.pendingNualFrontStab = [];
+  for (const entry of nualFrontQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const front = frontUnit(enemyBoard, entry.laneIdx);
+    if (!front) continue;
+    const targetUnit = front.unit;
+    const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
+    let died = false;
+    if (!resisted) {
+      targetUnit.hp -= 9;
+      died = targetUnit.hp <= 0;
+    }
+    events.push({
+      type: 'nualFrontStab', side: entry.side, targetSide: enemySide, laneIdx: entry.laneIdx,
+      targetDepthIdx: front.depth, amount: resisted ? 0 : 9, resisted, died, sourceUid: entry.sourceUid,
+    });
+    if (died) killUnit(match, enemySide, entry.laneIdx, front.depth, events);
+  }
+
+  // Нуаль Облачный (last cell): 3 damage to 4 random DISTINCT enemies
+  // anywhere on the board (no lane restriction, unlike the front-cell
+  // version) — fewer than 4 enemies means hitting all of them, never a
+  // crash. Each hit independently respects Чаростойкость/Щит.
+  const nualQuadQueue = match.pendingNualQuadStab;
+  match.pendingNualQuadStab = [];
+  for (const entry of nualQuadQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const pool = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        if (enemyBoard[l][d]) pool.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    const count = Math.min(4, pool.length);
+    for (let i = 0; i < count; i++) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const [chosen] = pool.splice(idx, 1);
+      const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+      const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
+      let died = false;
+      if (!resisted) {
+        targetUnit.hp -= 3;
+        died = targetUnit.hp <= 0;
+      }
+      events.push({
+        type: 'nualQuadStab', side: entry.side, targetSide: enemySide, laneIdx: chosen.laneIdx,
+        targetDepthIdx: chosen.depthIdx, amount: resisted ? 0 : 3, resisted, died, sourceUid: entry.sourceUid,
+      });
+      if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+    }
   }
 
   // Таинственная служанка Сюань: same "start of resolution" battlecry
