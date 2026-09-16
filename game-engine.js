@@ -3342,7 +3342,13 @@ export function tryEndTurn(match, username) {
           // survives — unlike Повар (tied to attack) or Корова (tied to
           // current hp, 50/50 chance), this is just a fixed number.
           // Reuses the exact same 'endOfRound' event/heal-orb animation.
-          if (unit && unit.fixedHeal) {
+          // Шеф дома Вкуса: on her OWN birth round, the recurring
+          // fixedHeal(6) is replaced entirely by the one-time double
+          // below (see chefDoubleHero) — skip it just for that round;
+          // from the NEXT round onward she heals normally like anyone
+          // else with fixedHeal.
+          const skipFixedHealForChef = unit && unit.chefDoubleHero && match.round === unit.bornRound;
+          if (unit && unit.fixedHeal && !skipFixedHealForChef) {
             const healed = healHero(match, name, unit.fixedHeal, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
           }
@@ -3362,13 +3368,14 @@ export function tryEndTurn(match, username) {
               }
             }
           }
-          // Шеф дома Вкуса: exactly ONE time, at the end of the FIRST
-          // full round after she entered the battlefield (bornRound+1
-          // — NOT the same round she was placed, since that round's
-          // heal is her separate healOnPlay), doubles her owner's
-          // hero's CURRENT hp. chefDoubleUsed guards against ever
-          // firing a second time, even if checked again later.
-          if (unit && unit.chefDoubleHero && !unit.chefDoubleUsed && match.round === unit.bornRound + 1) {
+          // Шеф дома Вкуса: exactly ONE time, at the end of the SAME
+          // round she was placed (bornRound) — REPLACING the recurring
+          // fixedHeal(6) that round would otherwise have given (see the
+          // skipFixedHealForChef guard above) — doubles her owner's
+          // hero's CURRENT hp. From the NEXT round onward, no more
+          // doubling, just the normal fixedHeal(6) like anyone else.
+          // chefDoubleUsed guards against ever firing a second time.
+          if (unit && unit.chefDoubleHero && !unit.chefDoubleUsed && match.round === unit.bornRound) {
             unit.chefDoubleUsed = true;
             const before = match.hp[name];
             match.hp[name] = before * 2;
