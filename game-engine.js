@@ -360,6 +360,10 @@ export const CARD_POOL = [
   { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic', locked: true },
   { id: 'c102', name: '\u041d\u0443\u0430\u043b\u044c \u041e\u0431\u043b\u0430\u0447\u043d\u044b\u0439', type: 'creature', cost: 7, atk: 10, hp: 5, nualOnPlay: true, rarity: 'legendary', locked: true },
   { id: 'c103', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, wiseDeerOnPlay: true, rarity: 'epic', locked: true },
+  // First card of the new (locked, not-yet-unlockable) Дикари faction
+  // — see savagesStarterDeckCounts below, same "future unlock step"
+  // placeholder pattern already established for zenStarterDeckCounts.
+  { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common', locked: true },
 ];
 
 export function cardById(id) {
@@ -422,6 +426,15 @@ export function defaultOwnedCounts() {
 // the Empire starter deck.
 export function zenStarterDeckCounts() {
   return { c60: 3, c61: 3, c65: 3, c68: 3, c71: 3, c79: 3, c88: 3, c63: 3, c64: 3, c70: 3 };
+}
+
+// The Дикари starter deck — same "granted once the faction unlocks"
+// placeholder reasoning as zenStarterDeckCounts above (the faction
+// itself is locked, hidden from new accounts, and its unlock
+// conditions aren't built yet). Волк прерий is the first confirmed
+// card, at 3 copies same as every other starter deck.
+export function savagesStarterDeckCounts() {
+  return { c104: 3 };
 }
 
 // ---------- Shop ----------
