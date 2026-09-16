@@ -283,7 +283,7 @@ export const CARD_POOL = [
   // combat loop above.
   { id: 'c72', name: '\u0414\u0430\u043e\u0441-\u043c\u0435\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, daoistSwordsman: true, rarity: 'rare', locked: true },
   // waitressOnPlay: see the pendingWaitress queue in placeCard/tryEndTurn.
-  { id: 'c73', name: '\u0421\u0435\u0441\u0442\u0440\u0430 \u0434\u043e\u043c\u0430 \u0432\u043a\u0443\u0441\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
+  { id: 'c73', name: '\u0421\u0435\u0441\u0442\u0440\u0430 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, waitressOnPlay: true, rarity: 'rare', locked: true },
   // drunkenDisciple: see applyDrunkenDisciple above, hooked in at the
   // same pre-attack point as Мушкетер's musketShot.
   { id: 'c74', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 5, drunkenDisciple: true, rarity: 'rare', locked: true },
@@ -357,6 +357,7 @@ export const CARD_POOL = [
   { id: 's28', name: '\u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043b\u0435\u0441', type: 'spell', cost: 6, pineForest: true, rarity: 'epic', locked: true },
   { id: 'c99', name: '\u0421\u0432\u0438\u043d\u044c\u044f \u041c\u0430\u0441\u0442\u0435\u0440 \u0414\u0437\u0435\u043d', type: 'creature', cost: 6, atk: 8, hp: 8, lifesteal: true, trample: true, legacy: 1, rarity: 'legendary', locked: true },
   { id: 'c100', name: '\u041f\u044c\u044f\u043d\u044b\u0439 \u0414\u0430\u043e\u0441', type: 'creature', cost: 6, atk: 5, hp: 10, doubleStrike: true, drunkenDaoistOnPlay: true, rarity: 'epic', locked: true },
+  { id: 'c101', name: '\u0428\u0435\u0444 \u0434\u043e\u043c\u0430 \u0412\u043a\u0443\u0441\u0430', type: 'creature', cost: 7, atk: 2, hp: 10, healOnPlay: 6, fixedHeal: 6, chefDoubleHero: true, rarity: 'epic', locked: true },
 ];
 
 export function cardById(id) {
@@ -748,6 +749,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     copyOnLegacy: !!card.copyOnLegacy,
     shurikenMaster: !!card.shurikenMaster,
     moneyTree: !!card.moneyTree,
+    chefDoubleHero: !!card.chefDoubleHero,
+    chefDoubleUsed: false,
     transformOnLegacy: card.transformOnLegacy || null,
     immortalTiger: !!card.immortalTiger,
     tigerBoostUsed: false,
@@ -865,7 +868,7 @@ export function placeCard(match, username, uid, lane, depth) {
     // depth === middle: no queued effect — she's just an ordinary body.
   }
 
-  // Сестра дома вкуса: same depth-based placement rule as
+  // Сестра дома Вкуса: same depth-based placement rule as
   // Олень-мечник/Травница (first/last/middle of the lane, regardless
   // of which lane), but the buff lands on a random ally ANYWHERE on
   // her own board (herself included — nothing excludes her) rather
@@ -881,7 +884,7 @@ export function placeCard(match, username, uid, lane, depth) {
   }
 
   // Даос с метлой: same depth-based placement rule as Олень-мечник/
-  // Сестра дома вкуса (first/last/middle of the lane, regardless
+  // Сестра дома Вкуса (first/last/middle of the lane, regardless
   // of which lane). First cell is an instant, purely self-modifying
   // effect (like Олень-мечник's own), applied immediately — permanent
   // Наследие 2. Last cell queues a deferred bounce of the FIRST
@@ -3079,7 +3082,7 @@ export function tryEndTurn(match, username) {
     if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
   }
 
-  // Сестра дома вкуса: same "start of resolution" battlecry moment
+  // Сестра дома Вкуса: same "start of resolution" battlecry moment
   // as everything above — picks a random ally ANYWHERE on her own
   // board (herself included, nothing excludes her) and permanently
   // gives it +2 attack (if she was placed first) or +3 armor (if she
@@ -3358,6 +3361,21 @@ export function tryEndTurn(match, username) {
                 events.push({ type: 'moneyTreeDraw', side: name, sourceUid: unit.uid, laneIdx: l, depthIdx: d, drew });
               }
             }
+          }
+          // Шеф дома Вкуса: exactly ONE time, at the end of the FIRST
+          // full round after she entered the battlefield (bornRound+1
+          // — NOT the same round she was placed, since that round's
+          // heal is her separate healOnPlay), doubles her owner's
+          // hero's CURRENT hp. chefDoubleUsed guards against ever
+          // firing a second time, even if checked again later.
+          if (unit && unit.chefDoubleHero && !unit.chefDoubleUsed && match.round === unit.bornRound + 1) {
+            unit.chefDoubleUsed = true;
+            const before = match.hp[name];
+            match.hp[name] = before * 2;
+            events.push({
+              type: 'chefHeroDouble', side: name, sourceUid: unit.uid,
+              laneIdx: l, depthIdx: d, amount: match.hp[name] - before,
+            });
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
