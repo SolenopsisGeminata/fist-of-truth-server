@@ -366,6 +366,7 @@ export const CARD_POOL = [
   { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common' , faction: 'savages' },
   { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, defender: true, temporaryDefender: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
   { id: 'c106', name: '\u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439', type: 'creature', cost: 1, atk: 1, hp: 1, lizardHealBuff: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c107', name: '\u0412\u043e\u0438\u043d \u0441 \u043a\u043e\u043f\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, spearmanOnPlay: true, rarity: 'common', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -433,10 +434,11 @@ export function zenStarterDeckCounts() {
 // The Дикари starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts above (the faction
 // itself is locked, hidden from new accounts, and its unlock
-// conditions aren't built yet). Волк прерий is the first confirmed
-// card, at 3 copies same as every other starter deck.
+// conditions aren't built yet). Волк прерий and Воин с копьем are the
+// confirmed cards so far, at 3 copies each same as every other starter
+// deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3 };
+  return { c104: 3, c107: 3 };
 }
 
 // ---------- Factions ----------
@@ -689,6 +691,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingNualQuadStab: [],
     pendingWiseDeerDebuff: [],
     pendingWiseDeerBuff: [],
+    pendingSpearmanBuff: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -1020,6 +1023,17 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingWiseDeerBuff.push({ side: username, sourceUid: unit.uid });
     }
     // depth === middle: no queued effect at all.
+  }
+
+  // Воин с копьем: whether an enemy "ALSO appeared this same phase"
+  // directly opposite can only be known once BOTH players have
+  // finished placing for the round — checking it right now, at
+  // placement time, would depend on placement ORDER (whoever places
+  // second would always see the other, whoever places first never
+  // would). Deferred to the very start of resolution instead, where
+  // both sides' placements for the round are already final.
+  if (card.spearmanOnPlay) {
+    match.pendingSpearmanBuff.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Пьяный Даос: checked instantly at placement (same "no deferral
@@ -3497,6 +3511,32 @@ export function tryEndTurn(match, username) {
           targetDepth: d, buffAtk: 2, buffHp: 2, sourceUid: entry.sourceUid,
         });
       }
+    }
+  }
+
+  // Воин с копьем: checked here at the very start of resolution (see
+  // the placement-time comment above for why) — if the cell directly
+  // opposite (same lane, same depth, enemy side) has a unit that was
+  // ALSO placed this exact round (bornRound === match.round,
+  // regardless of which player placed first), gains a permanent
+  // +1 attack / +3 health. A safe no-op if he's no longer there, or if
+  // nothing (or an older unit) occupies the opposing cell.
+  const spearmanBuffQueue = match.pendingSpearmanBuff;
+  match.pendingSpearmanBuff = [];
+  for (const entry of spearmanBuffQueue) {
+    const unit = match.boards[entry.side][entry.laneIdx] && match.boards[entry.side][entry.laneIdx][entry.depthIdx];
+    if (!unit || unit.shieldEffect) continue;
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const enemyUnit = enemyBoard[entry.laneIdx] && enemyBoard[entry.laneIdx][entry.depthIdx];
+    if (enemyUnit && enemyUnit.bornRound === match.round) {
+      unit.atk += 1;
+      unit.hp += 3;
+      unit.maxHp += 3;
+      events.push({
+        type: 'rallyBuff', side: entry.side, laneIdx: entry.laneIdx,
+        targetDepth: entry.depthIdx, buffAtk: 1, buffHp: 3, sourceUid: entry.sourceUid,
+      });
     }
   }
 
