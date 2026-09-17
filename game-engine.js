@@ -368,6 +368,7 @@ export const CARD_POOL = [
   { id: 'c106', name: '\u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439', type: 'creature', cost: 1, atk: 1, hp: 1, lizardHealBuff: true, rarity: 'rare', faction: 'savages' },
   { id: 'c107', name: '\u0412\u043e\u0438\u043d \u0441 \u043a\u043e\u043f\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, spearmanOnPlay: true, rarity: 'common', faction: 'savages' },
   { id: 'c108', name: '\u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 3, insightEffect: 1, manaAura: 1, rarity: 'rare', faction: 'savages' },
+  { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, defender: true, temporaryDefender: true, rarity: 'common', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -435,11 +436,11 @@ export function zenStarterDeckCounts() {
 // The Дикари starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts above (the faction
 // itself is locked, hidden from new accounts, and its unlock
-// conditions aren't built yet). Волк прерий and Воин с копьем are the
-// confirmed cards so far, at 3 copies each same as every other starter
-// deck.
+// conditions aren't built yet). Волк прерий, Воин с копьем, and Глупый
+// дикарь are the confirmed cards so far, at 3 copies each same as
+// every other starter deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3, c107: 3 };
+  return { c104: 3, c107: 3, c109: 3 };
 }
 
 // ---------- Factions ----------
