@@ -345,7 +345,7 @@ export const CARD_POOL = [
   // Потомок дракона: never shows up in the shop or a starter deck —
   // the ONLY way to get one is Странствующий ученик transforming into
   // it upon receiving Наследие (see transformOnLegacy below).
-  { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, rarity: 'legendary', noShop: true , faction: 'zen' },
+  { id: 'c94', name: '\u041f\u043e\u0442\u043e\u043c\u043e\u043a \u0434\u0440\u0430\u043a\u043e\u043d\u0430', type: 'creature', cost: 5, atk: 6, hp: 6, firstStrike: true, doubleStrike: true, lifesteal: true, spellResist: true, rarity: 'legendary', noShop: true , faction: 'zen' },
   { id: 'c95', name: '\u0421\u0442\u0440\u0430\u043d\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, transformOnLegacy: 'c94', rarity: 'legendary' , faction: 'zen' },
   // Росток Женьшеня: never shows up in the shop or a starter deck —
   // the ONLY way to get one is Бессмертный фикус generating it each
@@ -364,6 +364,7 @@ export const CARD_POOL = [
   // — see savagesStarterDeckCounts below, same "future unlock step"
   // placeholder pattern already established for zenStarterDeckCounts.
   { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common' , faction: 'savages' },
+  { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, defender: true, temporaryDefender: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -767,6 +768,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     siegeShot: !!card.siegeShot,
     endOfRoundSummon: card.endOfRoundSummon || null,
     defender: !!card.defender,
+    temporaryDefender: !!card.temporaryDefender,
     cannonShot: !!card.cannonShot,
     cannonShotFixed: card.cannonShotFixed || 0,
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
@@ -813,6 +815,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     tigerBoostUsed: false,
     armoredArhat: !!card.armoredArhat,
     shieldEffect: !!card.shieldEffect,
+    vultureDraw: !!card.vultureDraw,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -2793,6 +2796,27 @@ function resolveCombatPass(match, events, isEligible) {
         applyMysteriousMaidShift(match, nameB, events, bUnit.uid);
       }
 
+      // Стервятник: whenever his own attack lands directly on the
+      // enemy hero, draws 1 card from his OWNER's own deck.
+      if (aAttacks && !aTarget && aUnit.vultureDraw) {
+        const hand = match.hands[nameA];
+        if (hand.length < MAX_HAND) {
+          const beforeLen = hand.length;
+          draw(match.decks[nameA], hand, 1);
+          const drew = hand.length > beforeLen;
+          events.push({ type: 'vultureDraw', side: nameA, sourceUid: aUnit.uid, laneIdx: l, depthIdx: aInfo.depth, drew });
+        }
+      }
+      if (bAttacks && !bTarget && bUnit.vultureDraw) {
+        const hand = match.hands[nameB];
+        if (hand.length < MAX_HAND) {
+          const beforeLen = hand.length;
+          draw(match.decks[nameB], hand, 1);
+          const drew = hand.length > beforeLen;
+          events.push({ type: 'vultureDraw', side: nameB, sourceUid: bUnit.uid, laneIdx: l, depthIdx: bInfo.depth, drew });
+        }
+      }
+
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
       if (bDied) killUnit(match, nameA, l, bTarget.depth, events);
 
@@ -2867,8 +2891,14 @@ function resolveCombatPass(match, events, isEligible) {
 function resolveCombat(match, events) {
   const blinded = match.blindedUids;
   const isBlinded = (unit) => !!(blinded && blinded.has(unit.uid));
-  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.cantAttackThisRound && !!unit.firstStrike);
-  resolveCombatPass(match, events, (unit) => !unit.defender && !isBlinded(unit) && !unit.cantAttackThisRound && !unit.firstStrike);
+  // Стервятник: temporaryDefender means his Защитник status only holds
+  // during his OWN birth round — from the round after, he's just a
+  // normal attacker despite still carrying the defender flag itself.
+  // Every OTHER defender-carrying card has no temporaryDefender flag at
+  // all, so this reduces to the exact same permanent check as before.
+  const isDefenderActive = (unit) => unit.defender && (!unit.temporaryDefender || match.round === unit.bornRound);
+  resolveCombatPass(match, events, (unit) => !isDefenderActive(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !isDefenderActive(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
