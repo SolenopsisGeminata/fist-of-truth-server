@@ -102,14 +102,15 @@ export const CARD_POOL = [
   { id: 'c19', name: '\u041a\u043e\u0440\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 0, hp: 4, cowHeal: true, rarity: 'rare' , faction: 'empire' },
   { id: 'c20', name: '\u0421\u0442\u0440\u0430\u0436 \u0432\u043e\u0440\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, armor: 1, rarity: 'rare' , faction: 'empire' },
   // Synergy 1 = +1 atk per adjacent ally, same rule as Легионер. On top
-  // of that, shootHero fires TWICE per lifetime-in-a-round-cycle: once as
-  // a battlecry the instant she's placed (queued via match.pendingShots,
-  // revealed at the start of resolution so the opponent sees it), and
-  // again at the end of every round she survives (alongside cookHeal/
-  // cowHeal, further down) — both times hitting the enemy hero for
-  // damage equal to her CURRENT effective attack (base + synergy) at
-  // that exact moment.
-  { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHero: true, rarity: 'rare' , faction: 'empire' },
+  // of that, shootHeroStartOfTurn (reworked from the original shootHero)
+  // fires TWICE per lifetime-in-a-round-cycle: once as a battlecry the
+  // instant she's placed (queued via match.pendingShots, revealed at the
+  // start of resolution so the opponent sees it), and again at the
+  // START of every round AFTER the one she was placed in (match.round >
+  // bornRound excludes her own birth round, since the battlecry already
+  // covered it) — both times hitting the enemy hero for damage equal to
+  // her CURRENT effective attack (base + synergy) at that exact moment.
+  { id: 'c21', name: '\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a', type: 'creature', cost: 3, atk: 1, hp: 4, synergy: 1, shootHeroStartOfTurn: true, rarity: 'rare' , faction: 'empire' },
   // Same permanent +1/+1-to-a-random-ally idea as Паладин/Родная тетушка,
   // but recurring instead of a one-time battlecry: fires again at the
   // START of every round he's still alive (see applyBishopBuffs() in
@@ -140,7 +141,8 @@ export const CARD_POOL = [
   { id: 'c27', name: '\u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 4, atk: 1, hp: 4, priestHeal: true, rarity: 'rare' , faction: 'empire' },
   { id: 'c28', name: '\u042d\u043b\u0438\u0442\u0430 \u0445\u0440\u0430\u043c\u0430', type: 'creature', cost: 4, atk: 2, hp: 4, synergy: 2, rarity: 'rare' , faction: 'empire' },
   { id: 'c29', name: '\u0413\u0440\u0438\u0444\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, lifesteal: true, rarity: 'rare' , faction: 'empire' },
-  // siegeShot: same end-of-round trigger as Арбалетчик's shootHero, but
+  // siegeShot: same end-of-round trigger Арбалетчик's own shootHero used
+  // to have before its rework (now used by Лучник прерий instead), but
   // fires a fixed 2 damage at a random ENEMY UNIT instead of the hero —
   // see the siegeShot branch in tryEndTurn's end-of-round loop.
   { id: 'c30', name: '\u041e\u0441\u0430\u0434\u043d\u0430\u044f \u0431\u0430\u0448\u043d\u044f', type: 'creature', cost: 4, atk: 1, hp: 8, siegeShot: true, rarity: 'rare' , faction: 'empire' },
@@ -369,6 +371,7 @@ export const CARD_POOL = [
   { id: 'c107', name: '\u0412\u043e\u0438\u043d \u0441 \u043a\u043e\u043f\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, spearmanOnPlay: true, rarity: 'common', faction: 'savages' },
   { id: 'c108', name: '\u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 3, insightEffect: 1, manaAura: 1, rarity: 'rare', faction: 'savages' },
   { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, defender: true, temporaryDefender: true, rarity: 'common', faction: 'savages' },
+  { id: 'c110', name: '\u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 5, shootHero: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -783,6 +786,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lifesteal: !!card.lifesteal,
     synergy: card.synergy || 0,
     shootHero: !!card.shootHero,
+    shootHeroStartOfTurn: !!card.shootHeroStartOfTurn,
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     wallGrow: !!card.wallGrow,
@@ -1184,7 +1188,7 @@ export function placeCard(match, username, uid, lane, depth) {
   // it fire). The damage amount itself isn't computed until resolution
   // starts, since her Synergy bonus could still change between now and
   // then (more allies might get placed this same round).
-  if (card.shootHero) {
+  if (card.shootHero || card.shootHeroStartOfTurn) {
     match.pendingShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
@@ -3200,6 +3204,30 @@ export function tryEndTurn(match, username) {
     });
   }
 
+  // Арбалетчик (reworked): fires again at the START of every round
+  // AFTER the one he was placed in — NOT the round he was placed
+  // (match.round > unit.bornRound excludes it), since the battlecry
+  // shot above already covers that round. Checked here, at the very
+  // start of resolution, same "start of round" moment as everything
+  // else in this section — same damage formula as his own battlecry.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (unit && unit.shootHeroStartOfTurn && match.round > unit.bornRound) {
+          const targetSide = match.players.find((p) => p !== side);
+          const amount = effectiveAtk(board, l, d);
+          match.hp[targetSide] -= amount;
+          events.push({
+            type: 'heroShot', side, targetSide, amount,
+            laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+          });
+        }
+      }
+    }
+  }
+
   // Бамбуковый стрелок's battlecry throw: a random depth within the
   // SAME lane on the enemy's side (his own mirrored lane, same
   // convention as Имперская пушка), fixed damage, Чаростойкость blocks
@@ -3752,9 +3780,12 @@ export function tryEndTurn(match, username) {
             const healed = healHero(match, name, unit.hp, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
           }
-          // Арбалетчик: fires again at the end of every round she
-          // survives, same as her battlecry — enemy hero takes damage
-          // equal to her live (Synergy-boosted) attack right now.
+          // Лучник прерий (shootHero): fires again at the end of every
+          // round she survives, same as her battlecry — enemy hero
+          // takes damage equal to her live (Synergy-boosted, if any)
+          // attack right now. Formerly Арбалетчик's own mechanic before
+          // its rework to shootHeroStartOfTurn (see the start-of-round
+          // check further up in resolution instead).
           if (unit && unit.shootHero) {
             const targetSide = match.players.find((p) => p !== name);
             const amount = effectiveAtk(board, l, d);
