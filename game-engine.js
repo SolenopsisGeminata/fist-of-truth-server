@@ -367,6 +367,7 @@ export const CARD_POOL = [
   { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, defender: true, temporaryDefender: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
   { id: 'c106', name: '\u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439', type: 'creature', cost: 1, atk: 1, hp: 1, lizardHealBuff: true, rarity: 'rare', faction: 'savages' },
   { id: 'c107', name: '\u0412\u043e\u0438\u043d \u0441 \u043a\u043e\u043f\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, spearmanOnPlay: true, rarity: 'common', faction: 'savages' },
+  { id: 'c108', name: '\u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 3, insightEffect: 1, manaAura: 1, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -686,6 +687,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBellBounce: [],
     pendingCalmNun: [],
     pendingMysteriousMaid: [],
+    pendingShamanInsight: [],
     pendingBraveTeacher: [],
     pendingNualFrontStab: [],
     pendingNualQuadStab: [],
@@ -750,6 +752,25 @@ export function otherPlayer(match, username) {
 // the board — used by Карающий ангел to tell "appeared this same turn"
 // (whether normally placed OR instant-summoned) apart from anyone who
 // was already there from an earlier round.
+// Шаман прерий (Мана 1): sums the manaAura value across every unit
+// CURRENTLY alive on a side's board — the total extra mana that side's
+// owner gets on top of the standard match.maxMana each round, for as
+// long as whatever's granting it stays alive and on the battlefield.
+// Recomputed fresh every time it's needed rather than tracked as a
+// running total, so it's always correct regardless of how units came
+// and went.
+function manaAuraTotal(match, side) {
+  const board = match.boards[side];
+  let total = 0;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.manaAura) total += u.manaAura;
+    }
+  }
+  return total;
+}
+
 function buildUnitFromCard(card, placedThisRound, bornRound) {
   return {
     id: card.id,
@@ -821,6 +842,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     shieldEffect: !!card.shieldEffect,
     vultureDraw: !!card.vultureDraw,
     lizardHealBuff: !!card.lizardHealBuff,
+    manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -998,6 +1020,15 @@ export function placeCard(match, username, uid, lane, depth) {
     match.pendingMysteriousMaid.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect || 0 });
   }
 
+  // Шаман прерий: Понимание on its own, no accompanying atk-shift
+  // battlecry unlike Таинственная служанка Сюань above — kept as a
+  // SEPARATE check (rather than folding into the mysteriousMaid branch
+  // above) so a future card can carry insightEffect for flavor/display
+  // purposes without accidentally triggering this reveal too.
+  if (card.insightEffect && !card.mysteriousMaid) {
+    match.pendingShamanInsight.push({ side: username, sourceUid: unit.uid, insightAmount: card.insightEffect });
+  }
+
   // Нуаль Облачный: same depth-based placement rule as Олень-мечник/
   // Сестра дома Вкуса (first/last/middle of the lane, regardless of
   // which lane) — but here BOTH ends do damage to the ENEMY, so both
@@ -1035,6 +1066,13 @@ export function placeCard(match, username, uid, lane, depth) {
   if (card.spearmanOnPlay) {
     match.pendingSpearmanBuff.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
+
+  // Шаман прерий (Мана 1): NOT granted immediately at placement — only
+  // once he's actually confirmed on the battlefield (both players
+  // pressed "Завершить ход" and resolution completed), which for a
+  // unit placed THIS round means starting with the NEXT round's mana
+  // refill (manaAuraTotal already picks him up naturally there, since
+  // he's alive and on the board by then). No grant needed here at all.
 
   // Пьяный Даос: checked instantly at placement (same "no deferral
   // needed" reasoning as Олень-мечник/Иллюзионист времени, since it's
@@ -1420,6 +1458,13 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   const board = match.boards[side];
   const unit = board[laneIdx][depthIdx];
   board[laneIdx][depthIdx] = null;
+  // Шаман прерий (Мана 1): the bonus only lasts "while alive and on
+  // the battlefield" — the instant he dies, his owner's CURRENT mana
+  // drops back by that same amount, floored at 0 so it can never go
+  // negative even if the bonus mana was already spent this round.
+  if (unit && unit.manaAura) {
+    match.mana[side] = Math.max(0, match.mana[side] - unit.manaAura);
+  }
   if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
     match.hp[side] -= 5;
     events.push({ type: 'selfExplosion', side, amount: 5, sourceUid: unit.uid, laneIdx, depthIdx });
@@ -3551,6 +3596,14 @@ export function tryEndTurn(match, username) {
     applyMysteriousMaidShift(match, entry.side, events, entry.sourceUid);
   }
 
+  // Шаман прерий: same Понимание effect as Таинственная служанка Сюань
+  // above, but standalone — no accompanying atk-shift battlecry.
+  const shamanInsightQueue = match.pendingShamanInsight;
+  match.pendingShamanInsight = [];
+  for (const entry of shamanInsightQueue) {
+    if (entry.insightAmount > 0) applyInsight(match, entry.side, entry.insightAmount, events);
+  }
+
   const battlecrySummonQueue = match.pendingBattlecrySummons;
   match.pendingBattlecrySummons = [];
   for (const summon of battlecrySummonQueue) {
@@ -3998,8 +4051,11 @@ export function tryEndTurn(match, username) {
     } else {
       match.round += 1;
       match.maxMana = Math.min(MAX_MANA, match.maxMana + 1);
-      match.mana[nameA] = match.maxMana;
-      match.mana[nameB] = match.maxMana;
+      // Шаман прерий (Мана 1): each side's actual refill is the shared
+      // maxMana PLUS whatever manaAura bonus THEIR OWN board currently
+      // has — asymmetric on purpose, since this is a per-owner effect.
+      match.mana[nameA] = match.maxMana + manaAuraTotal(match, nameA);
+      match.mana[nameB] = match.maxMana + manaAuraTotal(match, nameB);
       match.sacrifices[nameA] = 0;
       match.sacrifices[nameB] = 0;
       match.readyToEnd[nameA] = false;
