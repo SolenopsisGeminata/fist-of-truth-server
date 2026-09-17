@@ -365,6 +365,7 @@ export const CARD_POOL = [
   // placeholder pattern already established for zenStarterDeckCounts.
   { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common' , faction: 'savages' },
   { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, defender: true, temporaryDefender: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c106', name: '\u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439', type: 'creature', cost: 1, atk: 1, hp: 1, lizardHealBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -816,6 +817,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armoredArhat: !!card.armoredArhat,
     shieldEffect: !!card.shieldEffect,
     vultureDraw: !!card.vultureDraw,
+    lizardHealBuff: !!card.lizardHealBuff,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -1666,7 +1668,35 @@ function healHero(match, side, amount, events) {
       }
     }
   }
+  // Ящерица степей: every time healing actually lands for his own
+  // side (his own battlecry heal, if any, included — same reasoning
+  // as Имперский патриарх/Священник above), gains a PERMANENT +2
+  // attack to HIMSELF. Shared with Шеф дома Вкуса's own one-time
+  // hero-hp doubling below, which bypasses healHero() entirely (see
+  // applyLizardHealTrigger).
+  if (events) applyLizardHealTrigger(match, side, events);
   return applied;
+}
+
+// Ящерица степей: shared by both healHero() above (the OVERWHELMING
+// majority of heal-hero effects in the game) and Шеф дома Вкуса's own
+// one-time hero-hp doubling below, which bypasses healHero() entirely
+// with a direct match.hp assignment — pulled out so both call sites
+// share one implementation instead of duplicating the board scan.
+function applyLizardHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const unit = board[l][d];
+      if (unit && unit.lizardHealBuff) {
+        unit.atk += 2;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l,
+          targetDepth: d, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
+        });
+      }
+    }
+  }
 }
 
 function resolveSpells(match, events) {
@@ -3615,6 +3645,11 @@ export function tryEndTurn(match, username) {
               type: 'chefHeroDouble', side: name, sourceUid: unit.uid,
               laneIdx: l, depthIdx: d, amount: match.hp[name] - before,
             });
+            // Doubling counts as "restoring/increasing" the hero's own
+            // health same as any ordinary heal — but this bypasses
+            // healHero() entirely, so Ящерица степей needs its own
+            // explicit trigger call right here.
+            if (match.hp[name] > before) applyLizardHealTrigger(match, name, events);
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
