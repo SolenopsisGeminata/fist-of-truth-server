@@ -372,6 +372,7 @@ export const CARD_POOL = [
   { id: 'c108', name: '\u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 3, insightEffect: 1, manaAura: 1, rarity: 'rare', faction: 'savages' },
   { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, defender: true, temporaryDefender: true, rarity: 'common', faction: 'savages' },
   { id: 'c110', name: '\u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 5, shootHero: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c111', name: '\u0421\u0443\u0441\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, squirrelHealBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -847,6 +848,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     shieldEffect: !!card.shieldEffect,
     vultureDraw: !!card.vultureDraw,
     lizardHealBuff: !!card.lizardHealBuff,
+    squirrelHealBuff: !!card.squirrelHealBuff,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -1739,7 +1741,33 @@ function healHero(match, side, amount, events) {
   // hero-hp doubling below, which bypasses healHero() entirely (see
   // applyLizardHealTrigger).
   if (events) applyLizardHealTrigger(match, side, events);
+  // Суслик: same "every heal" trigger as Ящерица степей right above,
+  // but +1 attack AND +2 health to himself instead of +2 attack alone
+  // — a separate helper since the amounts differ, shared with Шеф дома
+  // Вкуса's doubling the same way.
+  if (events) applySquirrelHealTrigger(match, side, events);
   return applied;
+}
+
+// Суслик: shared by both healHero() above and Шеф дома Вкуса's own
+// one-time hero-hp doubling (which bypasses healHero() entirely) —
+// same reasoning as applyLizardHealTrigger right below.
+function applySquirrelHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.squirrelHealBuff) {
+        u.atk += 1;
+        u.hp += 2;
+        u.maxHp += 2;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l,
+          targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: u.uid,
+        });
+      }
+    }
+  }
 }
 
 // Ящерица степей: shared by both healHero() above (the OVERWHELMING
@@ -3771,7 +3799,10 @@ export function tryEndTurn(match, username) {
             // health same as any ordinary heal — but this bypasses
             // healHero() entirely, so Ящерица степей needs its own
             // explicit trigger call right here.
-            if (match.hp[name] > before) applyLizardHealTrigger(match, name, events);
+            if (match.hp[name] > before) {
+              applyLizardHealTrigger(match, name, events);
+              applySquirrelHealTrigger(match, name, events);
+            }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
           // this exact moment (not a fixed number, not attack), so a
