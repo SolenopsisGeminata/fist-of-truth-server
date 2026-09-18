@@ -399,6 +399,9 @@ export const CARD_POOL = [
   // validation, and resolveSpells' unit-mutation branch) already built
   // for \u0414\u043e\u0441\u043f\u0435\u0445\u0438/\u0414\u0432\u043e\u0439\u043d\u043e\u0439 \u0443\u0434\u0430\u0440/\u041f\u043e\u0441\u043e\u0445 \u0434\u0438\u043a\u043e\u0433\u043e \u0432\u0435\u0442\u0440\u0430 \u2014 no new code needed.
   { id: 's29', name: '\u042f\u0440\u043e\u0441\u0442\u044c \u043a\u0430\u0431\u0430\u043d\u0430', type: 'spell', cost: 2, buffAtk: 2, buffHp: 3, buffTrample: true, rarity: 'rare', faction: 'savages' },
+  // Same bonus-draw idea as \u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a (drawIfArmored), just keyed off
+  // \u0421\u043e\u043d instead of Armor \u2014 see drawIfAsleep in castSpell/resolveSpells.
+  { id: 's30', name: '\u0417\u0430\u043f\u043e\u0437\u0434\u0430\u043b\u0430\u044f \u043f\u043e\u0441\u0442\u0430\u0432\u043a\u0430', type: 'spell', cost: 2, buffAtk: 2, buffHp: 2, drawIfAsleep: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1450,6 +1453,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffLifesteal: card.buffLifesteal,
     buffDoubleStrike: card.buffDoubleStrike,
     drawIfArmored: card.drawIfArmored,
+    drawIfAsleep: card.drawIfAsleep,
     summonCardId: card.summonCardId,
     summonCount: card.summonCount,
     healAmount: card.healAmount,
@@ -2254,8 +2258,12 @@ function resolveSpells(match, events) {
         // Наплечник: if the TARGET already has Armor (her own, not from
         // this spell — buffArmor isn't set on this card at all), the
         // caster draws a card from their own deck as a bonus.
+        // Запоздалая поставка: same bonus-draw idea, but keyed off the
+        // target carrying Сон instead of Armor — checks the flag itself,
+        // not whether it's currently gating the target's attack (i.e.
+        // still true from the round after bornRound onward too).
         let drewCard = false;
-        if (spell.drawIfArmored && unit.armor > 0) {
+        if ((spell.drawIfArmored && unit.armor > 0) || (spell.drawIfAsleep && unit.sleep)) {
           const beforeLen = match.hands[spell.side].length;
           draw(match.decks[spell.side], match.hands[spell.side], 1);
           drewCard = match.hands[spell.side].length > beforeLen;
