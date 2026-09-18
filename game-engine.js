@@ -429,6 +429,11 @@ export const CARD_POOL = [
   // recurring fixedHeal (cardId-driven, so it works fine even though the
   // unit is already gone from the board by the time this fires).
   { id: 'c119', name: '\u0414\u0435\u0442\u0435\u043d\u044b\u0448 \u043a\u0430\u0431\u0430\u043d\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, healOnDeath: 2, rarity: 'common', faction: 'savages' },
+  // Part of the \u0414\u0438\u043a\u0430\u0440\u0438 starter deck (see savagesStarterDeckCounts above) \u2014
+  // the faction's own analogue of \u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430 (s1, Empire's starter-deck buff
+  // spell: cost 2, same +4 total stats, common rarity). Pure reuse of
+  // the existing generic buff-spell mechanism, no new code needed.
+  { id: 's31', name: '\u0421\u0438\u043b\u0430 \u043a\u0430\u0431\u0430\u043d\u0430', type: 'spell', cost: 2, buffAtk: 2, buffHp: 2, rarity: 'common', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -497,10 +502,10 @@ export function zenStarterDeckCounts() {
 // placeholder reasoning as zenStarterDeckCounts above (the faction
 // itself is locked, hidden from new accounts, and its unlock
 // conditions aren't built yet). Волк прерий, Воин с копьем, Глупый
-// дикарь, and Детеныш кабана are the confirmed cards so far, at 3
-// copies each same as every other starter deck.
+// дикарь, Детеныш кабана, and Сила кабана are the confirmed cards so
+// far, at 3 copies each same as every other starter deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3, c107: 3, c109: 3, c119: 3 };
+  return { c104: 3, c107: 3, c109: 3, c119: 3, s31: 3 };
 }
 
 // ---------- Factions ----------
