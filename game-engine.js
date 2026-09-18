@@ -447,12 +447,16 @@ export const CARD_POOL = [
   // enemy unit for 2 damage (reuses applyRandomEnemyShot, same as
   // \u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a).
   { id: 'c122', name: '\u0412\u0441\u0430\u0434\u043d\u0438\u043a \u043d\u0430 \u043a\u0430\u0431\u0430\u043d\u0435', type: 'creature', cost: 3, atk: 2, hp: 3, boarRiderSpear: true, rarity: 'rare', faction: 'savages' },
-  // selfHealOnDamage: see the end-of-round loop above \u2014 same
-  // roundStartHp-based "took damage this round" check as \u0413\u043e\u0440\u043d\u044b\u0439
-  // \u0432\u043e\u0438\u043d, but heals itself (capped at its own max HP) instead of
-  // permanently growing. sleep: see the sleep field/isAsleep in
-  // resolveCombat above \u2014 can't attack during its own bornRound.
-  { id: 'c123', name: '\u0411\u0435\u0433\u0435\u043c\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 7, sleep: true, selfHealOnDamage: 3, rarity: 'rare', faction: 'savages' },
+  // selfHpGrowthOnDamage: see the end-of-round loop above \u2014 same
+  // roundStartHp-based "took damage this round" check and permanent-
+  // growth reasoning as \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d, just +hp only, no upper bound
+  // (reuses the same rallyBuff event, buffAtk: 0). sleep: see the sleep
+  // field/isAsleep in resolveCombat above \u2014 can't attack during its own
+  // bornRound.
+  { id: 'c123', name: '\u0411\u0435\u0433\u0435\u043c\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 7, sleep: true, selfHpGrowthOnDamage: 3, rarity: 'rare', faction: 'savages' },
+  // Pure reuse of the existing manaAura mechanic (same as \u0428\u0430\u043c\u0430\u043d
+  // \u043f\u0440\u0435\u0440\u0438\u0439) \u2014 no new code needed.
+  { id: 'c124', name: '\u0411\u0430\u043e\u0431\u0430\u0431', type: 'creature', cost: 3, atk: 0, hp: 5, manaAura: 1, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -947,7 +951,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armadilloHealBuff: !!card.armadilloHealBuff,
     lizardWarriorShot: !!card.lizardWarriorShot,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
-    selfHealOnDamage: card.selfHealOnDamage || 0,
+    selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -4153,24 +4157,19 @@ export function tryEndTurn(match, username) {
             }
           }
           // Бегемот: same roundStartHp-based "took damage this round"
-          // check as Горный воин above, but heals ITSELF back by a fixed
-          // amount instead of permanently growing — capped at its own
-          // current max HP, so it never overheals past its ceiling the
-          // way a rallyBuff-style permanent gain would. Uses a dedicated
-          // 'selfHeal' event since rallyBuff always grows maxHp alongside
-          // hp (wrong here) and every other heal event in the game
-          // targets the HERO, not a unit.
-          if (unit && unit.selfHealOnDamage) {
+          // check as Горный воин above, and now the exact same kind of
+          // permanent growth too (no upper bound) — just +hp only, no
+          // attack change. Reuses the same rallyBuff event.
+          if (unit && unit.selfHpGrowthOnDamage) {
             const startHp = match.roundStartHp[unit.uid];
             if (startHp !== undefined && unit.hp < startHp) {
-              const healed = Math.min(unit.selfHealOnDamage, unit.maxHp - unit.hp);
-              if (healed > 0) {
-                unit.hp += healed;
-                events.push({
-                  type: 'selfHeal', side: name, cardId: unit.id,
-                  sourceUid: unit.uid, amount: healed, laneIdx: l, depthIdx: d,
-                });
-              }
+              const amount = unit.selfHpGrowthOnDamage;
+              unit.hp += amount;
+              unit.maxHp += amount;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 0, buffHp: amount, sourceUid: unit.uid,
+              });
             }
           }
           // Шеф дома Вкуса: exactly ONE time, at the end of the SAME
