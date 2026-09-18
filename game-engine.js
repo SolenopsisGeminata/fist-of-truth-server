@@ -433,7 +433,12 @@ export const CARD_POOL = [
   // the faction's own analogue of \u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430 (s1, Empire's starter-deck buff
   // spell: cost 2, same +4 total stats, common rarity). Pure reuse of
   // the existing generic buff-spell mechanism, no new code needed.
-  { id: 's31', name: '\u0421\u0438\u043b\u0430 \u043a\u0430\u0431\u0430\u043d\u0430', type: 'spell', cost: 2, buffAtk: 2, buffHp: 2, rarity: 'common', faction: 'savages' },
+  { id: 's31', name: '\u0421\u0438\u043b\u0430 \u043a\u0430\u0431\u0430\u043d\u0430', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, rarity: 'common', faction: 'savages' },
+  // randomShotOnPlay: battlecry throw at a random enemy unit.
+  // randomShotRecurring: same shot again before her own attack, starting
+  // the round AFTER placement (bambooShotRecurring's exact timing) \u2014 see
+  // applyRandomEnemyShot/pendingMarksmanShots above for both.
+  { id: 'c120', name: '\u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, randomShotOnPlay: 1, randomShotRecurring: 1, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -746,6 +751,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHeals: [],
     pendingShots: [],
     pendingBambooShots: [],
+    pendingMarksmanShots: [],
     pendingHerbalist: [],
     pendingFoxSword: [],
     pendingWaitress: [],
@@ -895,6 +901,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
+    randomShotRecurring: card.randomShotRecurring || 0,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
@@ -1276,6 +1283,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // Synergy-based shot.
   if (card.bambooShotOnPlay) {
     match.pendingBambooShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.bambooShotOnPlay });
+  }
+
+  // Дикарь-стрелок: battlecry throw at a random ENEMY UNIT (not a cell —
+  // unlike Бамбуковый стрелок's own battlecry, no hero-redirect if the
+  // pick comes up empty, since it's picked from actually-occupied cells
+  // only) — see pendingMarksmanShots/applyRandomEnemyShot below.
+  if (card.randomShotOnPlay) {
+    match.pendingMarksmanShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.randomShotOnPlay });
   }
 
   // Толстый караульный: battlecry summon — same deferred reasoning as
@@ -2917,6 +2932,37 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
+// Дикарь-стрелок: shared by both his battlecry (randomShotOnPlay, via
+// pendingMarksmanShots below) and his pre-attack recurring shot
+// (randomShotRecurring, checked in resolveCombatPass below, gated by
+// match.round > bornRound same as Бамбуковый стрелок's own recurring
+// shot) — picks a random ENEMY UNIT (never the hero, and never a
+// Чаростойкость one, excluded from the pool entirely rather than
+// picked-then-blocked) and deals fixed damage. Silently does nothing if
+// the enemy board has no legal target. Reuses the exact musketShot
+// event/animation.
+function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount) {
+  const targetBoard = match.boards[enemySide];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (targetBoard[l][d] && !targetBoard[l][d].spellResist) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+  targetUnit.hp -= amount;
+  const died = targetUnit.hp <= 0;
+  events.push({
+    type: 'musketShot', side, targetSide: enemySide, amount,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+    sourceUid, resisted: false, died,
+  });
+  if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -3016,6 +3062,8 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.immortalTiger) applyImmortalTiger(match, nameB, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.bambooShotRecurring && match.round > aUnit.bornRound) applyBambooRecurringShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.randomShotRecurring && match.round > aUnit.bornRound) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, aUnit.randomShotRecurring);
+      if (bEligible && bUnit.randomShotRecurring && match.round > bUnit.bornRound) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, bUnit.randomShotRecurring);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
@@ -3541,6 +3589,16 @@ export function tryEndTurn(match, username) {
       targetHero: !cellUnit, died, resisted,
     });
     if (died) killUnit(match, targetSide, shot.laneIdx, targetDepth, events);
+  }
+
+  // Дикарь-стрелок's battlecry throw — same applyRandomEnemyShot helper
+  // his own pre-attack recurring shot uses (see resolveCombatPass
+  // above), just fired once here instead of gated on match.round.
+  const marksmanShotQueue = match.pendingMarksmanShots;
+  match.pendingMarksmanShots = [];
+  for (const shot of marksmanShotQueue) {
+    const targetSide = otherPlayer(match, shot.side);
+    applyRandomEnemyShot(match, shot.side, targetSide, events, shot.sourceUid, shot.laneIdx, shot.depthIdx, shot.amount);
   }
 
   // Травница: same depth-based placement trigger as Олень-мечник, but
