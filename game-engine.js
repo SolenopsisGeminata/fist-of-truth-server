@@ -466,6 +466,12 @@ export const CARD_POOL = [
   // this one persists for as long as he's alive, not just his own
   // placement round.
   { id: 'c126', name: '\u0421\u0442\u0435\u043f\u043d\u043e\u0439 \u043e\u0440\u0435\u043b', type: 'creature', cost: 3, atk: 2, hp: 4, prairieEagleReact: true, rarity: 'rare', faction: 'savages' },
+  // Pure reuse of \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441's exact wrathDmg mechanic (hits every depth
+  // position in the chosen enemy lane, \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c respected, never
+  // falls through to the hero) \u2014 no new server logic needed, only a
+  // different cost/amount. The falling-rock visual (vs. \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441's
+  // lightning) is a client-only presentation choice, same as art/desc.
+  { id: 's32', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u044b\u0439 \u0433\u0440\u0430\u0434', type: 'spell', cost: 3, wrathDmg: 3, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
