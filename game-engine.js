@@ -511,6 +511,11 @@ export const CARD_POOL = [
   // but bites the enemy hero directly for its own current attack
   // instead of buffing itself, reusing the heroShot event.
   { id: 'c135', name: '\u0425\u0438\u0449\u043d\u043e\u0435 \u0440\u0430\u0441\u0442\u0435\u043d\u0438\u0435', type: 'creature', cost: 4, atk: 2, hp: 5, carnivorousPlantBite: true, rarity: 'rare', faction: 'savages' },
+  // Pure reuse of \u0411\u0443\u0440\u043d\u044b\u0439 \u0440\u043e\u0441\u0442's exact buffAtk/buffHp/buffHeroHeal mechanism
+  // (permanently buffs a targeted own unit, then heals the caster's own
+  // hero) \u2014 no new code needed, just different amounts (4/4/4 instead
+  // of 2/4/4).
+  { id: 's34', name: '\u0414\u0438\u043a\u0430\u044f \u0441\u0438\u043b\u0430', type: 'spell', cost: 4, buffAtk: 4, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
