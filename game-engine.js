@@ -472,6 +472,10 @@ export const CARD_POOL = [
   // different cost/amount. The falling-rock visual (vs. \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441's
   // lightning) is a client-only presentation choice, same as art/desc.
   { id: 's32', name: '\u041a\u0430\u043c\u0435\u043d\u043d\u044b\u0439 \u0433\u0440\u0430\u0434', type: 'spell', cost: 3, wrathDmg: 3, rarity: 'rare', faction: 'savages' },
+  // Pure reuse of the existing endOfRoundSummon mechanic (same as
+  // \u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432's own recurring summon) \u2014 no new code needed,
+  // just summons \u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439 (c104) instead of \u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 (c10).
+  { id: 'c127', name: '\u041e\u0445\u043e\u0442\u043d\u0438\u043a \u043d\u0430 \u0432\u043e\u043b\u043a\u043e\u0432', type: 'creature', cost: 3, atk: 4, hp: 2, endOfRoundSummon: 'c104', rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
