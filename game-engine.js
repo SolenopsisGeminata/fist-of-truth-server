@@ -411,10 +411,17 @@ export const CARD_POOL = [
   // a spear at a random enemy unit instead of buffing himself \u2014 see
   // that helper for the targeting/damage logic.
   { id: 'c116', name: '\u042f\u0449\u0435\u0440-\u0432\u043e\u0438\u043d', type: 'creature', cost: 2, atk: 3, hp: 2, lizardWarriorShot: true, rarity: 'epic', faction: 'savages' },
-  // heroHitDoubleStrike: see resolveCombatPass above \u2014 whenever her own
-  // attack lands directly on the enemy hero, immediately strikes again
-  // for the same amount, reusing the heroShot event/animation.
+  // heroHitDoubleStrike: see applyFollowupAttack/resolveCombatPass above
+  // \u2014 whenever her own attack lands directly on the enemy hero,
+  // immediately makes one more full normal attack (not a flat bonus
+  // hit) against whatever's currently in front of her.
   { id: 'c117', name: '\u041f\u044b\u043b\u043a\u0430\u044f \u043e\u0445\u043e\u0442\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 3, heroHitDoubleStrike: true, rarity: 'epic', faction: 'savages' },
+  // Pure reuse of \u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e's exact moneyTree mechanic (end-of-round
+  // draw if damaged this round, via the match.roundStartHp snapshot) \u2014
+  // same convention already used for shootHero (\u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a/\u041b\u0443\u0447\u043d\u0438\u043a
+  // \u043f\u0440\u0435\u0440\u0438\u0439) and drawOnDeath (\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441): identical behavior reuses
+  // the same field under a differently-named card, no new code needed.
+  { id: 'c118', name: '\u0421\u0442\u0435\u043f\u043d\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 2, atk: 0, hp: 4, moneyTree: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -2887,6 +2894,72 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
+// Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
+// depthIdx) against whatever's CURRENTLY in front of it on the enemy
+// side of laneIdx — re-run fresh rather than reusing the primary
+// attack's own target, in case anything changed it (nothing currently
+// in the game can, so this always re-finds the same empty front that
+// made the primary attack land on the hero in the first place, but the
+// logic doesn't assume that). Goes through the exact same
+// target/armor/lifesteal/death rules a normal attack would (unlike a
+// flat bonus hit), including Контратака on whichever unit it hits, and
+// reuses the standard 'wave' event/animation with only one side
+// populated (attackerB stays null) so the client renders it identically
+// to any other single-sided attack. Deliberately does NOT check
+// heroHitDoubleStrike again — this call IS the extra attack, so it
+// never re-triggers itself.
+function applyFollowupAttack(match, side, laneIdx, depthIdx, events) {
+  if (anyHeroDown(match)) return;
+  const board = match.boards[side];
+  const unit = board[laneIdx] && board[laneIdx][depthIdx];
+  if (!unit) return;
+  const targetSide = otherPlayer(match, side);
+  const atk = effectiveAtk(board, laneIdx, depthIdx);
+  if (atk <= 0) return;
+  const target = frontUnit(match.boards[targetSide], laneIdx);
+  let applied = 0;
+  let lifesteal = 0;
+  let died = false;
+  if (target) {
+    applied = Math.max(0, atk - (target.unit.armor || 0));
+    target.unit.hp -= applied;
+    died = target.unit.hp <= 0;
+  } else {
+    applied = atk;
+    match.hp[targetSide] -= applied;
+    if (unit.lifesteal) lifesteal = healHero(match, side, atk, events);
+  }
+  events.push({
+    type: 'wave', lane: laneIdx, waveIndex: -1,
+    attackerA: { side, uid: unit.uid, depth: depthIdx },
+    attackerB: null,
+    targetAHero: !target,
+    targetBHero: false,
+    targetADepth: target ? target.depth : null,
+    targetBDepth: null,
+    aDamage: applied,
+    bDamage: 0,
+    aLifesteal: lifesteal,
+    bLifesteal: 0,
+    aDied: false,
+    bDied: false,
+  });
+  if (died) killUnit(match, targetSide, laneIdx, target.depth, events);
+  // Контратака (Частокол): same reaction as any other combat exchange —
+  // see the identical block in resolveCombatPass right after the main
+  // wave event, for the primary attack.
+  if (target && applied > 0 && target.unit.counterattack) {
+    const counterAmount = Math.max(0, target.unit.atk - (unit.armor || 0));
+    unit.hp -= counterAmount;
+    events.push({
+      type: 'counterattack', side: targetSide, targetSide: side, amount: counterAmount,
+      laneIdx, depthIdx: target.depth, sourceUid: target.unit.uid,
+      targetLaneIdx: laneIdx, targetDepthIdx: depthIdx,
+    });
+    if (unit.hp <= 0) killUnit(match, side, laneIdx, depthIdx, events);
+  }
+}
+
 function resolveCombatPass(match, events, isEligible) {
   const [nameA, nameB] = match.players;
   for (let l = 0; l < LANES; l++) {
@@ -3085,20 +3158,19 @@ function resolveCombatPass(match, events, isEligible) {
       }
 
       // Пылкая охотница: whenever her own attack lands directly on the
-      // enemy hero, immediately strikes the hero again for the same
-      // amount — the lane's front is unchanged from a moment ago (this
-      // exact case is why it landed on the hero in the first place, and
-      // nothing mid-wave can summon a fresh blocker into it), so the
-      // bonus strike always lands on the hero too. Reuses the exact
-      // heroShot event/animation already built for Арбалетчик's own
-      // recurring hero shot.
+      // enemy hero, immediately makes ONE MORE full normal attack — see
+      // applyFollowupAttack below, which re-runs the exact same
+      // target/armor/lifesteal/death/counterattack logic as any other
+      // attack (unlike a flat bonus hit) against whatever is currently
+      // in front of her. The front is virtually always still empty here
+      // (nothing mid-wave can summon a fresh blocker into it), so it
+      // almost always lands on the hero again too — but it's written to
+      // handle a unit being there just as correctly.
       if (aAttacks && !aTarget && aUnit.heroHitDoubleStrike) {
-        match.hp[nameB] -= aAtk;
-        events.push({ type: 'heroShot', side: nameA, targetSide: nameB, amount: aAtk, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid });
+        applyFollowupAttack(match, nameA, l, aInfo.depth, events);
       }
       if (bAttacks && !bTarget && bUnit.heroHitDoubleStrike) {
-        match.hp[nameA] -= bAtk;
-        events.push({ type: 'heroShot', side: nameB, targetSide: nameA, amount: bAtk, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid });
+        applyFollowupAttack(match, nameB, l, bInfo.depth, events);
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
