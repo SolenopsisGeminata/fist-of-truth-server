@@ -476,6 +476,10 @@ export const CARD_POOL = [
   // \u041b\u0430\u0433\u0435\u0440\u044c \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432's own recurring summon) \u2014 no new code needed,
   // just summons \u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439 (c104) instead of \u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446 (c10).
   { id: 'c127', name: '\u041e\u0445\u043e\u0442\u043d\u0438\u043a \u043d\u0430 \u0432\u043e\u043b\u043a\u043e\u0432', type: 'creature', cost: 3, atk: 4, hp: 2, endOfRoundSummon: 'c104', rarity: 'epic', faction: 'savages' },
+  // highShamanBuff: see applyHighShamanBuffs above \u2014 reuses applyDawnBuff
+  // (same "whole side including the caster" shape as \u0411\u0430\u0440\u043e\u043d), just at
+  // start-of-round instead of end-of-round.
+  { id: 'c128', name: '\u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 3, atk: 1, hp: 2, highShamanBuff: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -922,6 +926,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     punisherKill: !!card.punisherKill,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
+    highShamanBuff: !!card.highShamanBuff,
     doubleStrike: !!card.doubleStrike,
     healTrigger: !!card.healTrigger,
     blacksmithBuff: !!card.blacksmithBuff,
@@ -2744,6 +2749,24 @@ function applyBishopBuffs(match, events) {
   }
 }
 
+// Верховный шаман: at the start of every round he's alive, buffs EVERY
+// ally on his own side +1/+1, himself included — reuses applyDawnBuff
+// exactly (same "whole side, including the caster" shape as Барон's own
+// baronBuff), just triggered at start-of-round instead of end-of-round.
+// Several copies on the board each trigger independently, each seeing
+// whatever buffs earlier copies already applied this same pass.
+function applyHighShamanBuffs(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (unit && unit.highShamanBuff) applyDawnBuff(match, side, events, unit.uid);
+      }
+    }
+  }
+}
+
 // One full pass over every lane's combat, but only units for which
 // `isEligible(unit)` returns true actually get to act this pass —
 // everyone else just sits there (still targetable, still able to block,
@@ -4094,6 +4117,9 @@ export function tryEndTurn(match, username) {
   // Статуя now fires here too (moved from end-of-round) — same "start
   // of round" moment as Епископ.
   applyStatueBuffs(match, events);
+  // Верховный шаман also fires here — +1/+1 to every ally including
+  // himself, every round he's alive.
+  applyHighShamanBuffs(match, events);
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
   applyLunaBlind(match, events);
