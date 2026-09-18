@@ -374,6 +374,11 @@ export const CARD_POOL = [
   { id: 'c110', name: '\u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 5, shootHero: true, rarity: 'rare', faction: 'savages' },
   { id: 'c111', name: '\u0421\u0443\u0441\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, squirrelHealBuff: true, rarity: 'rare', faction: 'savages' },
   { id: 'c112', name: '\u0411\u0440\u043e\u043d\u0435\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, armadilloHealBuff: true, rarity: 'rare', faction: 'savages' },
+  // Same on-death draw as \u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441 (drawOnDeath), but only a 50%
+  // chance rather than guaranteed \u2014 see chanceDrawOnDeath in killUnit
+  // below, a separate probability-gated field so the two mechanics
+  // never collide should a future unit ever carry both.
+  { id: 'c113', name: '\u041a\u0430\u043a\u0442\u0443\u0441 \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, chanceDrawOnDeath: 0.5, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -837,6 +842,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armoredDragon: !!card.armoredDragon,
     warriorSheep: !!card.warriorSheep,
     drawOnDeath: !!card.drawOnDeath,
+    chanceDrawOnDeath: card.chanceDrawOnDeath || 0,
     copyOnLegacy: !!card.copyOnLegacy,
     shurikenMaster: !!card.shurikenMaster,
     moneyTree: !!card.moneyTree,
@@ -1480,6 +1486,15 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   }
   // Отшельник-Даос: on death, draws 1 card from her OWNER's own deck.
   if (unit && unit.drawOnDeath) {
+    const beforeLen = match.hands[side].length;
+    draw(match.decks[side], match.hands[side], 1);
+    const drew = match.hands[side].length > beforeLen;
+    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, laneIdx, depthIdx, drew });
+  }
+  // Кактус прерий: same on-death draw as Отшельник-Даос above, but only
+  // a 50% chance (chanceDrawOnDeath) rather than guaranteed. Reuses the
+  // exact same 'deathDraw' event so the client needs no new handling.
+  if (unit && unit.chanceDrawOnDeath && Math.random() < unit.chanceDrawOnDeath) {
     const beforeLen = match.hands[side].length;
     draw(match.decks[side], match.hands[side], 1);
     const drew = match.hands[side].length > beforeLen;
