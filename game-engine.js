@@ -501,6 +501,9 @@ export const CARD_POOL = [
   // target-selection/timing as \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a (one random OTHER ally,
   // end-of-round), but +2 attack only instead of +2 health only.
   { id: 'c132', name: '\u041a\u043e\u043b\u0434\u0443\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, prairieWarlockBuff: true, rarity: 'rare', faction: 'savages' },
+  // Plain stat-and-keyword card \u2014 reuses the existing trample mechanic
+  // as-is, no new code needed.
+  { id: 'c133', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 4, hp: 4, trample: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
