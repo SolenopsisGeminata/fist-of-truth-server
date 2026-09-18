@@ -442,6 +442,11 @@ export const CARD_POOL = [
   // noisyBuff: see placeCard above \u2014 same adjacent-ally targeting as
   // \u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430's own auntBuff, just +2 attack only instead of +1/+1.
   { id: 'c121', name: '\u0428\u0443\u043c\u043d\u0430\u044f \u0434\u0438\u043a\u0430\u0440\u043a\u0430', type: 'creature', cost: 3, atk: 3, hp: 1, noisyBuff: true, rarity: 'rare', faction: 'savages' },
+  // boarRiderSpear: see resolveCombatPass above \u2014 whenever his own
+  // attack lands directly on the enemy hero, throws a spear at a random
+  // enemy unit for 2 damage (reuses applyRandomEnemyShot, same as
+  // \u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a).
+  { id: 'c122', name: '\u0412\u0441\u0430\u0434\u043d\u0438\u043a \u043d\u0430 \u043a\u0430\u0431\u0430\u043d\u0435', type: 'creature', cost: 3, atk: 2, hp: 3, boarRiderSpear: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -930,6 +935,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     shieldEffect: !!card.shieldEffect,
     vultureDraw: !!card.vultureDraw,
     heroHitDoubleStrike: !!card.heroHitDoubleStrike,
+    boarRiderSpear: !!card.boarRiderSpear,
     lizardHealBuff: !!card.lizardHealBuff,
     squirrelHealBuff: !!card.squirrelHealBuff,
     armadilloHealBuff: !!card.armadilloHealBuff,
@@ -3258,6 +3264,20 @@ function resolveCombatPass(match, events, isEligible) {
       }
       if (bAttacks && !bTarget && bUnit.heroHitDoubleStrike) {
         applyFollowupAttack(match, nameB, l, bInfo.depth, events);
+      }
+
+      // Всадник на кабане: whenever his own attack lands directly on
+      // the enemy hero, throws a spear at a random enemy UNIT for 2
+      // damage — reuses the exact same applyRandomEnemyShot helper
+      // (and targeting rules: real units only, Чаростойкость excluded
+      // from the pool, no hero redirect) already built for Дикарь-
+      // стрелок, just fired from this "landed on hero" trigger point
+      // instead of a battlecry/pre-attack hook.
+      if (aAttacks && !aTarget && aUnit.boarRiderSpear) {
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 2);
+      }
+      if (bAttacks && !bTarget && bUnit.boarRiderSpear) {
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 2);
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
