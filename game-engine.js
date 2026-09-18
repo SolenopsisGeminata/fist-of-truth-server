@@ -488,6 +488,11 @@ export const CARD_POOL = [
   // "took damage this round" check (\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d family) combined
   // with \u041a\u043e\u0440\u043e\u0432\u0430's own 60% coin flip, healing the hero for a fixed 3.
   { id: 'c130', name: '\u0411\u043e\u043b\u044c\u0448\u043e\u0439 \u043a\u0430\u043a\u0442\u0443\u0441 \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 3, atk: 2, hp: 5, bigCactusHeal: true, rarity: 'epic', faction: 'savages' },
+  // Pure reuse of \u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435's exact endOfRoundSpell mechanic
+  // (summons N units onto random free cells, then heals the hero, both
+  // resolved AFTER combat) \u2014 no new server logic needed, just a
+  // different summonCardId/summonCount/healAmount.
+  { id: 's33', name: '\u0420\u0430\u0441\u0441\u0432\u0435\u0442', type: 'spell', cost: 3, endOfRoundSpell: true, summonCardId: 'c111', summonCount: 2, healAmount: 3, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
