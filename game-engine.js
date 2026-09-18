@@ -516,6 +516,12 @@ export const CARD_POOL = [
   // hero) \u2014 no new code needed, just different amounts (4/4/4 instead
   // of 2/4/4).
   { id: 's34', name: '\u0414\u0438\u043a\u0430\u044f \u0441\u0438\u043b\u0430', type: 'spell', cost: 4, buffAtk: 4, buffHp: 4, buffHeroHeal: 4, rarity: 'rare', faction: 'savages' },
+  // \u041a\u0430\u043f\u043a\u0430\u043d: targets a specific enemy unit and kills it outright
+  // regardless of its current hp, then heals the caster's own hero for
+  // hp equal to that unit's own mana cost \u2014 see the 'trapKill' branch
+  // in castSpell/resolveSpells. \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c/\u0429\u0438\u0442 blocks the kill (and
+  // therefore the heal too), same as every other targeted spell here.
+  { id: 's35', name: '\u041a\u0430\u043f\u043a\u0430\u043d', type: 'spell', cost: 4, trapKill: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1587,6 +1593,17 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.trapKill) {
+    // \u041a\u0430\u043f\u043a\u0430\u043d: unlike \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c above, the targeted cell isn't a
+    // formality \u2014 it must hold an actual enemy unit right now, since
+    // the whole point of the card is destroying that specific unit.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
+    const enemyName = otherPlayer(match, username);
+    if (!match.boards[enemyName][lane][depth]) {
+      return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0432\u0440\u0430\u0436\u0435\u0441\u043a\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -1594,7 +1611,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : 'buff'))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : 'buff')))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -2527,6 +2544,35 @@ function resolveSpells(match, events) {
             sourceUid: unit.uid, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx,
           });
         }
+      }
+    } else if (spell.kind === 'trapKill') {
+      // Капкан: targets a specific enemy unit chosen at cast time.
+      // Чаростойкость/Щит blocks the kill outright, no redirect — same
+      // as every other targeted spell in this file (see nualFrontStab
+      // above) — and the hero heal (equal to the killed unit's own
+      // mana cost) only happens if the kill actually lands.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targetUnit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(targetUnit && (targetUnit.spellResist || targetUnit.shieldEffect));
+      let died = false, healed = 0, killedCardId = null;
+      if (targetUnit && !resisted) {
+        killedCardId = targetUnit.id;
+        const killedCard = cardById(targetUnit.id);
+        died = true;
+        killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+        healed = healHero(match, spell.side, killedCard ? killedCard.cost : 0, events);
+      }
+      events.push({
+        type: 'spell', kind: 'trapKill', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        resisted, empty: !targetUnit, died, killedCardId,
+      });
+      if (healed > 0) {
+        events.push({
+          type: 'heroHeal', side: spell.side, amount: healed,
+          sourceUid: null, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx,
+        });
       }
     }
   }
