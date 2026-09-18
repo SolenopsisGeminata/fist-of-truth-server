@@ -493,6 +493,10 @@ export const CARD_POOL = [
   // resolved AFTER combat) \u2014 no new server logic needed, just a
   // different summonCardId/summonCount/healAmount.
   { id: 's33', name: '\u0420\u0430\u0441\u0441\u0432\u0435\u0442', type: 'spell', cost: 3, endOfRoundSpell: true, summonCardId: 'c111', summonCount: 2, healAmount: 3, rarity: 'epic', faction: 'savages' },
+  // axeWarriorGrowth: see the end-of-round loop above \u2014 same
+  // roundStartHp-based permanent-growth family as \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d/\u0426\u0432\u0435\u0442\u043e\u043a
+  // \u043f\u0440\u0435\u0440\u0438\u0439, just +1 attack AND +1 health this time.
+  { id: 'c131', name: '\u0412\u043e\u0438\u043d \u0441 \u0442\u043e\u043f\u043e\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 5, axeWarriorGrowth: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -991,6 +995,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
+    axeWarriorGrowth: !!card.axeWarriorGrowth,
     bigCactusHeal: !!card.bigCactusHeal,
     prairieEagleReact: !!card.prairieEagleReact,
     manaAura: card.manaAura || 0,
@@ -4309,6 +4314,21 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 2, buffHp: 2, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Воин с топором: same roundStartHp-based permanent-growth
+          // family as Горный воин/Цветок прерий above, but +1 attack
+          // AND +1 health this time.
+          if (unit && unit.axeWarriorGrowth) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              unit.atk += 1;
+              unit.hp += 1;
+              unit.maxHp += 1;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
               });
             }
           }
