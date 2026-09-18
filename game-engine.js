@@ -366,11 +366,17 @@ export const CARD_POOL = [
   // — see savagesStarterDeckCounts below, same "future unlock step"
   // placeholder pattern already established for zenStarterDeckCounts.
   { id: 'c104', name: '\u0412\u043e\u043b\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 1, atk: 2, hp: 1, rarity: 'common' , faction: 'savages' },
-  { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, defender: true, temporaryDefender: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
+  // Reworked from \u0417\u0430\u0449\u0438\u0442\u043d\u0438\u043a+temporaryDefender to the new, more general
+  // \u0421\u043e\u043d mechanic (see the sleep field in buildUnitFromCard/resolveCombat
+  // below) \u2014 identical timing (can't attack during its own bornRound,
+  // a normal attacker from the next round on), just under its own name
+  // instead of piggybacking on \u0417\u0430\u0449\u0438\u0442\u043d\u0438\u043a.
+  { id: 'c105', name: '\u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a', type: 'creature', cost: 1, atk: 1, hp: 2, sleep: true, vultureDraw: true, rarity: 'rare', faction: 'savages' },
   { id: 'c106', name: '\u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439', type: 'creature', cost: 1, atk: 1, hp: 1, lizardHealBuff: true, rarity: 'rare', faction: 'savages' },
   { id: 'c107', name: '\u0412\u043e\u0438\u043d \u0441 \u043a\u043e\u043f\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, spearmanOnPlay: true, rarity: 'common', faction: 'savages' },
   { id: 'c108', name: '\u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 3, insightEffect: 1, manaAura: 1, rarity: 'rare', faction: 'savages' },
-  { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, defender: true, temporaryDefender: true, rarity: 'common', faction: 'savages' },
+  // Same \u0417\u0430\u0449\u0438\u0442\u043d\u0438\u043a\u2192\u0421\u043e\u043d rework as \u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a right above.
+  { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, sleep: true, rarity: 'common', faction: 'savages' },
   { id: 'c110', name: '\u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 5, shootHero: true, rarity: 'rare', faction: 'savages' },
   { id: 'c111', name: '\u0421\u0443\u0441\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, squirrelHealBuff: true, rarity: 'rare', faction: 'savages' },
   { id: 'c112', name: '\u0411\u0440\u043e\u043d\u0435\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, armadilloHealBuff: true, rarity: 'rare', faction: 'savages' },
@@ -379,6 +385,15 @@ export const CARD_POOL = [
   // below, a separate probability-gated field so the two mechanics
   // never collide should a future unit ever carry both.
   { id: 'c113', name: '\u041a\u0430\u043a\u0442\u0443\u0441 \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, chanceDrawOnDeath: 0.5, rarity: 'rare', faction: 'savages' },
+  // \u0421\u043e\u043d (Sleep): see the sleep field in buildUnitFromCard/resolveCombat
+  // below \u2014 can't attack during its own bornRound, a normal attacker
+  // from the next round on (same timing \u0417\u0430\u0449\u0438\u0442\u043d\u0438\u043a+temporaryDefender used
+  // to give \u0421\u0442\u0435\u0440\u0432\u044f\u0442\u043d\u0438\u043a/\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c, now generalized under its own
+  // name). mountainWarriorBuff: at the end of any round it took damage
+  // in (same roundStartHp snapshot comparison as \u0414\u0435\u043d\u0435\u0436\u043d\u043e\u0435 \u0434\u0435\u0440\u0435\u0432\u043e),
+  // permanently gains +1 attack/+2 health \u2014 see the end-of-round loop
+  // in tryEndTurn.
+  { id: 'c114', name: '\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 2, atk: 2, hp: 6, sleep: true, mountainWarriorBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -805,7 +820,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     siegeShot: !!card.siegeShot,
     endOfRoundSummon: card.endOfRoundSummon || null,
     defender: !!card.defender,
-    temporaryDefender: !!card.temporaryDefender,
+    // Сон (Sleep): can't attack during its own bornRound, a normal
+    // attacker from the next round on — see isAsleep in resolveCombat
+    // below. Replaces the old Защитник+temporaryDefender combo that
+    // used to give Стервятник/Глупый дикарь this exact timing.
+    sleep: !!card.sleep,
     cannonShot: !!card.cannonShot,
     cannonShotFixed: card.cannonShotFixed || 0,
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
@@ -857,6 +876,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lizardHealBuff: !!card.lizardHealBuff,
     squirrelHealBuff: !!card.squirrelHealBuff,
     armadilloHealBuff: !!card.armadilloHealBuff,
+    mountainWarriorBuff: !!card.mountainWarriorBuff,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -3052,17 +3072,15 @@ function resolveCombatPass(match, events, isEligible) {
 // own attack stat still matters for ITS OWN non-combat mechanics (e.g.
 // Имперская пушка's end-of-round cannon shot uses her live attack) —
 // this exclusion is scoped to the wave-combat exchange only.
+// Сон (Sleep): the same attacking exclusion as Защитник, but only for
+// the unit's own bornRound — from the round after, it's a normal
+// attacker despite still carrying the sleep flag itself.
 function resolveCombat(match, events) {
   const blinded = match.blindedUids;
   const isBlinded = (unit) => !!(blinded && blinded.has(unit.uid));
-  // Стервятник: temporaryDefender means his Защитник status only holds
-  // during his OWN birth round — from the round after, he's just a
-  // normal attacker despite still carrying the defender flag itself.
-  // Every OTHER defender-carrying card has no temporaryDefender flag at
-  // all, so this reduces to the exact same permanent check as before.
-  const isDefenderActive = (unit) => unit.defender && (!unit.temporaryDefender || match.round === unit.bornRound);
-  resolveCombatPass(match, events, (unit) => !isDefenderActive(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !!unit.firstStrike);
-  resolveCombatPass(match, events, (unit) => !isDefenderActive(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !unit.firstStrike);
+  const isAsleep = (unit) => unit.sleep && match.round === unit.bornRound;
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isAsleep(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !!unit.firstStrike);
+  resolveCombatPass(match, events, (unit) => !unit.defender && !isAsleep(unit) && !isBlinded(unit) && !unit.cantAttackThisRound && !unit.firstStrike);
 }
 
 export function tryEndTurn(match, username) {
@@ -3820,6 +3838,22 @@ export function tryEndTurn(match, username) {
                 const drew = hand.length > beforeLen;
                 events.push({ type: 'moneyTreeDraw', side: name, sourceUid: unit.uid, laneIdx: l, depthIdx: d, drew });
               }
+            }
+          }
+          // Горный воин: at the end of the round, if this unit took
+          // damage THIS round (same roundStartHp snapshot comparison as
+          // Денежное дерево above), permanently gains +1 attack and +2
+          // health instead of drawing a card.
+          if (unit && unit.mountainWarriorBuff) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              unit.atk += 1;
+              unit.hp += 2;
+              unit.maxHp += 2;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: unit.uid,
+              });
             }
           }
           // Шеф дома Вкуса: exactly ONE time, at the end of the SAME
