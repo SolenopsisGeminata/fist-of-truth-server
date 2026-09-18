@@ -422,6 +422,13 @@ export const CARD_POOL = [
   // \u043f\u0440\u0435\u0440\u0438\u0439) and drawOnDeath (\u041e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a-\u0414\u0430\u043e\u0441): identical behavior reuses
   // the same field under a differently-named card, no new code needed.
   { id: 'c118', name: '\u0421\u0442\u0435\u043f\u043d\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 2, atk: 0, hp: 4, moneyTree: true, rarity: 'epic', faction: 'savages' },
+  // Part of the \u0414\u0438\u043a\u0430\u0440\u0438 starter deck (see savagesStarterDeckCounts above).
+  // healOnDeath: see killUnit above \u2014 on death (from anything), heals
+  // its owner's hero for a fixed amount, reusing the exact 'endOfRound'
+  // event/heal-orb animation already built for \u0421\u043e\u0441\u043d\u043e\u0432\u044b\u0439 \u043e\u0442\u0448\u0435\u043b\u044c\u043d\u0438\u043a's own
+  // recurring fixedHeal (cardId-driven, so it works fine even though the
+  // unit is already gone from the board by the time this fires).
+  { id: 'c119', name: '\u0414\u0435\u0442\u0435\u043d\u044b\u0448 \u043a\u0430\u0431\u0430\u043d\u0430', type: 'creature', cost: 3, atk: 2, hp: 2, healOnDeath: 2, rarity: 'common', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -489,11 +496,11 @@ export function zenStarterDeckCounts() {
 // The Дикари starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts above (the faction
 // itself is locked, hidden from new accounts, and its unlock
-// conditions aren't built yet). Волк прерий, Воин с копьем, and Глупый
-// дикарь are the confirmed cards so far, at 3 copies each same as
-// every other starter deck.
+// conditions aren't built yet). Волк прерий, Воин с копьем, Глупый
+// дикарь, and Детеныш кабана are the confirmed cards so far, at 3
+// copies each same as every other starter deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3, c107: 3, c109: 3 };
+  return { c104: 3, c107: 3, c109: 3, c119: 3 };
 }
 
 // ---------- Factions ----------
@@ -857,6 +864,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cannonShotFixed: card.cannonShotFixed || 0,
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
     fixedHeal: card.fixedHeal || 0,
+    healOnDeath: card.healOnDeath || 0,
     // Чаростойкость: see the siegeShot/cannonShot targeting above and the
     // 'damage' spell kind in resolveSpells — every current cross-side
     // damage-dealing mechanic checks this. No enemy-facing stat-reduction
@@ -1540,6 +1548,16 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     const amount = unit.explodeOnDeathAmount;
     match.hp[side] -= amount;
     events.push({ type: 'selfExplosion', side, amount, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx });
+  }
+  // Детеныш кабана: on death (from anything), heals its owner's hero
+  // for a fixed amount — reuses the exact 'endOfRound' event/heal-orb
+  // animation already built for Сосновый отшельник's own recurring
+  // fixedHeal; the client already drives that event's name off cardId
+  // rather than board state, so it works fine here too even though the
+  // unit is already gone from the board by this point.
+  if (unit && unit.healOnDeath && !anyHeroDown(match)) {
+    const healed = healHero(match, side, unit.healOnDeath, events);
+    events.push({ type: 'endOfRound', side, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx, depthIdx });
   }
   // Отшельник-Даос: on death, draws 1 card from her OWNER's own deck.
   // cardId is included (here and on every other on-death event below)
