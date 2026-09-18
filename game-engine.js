@@ -373,6 +373,7 @@ export const CARD_POOL = [
   { id: 'c109', name: '\u0413\u043b\u0443\u043f\u044b\u0439 \u0434\u0438\u043a\u0430\u0440\u044c', type: 'creature', cost: 2, atk: 4, hp: 3, defender: true, temporaryDefender: true, rarity: 'common', faction: 'savages' },
   { id: 'c110', name: '\u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 2, atk: 1, hp: 5, shootHero: true, rarity: 'rare', faction: 'savages' },
   { id: 'c111', name: '\u0421\u0443\u0441\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, squirrelHealBuff: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c112', name: '\u0411\u0440\u043e\u043d\u0435\u043d\u043e\u0441\u0435\u0446', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, armadilloHealBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -849,6 +850,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     vultureDraw: !!card.vultureDraw,
     lizardHealBuff: !!card.lizardHealBuff,
     squirrelHealBuff: !!card.squirrelHealBuff,
+    armadilloHealBuff: !!card.armadilloHealBuff,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -1746,6 +1748,11 @@ function healHero(match, side, amount, events) {
   // — a separate helper since the amounts differ, shared with Шеф дома
   // Вкуса's doubling the same way.
   if (events) applySquirrelHealTrigger(match, side, events);
+  // Броненосец: same "every heal" trigger as Ящерица степей/Суслик
+  // above, but +1 attack AND +1 armor to himself instead — a separate
+  // helper since the amounts/stats differ, shared with Шеф дома Вкуса's
+  // doubling the same way.
+  if (events) applyArmadilloHealTrigger(match, side, events);
   return applied;
 }
 
@@ -1785,6 +1792,26 @@ function applyLizardHealTrigger(match, side, events) {
         events.push({
           type: 'rallyBuff', side, laneIdx: l,
           targetDepth: d, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
+        });
+      }
+    }
+  }
+}
+
+// Броненосец: shared by both healHero() above and Шеф дома Вкуса's own
+// one-time hero-hp doubling (which bypasses healHero() entirely) — same
+// reasoning as applyLizardHealTrigger/applySquirrelHealTrigger above.
+function applyArmadilloHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.armadilloHealBuff) {
+        u.atk += 1;
+        u.armor += 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l,
+          targetDepth: d, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: u.uid,
         });
       }
     }
@@ -3802,6 +3829,7 @@ export function tryEndTurn(match, username) {
             if (match.hp[name] > before) {
               applyLizardHealTrigger(match, name, events);
               applySquirrelHealTrigger(match, name, events);
+              applyArmadilloHealTrigger(match, name, events);
             }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
