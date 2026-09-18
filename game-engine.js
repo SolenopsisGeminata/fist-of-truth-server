@@ -461,6 +461,11 @@ export const CARD_POOL = [
   // roundStartHp-based permanent-growth family as \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d/
   // \u0411\u0435\u0433\u0435\u043c\u043e\u0442, but +2 attack AND +2 health this time.
   { id: 'c125', name: '\u0426\u0432\u0435\u0442\u043e\u043a \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 3, atk: 0, hp: 6, prairieFlowerGrowth: true, rarity: 'rare', faction: 'savages' },
+  // prairieEagleReact: see the every-round scan in tryEndTurn above \u2014
+  // unlike every other "placed this exact round" reaction in the game,
+  // this one persists for as long as he's alive, not just his own
+  // placement round.
+  { id: 'c126', name: '\u0421\u0442\u0435\u043f\u043d\u043e\u0439 \u043e\u0440\u0435\u043b', type: 'creature', cost: 3, atk: 2, hp: 4, prairieEagleReact: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -957,6 +962,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
+    prairieEagleReact: !!card.prairieEagleReact,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -4004,6 +4010,43 @@ export function tryEndTurn(match, username) {
         type: 'rallyBuff', side: entry.side, laneIdx: entry.laneIdx,
         targetDepth: entry.depthIdx, buffAtk: 1, buffHp: 3, sourceUid: entry.sourceUid,
       });
+    }
+  }
+
+  // Степной орел: unlike every other "placed this exact round" check
+  // above (all of which only ever look at the reacting unit's OWN
+  // placement round), this one is a persistent, every-round reaction —
+  // for as long as he's alive, any ally newly placed THIS round
+  // (bornRound === match.round, himself excluded) that carries
+  // Понимание (insightEffect) permanently grants him attack equal to
+  // that unit's own insightEffect value. Two eagles each react
+  // independently; one eagle reacts to every insight carrier placed the
+  // same round, one buff per pairing.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    const insightArrivals = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.insightEffect > 0 && u.bornRound === match.round) {
+          insightArrivals.push({ laneIdx: l, depthIdx: d, amount: u.insightEffect });
+        }
+      }
+    }
+    if (insightArrivals.length === 0) continue;
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const eagle = board[l][d];
+        if (!eagle || !eagle.prairieEagleReact) continue;
+        for (const arrival of insightArrivals) {
+          if (arrival.laneIdx === l && arrival.depthIdx === d) continue;
+          eagle.atk += arrival.amount;
+          events.push({
+            type: 'rallyBuff', side, laneIdx: l,
+            targetDepth: d, buffAtk: arrival.amount, buffHp: 0, sourceUid: eagle.uid,
+          });
+        }
+      }
     }
   }
 
