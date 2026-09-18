@@ -484,6 +484,10 @@ export const CARD_POOL = [
   // above (applyBadgerHealTrigger, called from healHero), but +1
   // attack AND +1 health.
   { id: 'c129', name: '\u0411\u0430\u0440\u0441\u0443\u043a', type: 'creature', cost: 3, atk: 2, hp: 4, lifesteal: true, badgerHealBuff: true, rarity: 'epic', faction: 'savages' },
+  // bigCactusHeal: see the end-of-round loop above \u2014 roundStartHp-based
+  // "took damage this round" check (\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d family) combined
+  // with \u041a\u043e\u0440\u043e\u0432\u0430's own 60% coin flip, healing the hero for a fixed 3.
+  { id: 'c130', name: '\u0411\u043e\u043b\u044c\u0448\u043e\u0439 \u043a\u0430\u043a\u0442\u0443\u0441 \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 3, atk: 2, hp: 5, bigCactusHeal: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -982,6 +986,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
+    bigCactusHeal: !!card.bigCactusHeal,
     prairieEagleReact: !!card.prairieEagleReact,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
@@ -4300,6 +4305,19 @@ export function tryEndTurn(match, username) {
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 2, buffHp: 2, sourceUid: unit.uid,
               });
+            }
+          }
+          // Большой кактус прерий: same roundStartHp-based "took damage
+          // this round" check as Горный воин/Бегемот/Цветок прерий
+          // above, but combined with Корова's own 60% coin flip, and
+          // heals the HERO for a fixed 3 instead of buffing/healing
+          // itself — reuses the same 'endOfRound' event Корова's own
+          // cowHeal uses.
+          if (unit && unit.bigCactusHeal) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp && Math.random() < 0.6) {
+              const healed = healHero(match, name, 3, events);
+              events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
             }
           }
           // Шеф дома Вкуса: exactly ONE time, at the end of the SAME
