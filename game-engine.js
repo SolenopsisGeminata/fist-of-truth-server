@@ -402,6 +402,10 @@ export const CARD_POOL = [
   // Same bonus-draw idea as \u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a (drawIfArmored), just keyed off
   // \u0421\u043e\u043d instead of Armor \u2014 see drawIfAsleep in castSpell/resolveSpells.
   { id: 's30', name: '\u0417\u0430\u043f\u043e\u0437\u0434\u0430\u043b\u0430\u044f \u043f\u043e\u0441\u0442\u0430\u0432\u043a\u0430', type: 'spell', cost: 2, buffAtk: 2, buffHp: 2, drawIfAsleep: true, rarity: 'rare', faction: 'savages' },
+  // Same on-death self-damage mechanic as \u041f\u043e\u0434\u0440\u044b\u0432\u043d\u0438\u043a (explodeOnDeath), just
+  // with its own explodeOnDeathAmount (3 instead of the default 5) \u2014
+  // see the amount parametrization added to killUnit above.
+  { id: 'c115', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 2, atk: 4, hp: 1, manaAura: 1, explodeOnDeath: true, explodeOnDeathAmount: 3, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -851,6 +855,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     blacksmithBuff: !!card.blacksmithBuff,
     powderKeg: !!card.powderKeg,
     explodeOnDeath: !!card.explodeOnDeath,
+    // Подрывник fixed this at 5 and no card defined its own value until
+    // Яростный шаман needed 3 — kept as a plain default rather than a
+    // dedicated Подрывник-only constant so any future card can set its
+    // own amount too.
+    explodeOnDeathAmount: card.explodeOnDeathAmount || 5,
     statueBuff: !!card.statueBuff,
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     musketShot: !!card.musketShot,
@@ -1510,15 +1519,21 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     match.mana[side] = Math.max(0, match.mana[side] - unit.manaAura);
   }
   if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
-    match.hp[side] -= 5;
-    events.push({ type: 'selfExplosion', side, amount: 5, sourceUid: unit.uid, laneIdx, depthIdx });
+    const amount = unit.explodeOnDeathAmount;
+    match.hp[side] -= amount;
+    events.push({ type: 'selfExplosion', side, amount, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx });
   }
   // Отшельник-Даос: on death, draws 1 card from her OWNER's own deck.
+  // cardId is included (here and on every other on-death event below)
+  // so the client can look up the dying unit's own name generically —
+  // by the time these fire, the unit is already gone from the board
+  // (nulled right above), so the client can't read it back off its own
+  // board state the way it does for a still-alive unit's own events.
   if (unit && unit.drawOnDeath) {
     const beforeLen = match.hands[side].length;
     draw(match.decks[side], match.hands[side], 1);
     const drew = match.hands[side].length > beforeLen;
-    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, laneIdx, depthIdx, drew });
+    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx, drew });
   }
   // Кактус прерий: same on-death draw as Отшельник-Даос above, but only
   // a 50% chance (chanceDrawOnDeath) rather than guaranteed. Reuses the
@@ -1527,7 +1542,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     const beforeLen = match.hands[side].length;
     draw(match.decks[side], match.hands[side], 1);
     const drew = match.hands[side].length > beforeLen;
-    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, laneIdx, depthIdx, drew });
+    events.push({ type: 'deathDraw', side, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx, drew });
   }
   // Метеоритный страж: on death, throws his weapon at a random depth
   // within the SAME lane index on the enemy's board — his own mirrored
