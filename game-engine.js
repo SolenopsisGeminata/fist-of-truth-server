@@ -411,6 +411,10 @@ export const CARD_POOL = [
   // a spear at a random enemy unit instead of buffing himself \u2014 see
   // that helper for the targeting/damage logic.
   { id: 'c116', name: '\u042f\u0449\u0435\u0440-\u0432\u043e\u0438\u043d', type: 'creature', cost: 2, atk: 3, hp: 2, lizardWarriorShot: true, rarity: 'epic', faction: 'savages' },
+  // heroHitDoubleStrike: see resolveCombatPass above \u2014 whenever her own
+  // attack lands directly on the enemy hero, immediately strikes again
+  // for the same amount, reusing the heroShot event/animation.
+  { id: 'c117', name: '\u041f\u044b\u043b\u043a\u0430\u044f \u043e\u0445\u043e\u0442\u043d\u0438\u0446\u0430', type: 'creature', cost: 2, atk: 2, hp: 3, heroHitDoubleStrike: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -895,6 +899,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armoredArhat: !!card.armoredArhat,
     shieldEffect: !!card.shieldEffect,
     vultureDraw: !!card.vultureDraw,
+    heroHitDoubleStrike: !!card.heroHitDoubleStrike,
     lizardHealBuff: !!card.lizardHealBuff,
     squirrelHealBuff: !!card.squirrelHealBuff,
     armadilloHealBuff: !!card.armadilloHealBuff,
@@ -3077,6 +3082,23 @@ function resolveCombatPass(match, events, isEligible) {
           const drew = hand.length > beforeLen;
           events.push({ type: 'vultureDraw', side: nameB, sourceUid: bUnit.uid, laneIdx: l, depthIdx: bInfo.depth, drew });
         }
+      }
+
+      // Пылкая охотница: whenever her own attack lands directly on the
+      // enemy hero, immediately strikes the hero again for the same
+      // amount — the lane's front is unchanged from a moment ago (this
+      // exact case is why it landed on the hero in the first place, and
+      // nothing mid-wave can summon a fresh blocker into it), so the
+      // bonus strike always lands on the hero too. Reuses the exact
+      // heroShot event/animation already built for Арбалетчик's own
+      // recurring hero shot.
+      if (aAttacks && !aTarget && aUnit.heroHitDoubleStrike) {
+        match.hp[nameB] -= aAtk;
+        events.push({ type: 'heroShot', side: nameA, targetSide: nameB, amount: aAtk, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid });
+      }
+      if (bAttacks && !bTarget && bUnit.heroHitDoubleStrike) {
+        match.hp[nameA] -= bAtk;
+        events.push({ type: 'heroShot', side: nameB, targetSide: nameA, amount: bAtk, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid });
       }
 
       if (aDied) killUnit(match, nameB, l, aTarget.depth, events);
