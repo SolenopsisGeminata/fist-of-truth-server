@@ -506,6 +506,11 @@ export const CARD_POOL = [
   { id: 'c133', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 4, hp: 4, trample: true, rarity: 'rare', faction: 'savages' },
   // Pure reuse of the existing healOnPlay mechanic \u2014 no new code needed.
   { id: 'c134', name: '\u0412\u043e\u0438\u043d \u0441 \u043c\u043e\u043b\u043e\u0442\u043e\u043c', type: 'creature', cost: 4, atk: 3, hp: 4, healOnPlay: 2, rarity: 'rare', faction: 'savages' },
+  // carnivorousPlantBite: see the end-of-round loop above \u2014 same
+  // roundStartHp-based "took damage this round" check as \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d,
+  // but bites the enemy hero directly for its own current attack
+  // instead of buffing itself, reusing the heroShot event.
+  { id: 'c135', name: '\u0425\u0438\u0449\u043d\u043e\u0435 \u0440\u0430\u0441\u0442\u0435\u043d\u0438\u0435', type: 'creature', cost: 4, atk: 2, hp: 5, carnivorousPlantBite: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1006,6 +1011,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
     axeWarriorGrowth: !!card.axeWarriorGrowth,
+    carnivorousPlantBite: !!card.carnivorousPlantBite,
     bigCactusHeal: !!card.bigCactusHeal,
     prairieEagleReact: !!card.prairieEagleReact,
     manaAura: card.manaAura || 0,
@@ -4339,6 +4345,23 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Хищное растение: same roundStartHp-based "took damage this
+          // round" check as Горный воин/Воин с топором above, but bites
+          // the enemy HERO directly for damage equal to its own current
+          // attack instead of buffing itself. Reuses the exact heroShot
+          // event/animation already built for Арбалетчик's own
+          // recurring hero shot.
+          if (unit && unit.carnivorousPlantBite) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp && !anyHeroDown(match)) {
+              const targetSide = otherPlayer(match, name);
+              match.hp[targetSide] -= unit.atk;
+              events.push({
+                type: 'heroShot', side: name, targetSide, amount: unit.atk,
+                laneIdx: l, depthIdx: d, sourceUid: unit.uid,
               });
             }
           }
