@@ -406,6 +406,11 @@ export const CARD_POOL = [
   // with its own explodeOnDeathAmount (3 instead of the default 5) \u2014
   // see the amount parametrization added to killUnit above.
   { id: 'c115', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 2, atk: 4, hp: 1, manaAura: 1, explodeOnDeath: true, explodeOnDeathAmount: 3, rarity: 'epic', faction: 'savages' },
+  // Same on-heal trigger point as \u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439/\u0421\u0443\u0441\u043b\u0438\u043a/\u0411\u0440\u043e\u043d\u0435\u043d\u043e\u0441\u0435\u0446
+  // above (applyLizardWarriorTrigger, called from healHero), but shoots
+  // a spear at a random enemy unit instead of buffing himself \u2014 see
+  // that helper for the targeting/damage logic.
+  { id: 'c116', name: '\u042f\u0449\u0435\u0440-\u0432\u043e\u0438\u043d', type: 'creature', cost: 2, atk: 3, hp: 2, lizardWarriorShot: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -893,6 +898,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lizardHealBuff: !!card.lizardHealBuff,
     squirrelHealBuff: !!card.squirrelHealBuff,
     armadilloHealBuff: !!card.armadilloHealBuff,
+    lizardWarriorShot: !!card.lizardWarriorShot,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
@@ -1812,6 +1818,11 @@ function healHero(match, side, amount, events) {
   // helper since the amounts/stats differ, shared with Шеф дома Вкуса's
   // doubling the same way.
   if (events) applyArmadilloHealTrigger(match, side, events);
+  // Ящер-воин: same "every heal" trigger, but instead of buffing
+  // himself, throws a spear at a random ENEMY unit for damage equal to
+  // his own current attack — shared with Шеф дома Вкуса's doubling the
+  // same way as every trigger above.
+  if (events) applyLizardWarriorTrigger(match, side, events);
   return applied;
 }
 
@@ -1872,6 +1883,45 @@ function applyArmadilloHealTrigger(match, side, events) {
           type: 'rallyBuff', side, laneIdx: l,
           targetDepth: d, buffAtk: 1, buffHp: 0, buffArmor: 1, sourceUid: u.uid,
         });
+      }
+    }
+  }
+}
+
+// Ящер-воин: shared by both healHero() above and Шеф дома Вкуса's own
+// one-time hero-hp doubling (which bypasses healHero() entirely) — same
+// reasoning as every other heal-trigger helper above. Unlike those, this
+// one doesn't buff its own side at all — it throws a spear at a random
+// ENEMY unit for damage equal to its own CURRENT attack, reusing the
+// exact same target-collection (Чаростойкость-respecting) and 'unitShot'
+// event already built for Осадная башня's own end-of-round siegeShot.
+function applyLizardWarriorTrigger(match, side, events) {
+  const board = match.boards[side];
+  const targetSide = otherPlayer(match, side);
+  const targetBoard = match.boards[targetSide];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.lizardWarriorShot) {
+        const targets = [];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            if (targetBoard[l2][d2] && !targetBoard[l2][d2].spellResist) targets.push({ laneIdx: l2, depthIdx: d2 });
+          }
+        }
+        if (targets.length > 0) {
+          const chosen = targets[Math.floor(Math.random() * targets.length)];
+          const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+          const amount = u.atk;
+          targetUnit.hp -= amount;
+          const died = targetUnit.hp <= 0;
+          events.push({
+            type: 'unitShot', side, targetSide, amount,
+            laneIdx: l, depthIdx: d, sourceUid: u.uid,
+            targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, died,
+          });
+          if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
+        }
       }
     }
   }
