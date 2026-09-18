@@ -504,6 +504,8 @@ export const CARD_POOL = [
   // Plain stat-and-keyword card \u2014 reuses the existing trample mechanic
   // as-is, no new code needed.
   { id: 'c133', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 4, hp: 4, trample: true, rarity: 'rare', faction: 'savages' },
+  // Pure reuse of the existing healOnPlay mechanic \u2014 no new code needed.
+  { id: 'c134', name: '\u0412\u043e\u0438\u043d \u0441 \u043c\u043e\u043b\u043e\u0442\u043e\u043c', type: 'creature', cost: 4, atk: 3, hp: 4, healOnPlay: 2, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
