@@ -439,6 +439,9 @@ export const CARD_POOL = [
   // the round AFTER placement (bambooShotRecurring's exact timing) \u2014 see
   // applyRandomEnemyShot/pendingMarksmanShots above for both.
   { id: 'c120', name: '\u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, randomShotOnPlay: 1, randomShotRecurring: 1, rarity: 'rare', faction: 'savages' },
+  // noisyBuff: see placeCard above \u2014 same adjacent-ally targeting as
+  // \u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430's own auntBuff, just +2 attack only instead of +1/+1.
+  { id: 'c121', name: '\u0428\u0443\u043c\u043d\u0430\u044f \u0434\u0438\u043a\u0430\u0440\u043a\u0430', type: 'creature', cost: 3, atk: 3, hp: 1, noisyBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1256,6 +1259,19 @@ export function placeCard(match, username, uid, lane, depth) {
     if (neighbours.length > 0) {
       const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
+    }
+  }
+
+  // Шумная дикарка: same adjacent-ally-only targeting as Родная
+  // тетушка's own auntBuff right above, but +2 attack only (no hp
+  // change) instead of +1/+1 — a separate field since the amounts
+  // differ, same deferred pendingRallyBuffs queue either way.
+  if (card.noisyBuff) {
+    const board = match.boards[username];
+    const neighbours = adjacentAllyPositions(board, lane, depth);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: unit.uid });
     }
   }
 
