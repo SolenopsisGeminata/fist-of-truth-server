@@ -447,6 +447,12 @@ export const CARD_POOL = [
   // enemy unit for 2 damage (reuses applyRandomEnemyShot, same as
   // \u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a).
   { id: 'c122', name: '\u0412\u0441\u0430\u0434\u043d\u0438\u043a \u043d\u0430 \u043a\u0430\u0431\u0430\u043d\u0435', type: 'creature', cost: 3, atk: 2, hp: 3, boarRiderSpear: true, rarity: 'rare', faction: 'savages' },
+  // selfHealOnDamage: see the end-of-round loop above \u2014 same
+  // roundStartHp-based "took damage this round" check as \u0413\u043e\u0440\u043d\u044b\u0439
+  // \u0432\u043e\u0438\u043d, but heals itself (capped at its own max HP) instead of
+  // permanently growing. sleep: see the sleep field/isAsleep in
+  // resolveCombat above \u2014 can't attack during its own bornRound.
+  { id: 'c123', name: '\u0411\u0435\u0433\u0435\u043c\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 7, sleep: true, selfHealOnDamage: 3, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -941,6 +947,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armadilloHealBuff: !!card.armadilloHealBuff,
     lizardWarriorShot: !!card.lizardWarriorShot,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
+    selfHealOnDamage: card.selfHealOnDamage || 0,
     manaAura: card.manaAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
@@ -4143,6 +4150,27 @@ export function tryEndTurn(match, username) {
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: unit.uid,
               });
+            }
+          }
+          // Бегемот: same roundStartHp-based "took damage this round"
+          // check as Горный воин above, but heals ITSELF back by a fixed
+          // amount instead of permanently growing — capped at its own
+          // current max HP, so it never overheals past its ceiling the
+          // way a rallyBuff-style permanent gain would. Uses a dedicated
+          // 'selfHeal' event since rallyBuff always grows maxHp alongside
+          // hp (wrong here) and every other heal event in the game
+          // targets the HERO, not a unit.
+          if (unit && unit.selfHealOnDamage) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              const healed = Math.min(unit.selfHealOnDamage, unit.maxHp - unit.hp);
+              if (healed > 0) {
+                unit.hp += healed;
+                events.push({
+                  type: 'selfHeal', side: name, cardId: unit.id,
+                  sourceUid: unit.uid, amount: healed, laneIdx: l, depthIdx: d,
+                });
+              }
             }
           }
           // Шеф дома Вкуса: exactly ONE time, at the end of the SAME
