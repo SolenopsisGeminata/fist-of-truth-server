@@ -480,6 +480,10 @@ export const CARD_POOL = [
   // (same "whole side including the caster" shape as \u0411\u0430\u0440\u043e\u043d), just at
   // start-of-round instead of end-of-round.
   { id: 'c128', name: '\u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 3, atk: 1, hp: 2, highShamanBuff: true, rarity: 'epic', faction: 'savages' },
+  // Same on-heal trigger point as \u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439/\u0421\u0443\u0441\u043b\u0438\u043a/\u0411\u0440\u043e\u043d\u0435\u043d\u043e\u0441\u0435\u0446
+  // above (applyBadgerHealTrigger, called from healHero), but +1
+  // attack AND +1 health.
+  { id: 'c129', name: '\u0411\u0430\u0440\u0441\u0443\u043a', type: 'creature', cost: 3, atk: 2, hp: 4, lifesteal: true, badgerHealBuff: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -974,6 +978,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     squirrelHealBuff: !!card.squirrelHealBuff,
     armadilloHealBuff: !!card.armadilloHealBuff,
     lizardWarriorShot: !!card.lizardWarriorShot,
+    badgerHealBuff: !!card.badgerHealBuff,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
@@ -1932,6 +1937,11 @@ function healHero(match, side, amount, events) {
   // his own current attack — shared with Шеф дома Вкуса's doubling the
   // same way as every trigger above.
   if (events) applyLizardWarriorTrigger(match, side, events);
+  // Барсук: same "every heal" trigger as Ящерица степей/Суслик/
+  // Броненосец above, but +1 attack AND +1 health to himself — a
+  // separate helper since the amounts differ, shared with Шеф дома
+  // Вкуса's doubling the same way.
+  if (events) applyBadgerHealTrigger(match, side, events);
   return applied;
 }
 
@@ -2031,6 +2041,27 @@ function applyLizardWarriorTrigger(match, side, events) {
           });
           if (died) killUnit(match, targetSide, chosen.laneIdx, chosen.depthIdx, events);
         }
+      }
+    }
+  }
+}
+
+// Барсук: shared by both healHero() above and Шеф дома Вкуса's own
+// one-time hero-hp doubling (which bypasses healHero() entirely) —
+// same reasoning as every other heal-trigger helper above.
+function applyBadgerHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.badgerHealBuff) {
+        u.atk += 1;
+        u.hp += 1;
+        u.maxHp += 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l,
+          targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: u.uid,
+        });
       }
     }
   }
@@ -4294,6 +4325,8 @@ export function tryEndTurn(match, username) {
               applyLizardHealTrigger(match, name, events);
               applySquirrelHealTrigger(match, name, events);
               applyArmadilloHealTrigger(match, name, events);
+              applyLizardWarriorTrigger(match, name, events);
+              applyBadgerHealTrigger(match, name, events);
             }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
