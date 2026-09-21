@@ -531,6 +531,9 @@ export const CARD_POOL = [
   // \u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d: see applyHighShamanManaBuff above for the
   // pre-attack mana-buff mechanic.
   { id: 'c138', name: '\u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 4, atk: 5, hp: 5, highShamanManaBuff: true, rarity: 'epic', faction: 'savages' },
+  // \u041e\u0434\u043d\u043e\u0433\u043b\u0430\u0437\u0430\u044f \u0442\u0432\u0430\u0440\u044c: see applyOneEyedBeastHealTrigger above \u2014 same
+  // "every heal" trigger shape as \u0411\u0430\u0440\u0441\u0443\u043a, just +3/+3 instead of +1/+1.
+  { id: 'c139', name: '\u041e\u0434\u043d\u043e\u0433\u043b\u0430\u0437\u0430\u044f \u0442\u0432\u0430\u0440\u044c', type: 'creature', cost: 4, atk: 4, hp: 10, oneEyedBeastHealBuff: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1028,6 +1031,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     armadilloHealBuff: !!card.armadilloHealBuff,
     lizardWarriorShot: !!card.lizardWarriorShot,
     badgerHealBuff: !!card.badgerHealBuff,
+    oneEyedBeastHealBuff: !!card.oneEyedBeastHealBuff,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
@@ -2004,6 +2008,11 @@ function healHero(match, side, amount, events) {
   // separate helper since the amounts differ, shared with Шеф дома
   // Вкуса's doubling the same way.
   if (events) applyBadgerHealTrigger(match, side, events);
+  // Одноглазая тварь: same "every heal" trigger as Барсук above, but
+  // +3 attack AND +3 health instead of +1/+1 — a separate helper since
+  // the amount differs, shared with Шеф дома Вкуса's doubling the same
+  // way.
+  if (events) applyOneEyedBeastHealTrigger(match, side, events);
   return applied;
 }
 
@@ -2123,6 +2132,27 @@ function applyBadgerHealTrigger(match, side, events) {
         events.push({
           type: 'rallyBuff', side, laneIdx: l,
           targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: u.uid,
+        });
+      }
+    }
+  }
+}
+
+// Одноглазая тварь: shared by both healHero() above and Шеф дома
+// Вкуса's own one-time hero-hp doubling (which bypasses healHero()
+// entirely) — same reasoning as applyBadgerHealTrigger right above.
+function applyOneEyedBeastHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.oneEyedBeastHealBuff) {
+        u.atk += 3;
+        u.hp += 3;
+        u.maxHp += 3;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l,
+          targetDepth: d, buffAtk: 3, buffHp: 3, sourceUid: u.uid,
         });
       }
     }
@@ -3166,13 +3196,17 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
 // attack every round he's eligible to act (see the resolveCombatPass
 // pre-attack hooks) — the buff amount is read fresh from match.mana at
 // that exact moment, i.e. however much of the caster's own mana is
-// STILL unspent this turn, which can be 0. The random target is picked
-// from every unit currently on the caster's own board, himself
-// included (no "other ally" exclusion, unlike Колдун прерий) — always
-// finds at least one candidate since he himself is on the board to
-// trigger this at all. Reuses the plain 'rallyBuff' event/animation.
+// STILL unspent this turn. Zero (or less, though mana never actually
+// goes negative) leftover mana means the trigger simply doesn't fire
+// at all — no event, no-op — per explicit request. The random target
+// is picked from every unit currently on the caster's own board,
+// himself included (no "other ally" exclusion, unlike Колдун прерий)
+// — always finds at least one candidate since he himself is on the
+// board to trigger this at all. Reuses the plain 'rallyBuff' event/
+// animation.
 function applyHighShamanManaBuff(match, side, events, sourceUid, laneIdx, depthIdx) {
   const amount = match.mana[side];
+  if (amount <= 0) return;
   const board = match.boards[side];
   const targets = [];
   for (let l = 0; l < LANES; l++) {
@@ -4499,6 +4533,7 @@ export function tryEndTurn(match, username) {
               applyArmadilloHealTrigger(match, name, events);
               applyLizardWarriorTrigger(match, name, events);
               applyBadgerHealTrigger(match, name, events);
+              applyOneEyedBeastHealTrigger(match, name, events);
             }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
