@@ -564,6 +564,10 @@ export const CARD_POOL = [
   // \u041a\u0430\u0431\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439: pure reuse of battlecrySummon (\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439)
   // and healOnDeath (\u0414\u0435\u0442\u0435\u043d\u044b\u0448 \u043a\u0430\u0431\u0430\u043d\u0430's own field) \u2014 no new code needed.
   { id: 'c148', name: '\u041a\u0430\u0431\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 6, atk: 5, hp: 5, battlecrySummon: 'c119', healOnDeath: 5, rarity: 'epic', faction: 'savages' },
+  // \u0412\u043e\u0436\u0434\u044c \u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442\u044b\u0445: see the bigMouthChiefSummon pre-attack hook
+  // above \u2014 summons \u042f\u0449\u0435\u0440\u0438\u0446\u0430 \u0441\u0442\u0435\u043f\u0435\u0439 (c106) via the existing
+  // summonUnitToRandomFreeCell helper, no new summon logic needed.
+  { id: 'c149', name: '\u0412\u043e\u0436\u0434\u044c \u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442\u044b\u0445', type: 'creature', cost: 6, atk: 7, hp: 7, lifesteal: true, bigMouthChiefSummon: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1032,6 +1036,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     highShamanManaBuff: !!card.highShamanManaBuff,
     axeFanaticThrow: !!card.axeFanaticThrow,
     axeWomanThrow: !!card.axeWomanThrow,
+    bigMouthChiefSummon: !!card.bigMouthChiefSummon,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -3546,6 +3551,14 @@ function resolveCombatPass(match, events, isEligible) {
       // round).
       if (aEligible && aUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      // Вождь Большеротых: same "no bornRound gate" reasoning as every
+      // other single-trigger pre-attack card above — summons a
+      // Ящерица степей onto a random free cell of his OWN board right
+      // before every attack of his, starting the round he's placed. A
+      // full board is a silent no-op (summonUnitToRandomFreeCell's own
+      // existing behavior).
+      if (aEligible && aUnit.bigMouthChiefSummon) summonUnitToRandomFreeCell(match, nameA, 'c106', events);
+      if (bEligible && bUnit.bigMouthChiefSummon) summonUnitToRandomFreeCell(match, nameB, 'c106', events);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
