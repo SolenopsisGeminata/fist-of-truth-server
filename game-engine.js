@@ -572,6 +572,10 @@ export const CARD_POOL = [
   // targeting spell mechanism (same as \u0421\u0438\u043b\u0430 \u043a\u0430\u0431\u0430\u043d\u0430/\u0414\u0438\u043a\u0430\u044f \u0441\u0438\u043b\u0430) \u2014 no
   // new code needed, just a bigger amount (6/6).
   { id: 's36', name: '\u0412\u0435\u043b\u0438\u043a\u0430\u044f \u0441\u0438\u043b\u0430', type: 'spell', cost: 6, buffAtk: 6, buffHp: 6, rarity: 'epic', faction: 'savages' },
+  // \u0426\u0438\u043a\u043b\u043e\u043f: see the cyclopsThrow pre-attack hook above \u2014 same
+  // mirrored-row throw as \u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438, but a fixed 7 damage
+  // and his own 'boulderThrow' event.
+  { id: 'c150', name: '\u0426\u0438\u043a\u043b\u043e\u043f', type: 'creature', cost: 7, atk: 7, hp: 15, sleep: true, cyclopsThrow: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1041,6 +1045,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     axeFanaticThrow: !!card.axeFanaticThrow,
     axeWomanThrow: !!card.axeWomanThrow,
     bigMouthChiefSummon: !!card.bigMouthChiefSummon,
+    cyclopsThrow: !!card.cyclopsThrow,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -3411,14 +3416,19 @@ function applyHighShamanManaBuff(match, side, events, sourceUid, laneIdx, depthI
 // both. Чаростойкость blocks it outright (struck harmlessly, no
 // redirect to the hero), same resisted-no-redirect precedent as every
 // other cross-side mechanic here. Damage equals his own CURRENT attack,
-// read fresh at the moment of the throw (not his base stat).
-function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, depthIdx) {
+// read fresh at the moment of the throw (not his base stat) — UNLESS
+// fixedAmount is given, in which case that flat number is used instead
+// (Циклоп's boulder always deals a fixed 7, regardless of his current
+// attack). eventType (default 'axeThrow') lets a differently-themed
+// thrower (Циклоп's 'boulderThrow') get its own client animation/log
+// text instead of "метает топор".
+function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, depthIdx, fixedAmount, eventType) {
   const targetBoard = match.boards[enemySide];
   const targetDepth = Math.floor(Math.random() * DEPTH);
   const cellUnit = targetBoard[laneIdx][targetDepth];
   const resisted = !!(cellUnit && cellUnit.spellResist);
   const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
-  const amount = unit.atk;
+  const amount = fixedAmount != null ? fixedAmount : unit.atk;
   let died = false;
   if (resisted) {
     // no-op: the axe lands on her harmlessly
@@ -3429,7 +3439,7 @@ function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, dep
     match.hp[enemySide] -= amount;
   }
   events.push({
-    type: 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    type: eventType || 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : amount,
     laneIdx, depthIdx, sourceUid: unit.uid,
     targetLaneIdx: laneIdx, targetDepthIdx: targetDepth,
     targetHero: !cellUnit, died, resisted,
@@ -3563,6 +3573,13 @@ function resolveCombatPass(match, events, isEligible) {
       // existing behavior).
       if (aEligible && aUnit.bigMouthChiefSummon) summonUnitToRandomFreeCell(match, nameA, 'c106', events);
       if (bEligible && bUnit.bigMouthChiefSummon) summonUnitToRandomFreeCell(match, nameB, 'c106', events);
+      // Циклоп: same mirrored-row throw as Фанатик с топорами/Дикарка
+      // с топорами above, but a FIXED 7 damage (not his current
+      // attack) and his own 'boulderThrow' event/animation. Carries
+      // Сон, so isEligible already excludes him (and this hook with
+      // it) on his own bornRound — no separate gate needed here.
+      if (aEligible && aUnit.cyclopsThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth, 7, 'boulderThrow');
+      if (bEligible && bUnit.cyclopsThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth, 7, 'boulderThrow');
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
