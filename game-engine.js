@@ -540,6 +540,9 @@ export const CARD_POOL = [
   // \u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438: see the coinFlipAttack roll in tryEndTurn, right
   // before resolveCombat, for the every-round 50/50 mechanic.
   { id: 'c141', name: '\u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438', type: 'creature', cost: 4, atk: 8, hp: 8, trample: true, coinFlipAttack: true, rarity: 'legendary', faction: 'savages' },
+  // \u0422\u043e\u0442\u0435\u043c \u0434\u0438\u043a\u0430\u0440\u0435\u0439: see applySavageTotemBuffs above for the start-of-
+  // round attack-only buff mechanic.
+  { id: 'c142', name: '\u0422\u043e\u0442\u0435\u043c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 0, hp: 8, savageTotemBuff: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1008,6 +1011,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     highShamanManaBuff: !!card.highShamanManaBuff,
     axeFanaticThrow: !!card.axeFanaticThrow,
     coinFlipAttack: !!card.coinFlipAttack,
+    savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
@@ -2636,18 +2640,22 @@ function resolveSpells(match, events) {
 // `amount` (optional) parametrizes the buff size — defaults to 1, the
 // original hardcoded value every existing caller (Аннабэль, Барон,
 // Имперский полководец) still relies on. Небесные лучи is the first to
-// pass a different value.
-function applyDawnBuff(match, side, events, sourceUid, amount) {
+// pass a different value. `hpAmount` (optional) lets the hp side of the
+// buff differ from the atk side — defaults to `amount` (same value for
+// both, the original behavior every existing caller relies on) when
+// omitted. Тотем дикарей is the first to pass 0 here for an atk-only buff.
+function applyDawnBuff(match, side, events, sourceUid, amount, hpAmount) {
   amount = amount || 1;
+  if (hpAmount === undefined) hpAmount = amount;
   const board = match.boards[side];
   for (let l = 0; l < LANES; l++) {
     for (let d = 0; d < DEPTH; d++) {
       const u = board[l][d];
       if (u) {
         u.atk += amount;
-        u.hp += amount;
-        u.maxHp += amount;
-        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: amount, buffHp: amount, sourceUid });
+        u.hp += hpAmount;
+        u.maxHp += hpAmount;
+        events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: amount, buffHp: hpAmount, sourceUid });
       }
     }
   }
@@ -2922,6 +2930,22 @@ function applyBoneShamanBuffs(match, events) {
       for (let d = 0; d < DEPTH; d++) {
         const unit = board[l][d];
         if (unit && unit.boneShamanBuff) applyDawnBuff(match, side, events, unit.uid);
+      }
+    }
+  }
+}
+
+// Тотем дикарей: same "start of every round it's alive" timing and
+// "whole side, including itself, several copies stack independently"
+// shape as Шаман костей right above — but attack only, no hp change,
+// via applyDawnBuff's own hpAmount parameter (0 here).
+function applySavageTotemBuffs(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (unit && unit.savageTotemBuff) applyDawnBuff(match, side, events, unit.uid, 1, 0);
       }
     }
   }
@@ -4361,6 +4385,9 @@ export function tryEndTurn(match, username) {
   // Шаман костей also fires here — +1/+1 to every ally including
   // himself, every round he's alive.
   applyBoneShamanBuffs(match, events);
+  // Тотем дикарей also fires here — +1 attack (only) to every ally
+  // including itself, every round it's alive.
+  applySavageTotemBuffs(match, events);
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
   applyLunaBlind(match, events);
