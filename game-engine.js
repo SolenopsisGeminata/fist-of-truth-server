@@ -592,6 +592,10 @@ export const CARD_POOL = [
   // placeCard (queued via pendingLinSwaps) and the linLegacyDoubleStrike
   // check inside killUnit's \u041d\u0430\u0441\u043b\u0435\u0434\u0438\u0435-transfer reaction above.
   { id: 'c154', name: '\u041b\u0438\u043d\u044c, \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u044b\u0439 \u043a\u043b\u0438\u043d\u043e\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, spellResist: true, linSwapOnPlay: true, linLegacyDoubleStrike: true, rarity: 'legendary', faction: 'zen' },
+  // \u0421\u0442\u0440\u0430\u0436 \u0440\u0435\u043a\u0438 \u0421\u0442\u0438\u043a\u0441: see applyStyxGuardPunish above, start-of-round hook
+  // \u2014 checks match.sacrifices (the sacrifice() action), never his own
+  // owner's opponent's.
+  { id: 'c155', name: '\u0421\u0442\u0440\u0430\u0436 \u0440\u0435\u043a\u0438 \u0421\u0442\u0438\u043a\u0441', type: 'creature', cost: 1, atk: 3, hp: 2, styxGuardSelfHit: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1123,6 +1127,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
+    styxGuardSelfHit: !!card.styxGuardSelfHit,
     placedThisRound,
     bornRound,
   };
@@ -3062,6 +3067,33 @@ function applyValleyBarn(match, events) {
   }
 }
 
+// Страж реки Стикс: same "fires at the start of every round he's alive"
+// timing as Амбар долины above, but self-punishing rather than
+// buffing — if his OWNER used their one sacrifice this round
+// (match.sacrifices, set by the sacrifice() action and reset to 0 at
+// the start of the NEXT round, so it still reflects THIS round's
+// sacrifice at this exact point in resolution), he deals 2 damage to
+// that same owner's own hero. Never the opponent's hero, and never
+// checks the opponent's own sacrifice count.
+function applyStyxGuardPunish(match, events) {
+  for (const side of match.players) {
+    if (anyHeroDown(match)) break;
+    if (!match.sacrifices[side]) continue;
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      if (anyHeroDown(match)) break;
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.styxGuardSelfHit) continue;
+        const amount = 2;
+        match.hp[side] -= amount;
+        events.push({ type: 'styxGuardHit', side, amount, sourceUid: unit.uid, laneIdx: l, depthIdx: d });
+        if (anyHeroDown(match)) break;
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -4821,6 +4853,9 @@ export function tryEndTurn(match, username) {
   // Амбар долины also fires here — +1/+1 to a random OTHER ally,
   // every round he's alive.
   applyValleyBarn(match, events);
+  // Страж реки Стикс also fires here — 2 damage to his own owner's
+  // hero, but only if that owner sacrificed a card this round.
+  applyStyxGuardPunish(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
