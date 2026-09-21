@@ -558,6 +558,9 @@ export const CARD_POOL = [
   // lifesteal grant) and applyKaiBloodyHealTrigger (on-heal self-buff
   // + one-time trample grant) above.
   { id: 'c146', name: '\u041a\u0430\u0439 \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439', type: 'creature', cost: 5, atk: 4, hp: 4, kaiBloodyLifestealGrant: true, kaiBloodyHealBuff: true, rarity: 'legendary', faction: 'savages' },
+  // \u041c\u0438\u043d\u043e\u0442\u0430\u0432\u0440: same roundStartHp-based "took damage this round" family
+  // as \u0412\u043e\u0438\u043d \u0441 \u0442\u043e\u043f\u043e\u0440\u043e\u043c, just +1/+2 instead of +1/+1.
+  { id: 'c147', name: '\u041c\u0438\u043d\u043e\u0442\u0430\u0432\u0440', type: 'creature', cost: 6, atk: 7, hp: 9, minotaurGrowth: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1066,6 +1069,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
     axeWarriorGrowth: !!card.axeWarriorGrowth,
+    minotaurGrowth: !!card.minotaurGrowth,
     carnivorousPlantBite: !!card.carnivorousPlantBite,
     bigCactusHeal: !!card.bigCactusHeal,
     prairieEagleReact: !!card.prairieEagleReact,
@@ -3017,19 +3021,19 @@ function applySavageTotemBuffs(match, events) {
 }
 
 // Кай Кровавый: at the start of every round he's alive, permanently
-// grants EVERY ally (himself included) Кража жизни (lifesteal) — no
-// atk/hp change at all, so this can't reuse applyDawnBuff (which
-// always touches atk/hp). Only units that don't already have lifesteal
-// get touched/get an event — a unit that already has it (from this or
-// any other source) is silently skipped, so a second copy of Кай (or a
-// round where everyone's already been granted it) produces no
-// redundant events.
+// grants EVERY OTHER ally (never himself — per explicit correction)
+// Кража жизни (lifesteal) — no atk/hp change at all, so this can't
+// reuse applyDawnBuff (which always touches atk/hp). Only units that
+// don't already have lifesteal get touched/get an event — a unit that
+// already has it (from this or any other source) is silently skipped,
+// so a second copy of Кай (or a round where everyone's already been
+// granted it) produces no redundant events.
 function applyKaiBloodyLifestealGrant(match, side, events, sourceUid) {
   const board = match.boards[side];
   for (let l = 0; l < LANES; l++) {
     for (let d = 0; d < DEPTH; d++) {
       const u = board[l][d];
-      if (u && !u.lifesteal) {
+      if (u && u.uid !== sourceUid && !u.lifesteal) {
         u.lifesteal = true;
         events.push({
           type: 'rallyBuff', side, laneIdx: l, targetDepth: d,
@@ -4529,8 +4533,8 @@ export function tryEndTurn(match, username) {
   // throw as her own pre-attack hook below, so she throws twice per
   // round in total (once here, once before her attack).
   applyAxeWomanStartOfRoundThrows(match, events);
-  // Кай Кровавый also fires here — grants every ally (himself included)
-  // Кража жизни, every round he's alive.
+  // Кай Кровавый also fires here — grants every OTHER ally (never
+  // himself) Кража жизни, every round he's alive.
   applyKaiBloodyLifestealGrants(match, events);
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
@@ -4715,6 +4719,21 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Минотавр: same roundStartHp-based permanent-growth family
+          // as Воин с топором right above, but +1 attack AND +2 health
+          // instead — a separate field since the amounts differ.
+          if (unit && unit.minotaurGrowth) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              unit.atk += 1;
+              unit.hp += 2;
+              unit.maxHp += 2;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: unit.uid,
               });
             }
           }
