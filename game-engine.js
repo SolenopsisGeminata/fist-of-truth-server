@@ -588,6 +588,10 @@ export const CARD_POOL = [
   // lane sweep as the \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441/\u041a\u0430\u043c\u0435\u043d\u043d\u044b\u0439 \u0433\u0440\u0430\u0434 wrath mechanic, fired
   // as a pre-attack creature ability instead of a cast spell.
   { id: 'c153', name: '\u0421\u043e\u043b\u043d\u0435\u0447\u043d\u044b\u0439 \u0434\u0440\u0430\u043a\u043e\u043d', type: 'creature', cost: 9, atk: 20, hp: 20, solarDragonWave: true, rarity: 'legendary', faction: 'savages' },
+  // \u041b\u0438\u043d\u044c, \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u044b\u0439 \u043a\u043b\u0438\u043d\u043e\u043a: see the linSwapOnPlay battlecry in
+  // placeCard (queued via pendingLinSwaps) and the linLegacyDoubleStrike
+  // check inside killUnit's \u041d\u0430\u0441\u043b\u0435\u0434\u0438\u0435-transfer reaction above.
+  { id: 'c154', name: '\u041b\u0438\u043d\u044c, \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u044b\u0439 \u043a\u043b\u0438\u043d\u043e\u043a', type: 'creature', cost: 3, atk: 3, hp: 3, spellResist: true, linSwapOnPlay: true, linLegacyDoubleStrike: true, rarity: 'legendary', faction: 'zen' },
 ];
 
 export function cardById(id) {
@@ -781,21 +785,25 @@ export function frontUnit(board, laneIdx) {
   return null;
 }
 
-// Двойной удар (Double Strike): a unit with this flag appears TWICE in
-// its own side's acting order for a lane, so it gets two full turns
-// through the ordinary wave machinery below — each one independently
-// picks the CURRENT front target (redirecting to whoever's now in
-// front, or the hero, if its first swing already cleared the original
-// target), and each one fully applies armor/lifesteal/trample/events
-// exactly like any other attack. No bespoke "extra swing" logic needed;
-// this is the only place Double Strike is implemented.
+// Двойной удар (Double Strike): doubleStrike is a STACKING counter, not
+// a boolean — a unit with N stacks appears N+1 TOTAL times in its own
+// side's acting order for a lane (the base entry, plus one extra per
+// stack), so it gets N+1 full turns through the ordinary wave machinery
+// below. A single stack (the original, pre-stacking design every
+// existing Double Strike card still grants) reproduces the exact old
+// "twice" behavior. Each entry independently picks the CURRENT front
+// target (redirecting to whoever's now in front, or the hero, if an
+// earlier swing already cleared the original target), and each one
+// fully applies armor/lifesteal/trample/events exactly like any other
+// attack. No bespoke "extra swing" logic needed; this is the only place
+// Double Strike is implemented.
 function actingOrder(board, laneIdx) {
   const order = [];
   for (let d = 0; d < DEPTH; d++) {
     const unit = board[laneIdx][d];
     if (unit) {
       order.push({ unit, depth: d });
-      if (unit.doubleStrike) order.push({ unit, depth: d });
+      for (let i = 0; i < (unit.doubleStrike || 0); i++) order.push({ unit, depth: d });
     }
   }
   return order;
@@ -928,6 +936,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     // ever runs still has somewhere safe to record its own baseline.
     roundStartHp: {},
     pendingBattlecrySummons: [],
+    pendingLinSwaps: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1037,7 +1046,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
     boneShamanBuff: !!card.boneShamanBuff,
-    doubleStrike: !!card.doubleStrike,
+    doubleStrike: card.doubleStrike ? 1 : 0,
     healTrigger: !!card.healTrigger,
     blacksmithBuff: !!card.blacksmithBuff,
     powderKeg: !!card.powderKeg,
@@ -1062,6 +1071,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     rumaBuff: !!card.rumaBuff,
     prairieDragonSpit: !!card.prairieDragonSpit,
     solarDragonWave: !!card.solarDragonWave,
+    linLegacyDoubleStrike: !!card.linLegacyDoubleStrike,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -1490,6 +1500,24 @@ export function placeCard(match, username, uid, lane, depth) {
   // chain (see applyPrairieDragonHealTrigger).
   if (card.prairieDragonSpit) {
     match.pendingDragonSpits.push({ side: username, sourceUid: unit.uid, laneIdx: lane, depthIdx: depth });
+  }
+
+  // Линь, Священный клинок: battlecry — picks a random ADJACENT ally
+  // right now (same targeting rule as adjacentAllyPositions everywhere
+  // else in this file), then queues the actual swap for resolution (see
+  // pendingLinSwaps in tryEndTurn) so both players see it as a revealed,
+  // animated event instead of a silent position change during placing.
+  // No adjacent ally at all is a safe no-op — she just stays put.
+  if (card.linSwapOnPlay) {
+    const board = match.boards[username];
+    const neighbours = adjacentAllyPositions(board, lane, depth);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      match.pendingLinSwaps.push({
+        side: username, laneIdx: lane, depthIdx: depth,
+        targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, sourceUid: unit.uid,
+      });
+    }
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -2017,6 +2045,21 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
             maxHp: transformed.maxHp, armor: transformed.armor, sourceUid: targetUnit.uid,
           });
         }
+      }
+      // Линь, Священный клинок: whenever THIS specific unit is the
+      // RECIPIENT of a Наследие transfer, additionally gains a
+      // PERMANENT Двойной удар stack — reuses the exact same stacking
+      // doubleStrike counter as the Двойной удар spell/Имперский
+      // полководец (see actingOrder: a unit with N stacks now acts
+      // N+1 times per wave). Reuses the plain 'rallyBuff' event with
+      // buffDoubleStrike:true so the client's existing rally-buff
+      // handling just works here too, no new event type needed.
+      if (targetUnit.linLegacyDoubleStrike) {
+        targetUnit.doubleStrike = (targetUnit.doubleStrike || 0) + 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx, targetDepth: chosen.depthIdx,
+          buffAtk: 0, buffHp: 0, buffDoubleStrike: true, sourceUid: targetUnit.uid,
+        });
       }
     }
   }
@@ -2711,11 +2754,11 @@ function resolveSpells(match, events) {
         if (spell.buffLegacy) unit.legacyValue = (unit.legacyValue || 0) + spell.buffLegacy;
         // Духовный щит: permanently grants Чаростойкость (spellResist).
         if (spell.buffSpellResist) unit.spellResist = true;
-        // Двойной удар (the spell): permanently grants the SAME
-        // doubleStrike flag already used by Имперский полководец's
-        // warlordBuff — once set, actingOrder() keeps giving this unit
-        // two full turns every wave, forever.
-        if (spell.buffDoubleStrike) unit.doubleStrike = true;
+        // Двойной удар (the spell): grants a stack of the SAME
+        // doubleStrike counter already used by Имперский полководец's
+        // warlordBuff — genuinely stacks now if recast on the same unit
+        // (see actingOrder: N stacks means N+1 turns every wave).
+        if (spell.buffDoubleStrike) unit.doubleStrike = (unit.doubleStrike || 0) + 1;
         // Наплечник: if the TARGET already has Armor (her own, not from
         // this spell — buffArmor isn't set on this card at all), the
         // caster draws a card from their own deck as a bonus.
@@ -4155,10 +4198,14 @@ export function tryEndTurn(match, username) {
 
   // Имперский полководец: buffs every ally +1/+1 (reusing applyDawnBuff,
   // exactly like Барон/Аннабэль's own "buff everyone" loop, himself
-  // included), then PERMANENTLY grants Двойной удар to every unit on
-  // his own board that currently has Armor > 0 (himself included) — a
-  // one-time snapshot at the moment his battlecry resolves, not
-  // retroactive to allies placed afterward.
+  // included), then PERMANENTLY grants a single Двойной удар stack to
+  // every unit on his own board that currently has Armor > 0 (himself
+  // included) — a one-time snapshot at the moment his battlecry
+  // resolves, not retroactive to allies placed afterward. Still capped
+  // at granting the FIRST stack only (the !u.doubleStrike guard is
+  // unchanged) — this specific battlecry was never meant to keep
+  // re-stacking on units that already have any Double Strike, unlike
+  // the dedicated Двойной удар spell or Линь's own Наследие trigger.
   const warlordQueue = match.pendingWarlordBuffs;
   match.pendingWarlordBuffs = [];
   for (const warlord of warlordQueue) {
@@ -4168,7 +4215,7 @@ export function tryEndTurn(match, username) {
     for (let l = 0; l < LANES; l++) {
       for (let d = 0; d < DEPTH; d++) {
         const u = board[l][d];
-        if (u && u.armor > 0 && !u.doubleStrike) { u.doubleStrike = true; grantedCount++; }
+        if (u && u.armor > 0 && !u.doubleStrike) { u.doubleStrike = 1; grantedCount++; }
       }
     }
     events.push({ type: 'warlordDoubleStrike', side: warlord.side, sourceUid: warlord.sourceUid, count: grantedCount });
@@ -4717,6 +4764,31 @@ export function tryEndTurn(match, username) {
     for (let i = 0; i < count; i++) {
       summonUnitToRandomFreeCell(match, summon.side, summon.summonCardId, events);
     }
+  }
+
+  // Линь, Священный клинок: battlecry swap with a random adjacent ally
+  // — the ally was already picked back in placeCard (same "pick now,
+  // apply+reveal at resolution" pattern as Вождь дикарей/Шумная
+  // дикарка's own adjacent-ally battlecries), so this just performs the
+  // actual board swap and reveals it as an animated event. A defensive
+  // no-op if either cell is unexpectedly empty by now (nothing between
+  // placement and here can move or remove either unit, but every other
+  // deferred queue in this file guards the same way).
+  const linSwapQueue = match.pendingLinSwaps;
+  match.pendingLinSwaps = [];
+  for (const swap of linSwapQueue) {
+    const board = match.boards[swap.side];
+    const linUnit = board[swap.laneIdx][swap.depthIdx];
+    const otherUnit = board[swap.targetLaneIdx][swap.targetDepthIdx];
+    if (!linUnit || !otherUnit) continue;
+    board[swap.laneIdx][swap.depthIdx] = otherUnit;
+    board[swap.targetLaneIdx][swap.targetDepthIdx] = linUnit;
+    events.push({
+      type: 'linSwap', side: swap.side,
+      laneIdx: swap.laneIdx, depthIdx: swap.depthIdx,
+      targetLaneIdx: swap.targetLaneIdx, targetDepthIdx: swap.targetDepthIdx,
+      sourceUid: swap.sourceUid, otherUid: otherUnit.uid,
+    });
   }
 
   // Епископ fires here too — at the very start of resolution, same
