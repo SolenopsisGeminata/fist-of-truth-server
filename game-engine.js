@@ -600,10 +600,14 @@ export const CARD_POOL = [
   // \u2014 unlike \u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430 (random depth within a chosen lane), this hits
   // the EXACT cell the player picks.
   { id: 's37', name: '\u041c\u043e\u043b\u043d\u0438\u044f', type: 'spell', cost: 1, lightningStrike: true, lightningDmg: 3, rarity: 'rare', faction: 'inferno' },
-  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441: see the fireImpThrowOnPlay battlecry in placeCard
+  // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441: see the fireImpThrowOnPlay battlecry in placeCard
   // (queued via pendingFireImpThrows) and applyFireImpThrow above \u2014 part
   // of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see infernoStarterDeckCounts below).
-  { id: 'c156', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 2, hp: 2, fireImpThrowOnPlay: 2, rarity: 'common', faction: 'inferno' },
+  { id: 'c156', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 2, hp: 2, fireImpThrowOnPlay: 2, rarity: 'common', faction: 'inferno' },
+  // \u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a: same "own attack lands directly on the enemy hero"
+  // trigger as \u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441, but atk-only \u2014 see impAtkGrowOnHeroHit
+  // in resolveCombatPass above.
+  { id: 'c157', name: '\u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, impAtkGrowOnHeroHit: true, rarity: 'common', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -682,7 +686,7 @@ export function savagesStarterDeckCounts() {
 
 // The Инферно starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts/savagesStarterDeckCounts
-// above. Горящий бес is the only Common Инферно card so far (Страж
+// above. Огненный бес is the only Common Инферно card so far (Страж
 // реки Стикс and Молния are both Rare, so neither joins the starter
 // set, same "starter decks are Common-only" convention as every other
 // faction) — more will be added here as they're made Common.
@@ -1105,6 +1109,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     drunkenDisciple: !!card.drunkenDisciple,
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
+    impAtkGrowOnHeroHit: !!card.impAtkGrowOnHeroHit,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
     heavenlyWarrior: !!card.heavenlyWarrior,
@@ -1547,7 +1552,7 @@ export function placeCard(match, username, uid, lane, depth) {
     }
   }
 
-  // Горящий бес: throws a fireball at the FIRST (front-most) enemy
+  // Огненный бес: throws a fireball at the FIRST (front-most) enemy
   // unit in the MIRRORED lane (same lane index, opponent's side) — a
   // genuinely new "no target" behavior among battlecry throws: every
   // prior one (Дикарь-стрелок's randomShotOnPlay, etc.) redirects to
@@ -3581,7 +3586,7 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
-// Горящий бес: throws a fireball at the FIRST (front-most) unit in the
+// Огненный бес: throws a fireball at the FIRST (front-most) unit in the
 // MIRRORED lane (same lane index, opponent's side) only — unlike
 // applyRandomEnemyShot/applyMusketShot above, there is no redirect to
 // the enemy hero and no event at all when that lane is empty (a
@@ -4026,6 +4031,17 @@ function resolveCombatPass(match, events, isEligible) {
         bUnit.hp += 1;
         bUnit.maxHp += 1;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: bUnit.uid });
+      }
+
+      // Чертенок: same "own attack lands directly on the enemy hero"
+      // trigger as Стойкий Даос above, but atk-only — no hp change.
+      if (aAttacks && !aTarget && aUnit.impAtkGrowOnHeroHit) {
+        aUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+      }
+      if (bAttacks && !bTarget && bUnit.impAtkGrowOnHeroHit) {
+        bUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
       }
 
       // Небесный воин: whenever his own attack lands directly on the
@@ -4919,7 +4935,7 @@ export function tryEndTurn(match, username) {
     });
   }
 
-  // Горящий бес's battlecry throw — see applyFireImpThrow above.
+  // Огненный бес's battlecry throw — see applyFireImpThrow above.
   const fireImpThrowQueue = match.pendingFireImpThrows;
   match.pendingFireImpThrows = [];
   for (const throwEntry of fireImpThrowQueue) {
