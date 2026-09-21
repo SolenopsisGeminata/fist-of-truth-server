@@ -596,6 +596,10 @@ export const CARD_POOL = [
   // \u2014 checks match.sacrifices (the sacrifice() action), never his own
   // owner's opponent's.
   { id: 'c155', name: '\u0421\u0442\u0440\u0430\u0436 \u0440\u0435\u043a\u0438 \u0421\u0442\u0438\u043a\u0441', type: 'creature', cost: 1, atk: 3, hp: 2, styxGuardSelfHit: true, rarity: 'rare', faction: 'inferno' },
+  // \u041c\u043e\u043b\u043d\u0438\u044f: see the 'lightningStrike' spell kind in resolveSpells above
+  // \u2014 unlike \u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430 (random depth within a chosen lane), this hits
+  // the EXACT cell the player picks.
+  { id: 's37', name: '\u041c\u043e\u043b\u043d\u0438\u044f', type: 'spell', cost: 1, lightningStrike: true, lightningDmg: 3, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1765,6 +1769,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.lightningStrike) {
+    // \u041c\u043e\u043b\u043d\u0438\u044f: same "specific enemy cell, empty or occupied" targeting
+    // shape as \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c/\u041a\u0430\u043f\u043a\u0430\u043d above \u2014 unlike \u042f\u0440\u043e\u0441\u0442\u044c \u0434\u0440\u0435\u0432\u0430
+    // (which only takes a LANE and picks a random depth within it at
+    // resolution), the player picks the exact cell here and that's
+    // exactly the cell that gets struck, no randomness involved.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -1772,7 +1785,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : 'buff')))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : 'buff'))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1797,6 +1810,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffTrample: card.buffTrample,
     buffSpellResist: card.buffSpellResist,
     buffLegacy: card.buffLegacy,
+    lightningDmg: card.lightningDmg,
   });
   return { ok: true };
 }
@@ -2680,6 +2694,29 @@ function resolveSpells(match, events) {
         targetHero: !cellUnit, died, resisted,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, targetDepth, events);
+    } else if (spell.kind === 'lightningStrike') {
+      // Молния: same "hero always takes the hit, a non-Чаростойкость
+      // unit in that exact cell ALSO takes it, on top rather than
+      // instead" convention as Ярость древа's own treeWrath branch above
+      // — the only difference is the cell is the one the player actually
+      // picked (spell.depthIdx), never randomized.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && cellUnit.spellResist);
+      const amount = spell.lightningDmg;
+      match.hp[defenderName] -= amount;
+      let died = false;
+      if (cellUnit && !resisted) {
+        cellUnit.hp -= amount;
+        died = cellUnit.hp <= 0;
+      }
+      events.push({
+        type: 'lightningStrike', side: spell.side, targetSide: defenderName, amount,
+        laneIdx: spell.laneIdx, targetDepthIdx: spell.depthIdx,
+        targetHero: !cellUnit, died, resisted,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'damage') {
       const defenderName = otherPlayer(match, spell.side);
       const board = match.boards[defenderName];
