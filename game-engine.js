@@ -561,6 +561,9 @@ export const CARD_POOL = [
   // \u041c\u0438\u043d\u043e\u0442\u0430\u0432\u0440: same roundStartHp-based "took damage this round" family
   // as \u0412\u043e\u0438\u043d \u0441 \u0442\u043e\u043f\u043e\u0440\u043e\u043c, just +1/+2 instead of +1/+1.
   { id: 'c147', name: '\u041c\u0438\u043d\u043e\u0442\u0430\u0432\u0440', type: 'creature', cost: 6, atk: 7, hp: 9, minotaurGrowth: true, rarity: 'epic', faction: 'savages' },
+  // \u041a\u0430\u0431\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439: pure reuse of battlecrySummon (\u0422\u043e\u043b\u0441\u0442\u044b\u0439 \u043a\u0430\u0440\u0430\u0443\u043b\u044c\u043d\u044b\u0439)
+  // and healOnDeath (\u0414\u0435\u0442\u0435\u043d\u044b\u0448 \u043a\u0430\u0431\u0430\u043d\u0430's own field) \u2014 no new code needed.
+  { id: 'c148', name: '\u041a\u0430\u0431\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 6, atk: 5, hp: 5, battlecrySummon: 'c119', healOnDeath: 5, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
