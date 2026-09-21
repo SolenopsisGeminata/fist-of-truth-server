@@ -608,6 +608,10 @@ export const CARD_POOL = [
   // trigger as \u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441, but atk-only \u2014 see impAtkGrowOnHeroHit
   // in resolveCombatPass above.
   { id: 'c157', name: '\u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, impAtkGrowOnHeroHit: true, rarity: 'common', faction: 'inferno' },
+  // \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e: see skeletonWeaponThrowOnDeath in killUnit
+  // above \u2014 part of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see
+  // infernoStarterDeckCounts below).
+  { id: 'c158', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 2, atk: 2, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'common', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -686,12 +690,15 @@ export function savagesStarterDeckCounts() {
 
 // The Инферно starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts/savagesStarterDeckCounts
-// above. Огненный бес is the only Common Инферно card so far (Страж
-// реки Стикс and Молния are both Rare, so neither joins the starter
-// set, same "starter decks are Common-only" convention as every other
-// faction) — more will be added here as they're made Common.
+// above. Огненный бес and Скелет-воин инферно are the confirmed
+// starter-deck cards so far (Страж реки Стикс and Молния are both
+// Rare so neither joins; Чертенок is Common but was never asked to
+// join this deck, same "starter decks are Common-only, but not every
+// Common card is necessarily IN one" convention as every other
+// faction) — more will be added here as they're made Common and
+// explicitly requested for it.
 export function infernoStarterDeckCounts() {
-  return { c156: 3 };
+  return { c156: 3, c158: 3 };
 }
 
 // ---------- Factions ----------
@@ -1088,6 +1095,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     explodeOnDeathAmount: card.explodeOnDeathAmount || 5,
     statueBuff: !!card.statueBuff,
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
+    skeletonWeaponThrowOnDeath: !!card.skeletonWeaponThrowOnDeath,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -1956,6 +1964,21 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       targetHero: !cellUnit, died, resisted,
     });
     if (died) killUnit(match, targetSide, laneIdx, targetDepth, events);
+  }
+  // Скелет-воин инферно: on death, throws his short sword straight at
+  // the enemy HERO — unlike Метеоритный страж's weaponThrowOnDeath
+  // above, there's no random-cell targeting and no unit in between to
+  // hit; it's a fixed hero-only shot, amount equal to his own current
+  // attack. No Чаростойкость to check either, since it's never aimed
+  // at a unit at all.
+  if (unit && unit.skeletonWeaponThrowOnDeath && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    const amount = unit.atk;
+    match.hp[targetSide] -= amount;
+    events.push({
+      type: 'skeletonWeaponThrow', side, targetSide, amount,
+      laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id,
+    });
   }
   // Наследие (Отшельник and anyone who inherits it): on death, if the
   // unit is currently carrying a Legacy value (its own starting value,
