@@ -629,6 +629,10 @@ export const CARD_POOL = [
   // flag on ANY source of damage to the enemy hero, not just her own
   // attack.
   { id: 'c162', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'rare', faction: 'inferno' },
+  // \u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c: see tormentorExtraDamage in resolveCombatPass above \u2014 the
+  // extra 1 damage to BOTH heroes routes through damageHero(), so it
+  // can itself trigger \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430 (or anything similar) too.
+  { id: 'c163', name: '\u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 3, hp: 2, tormentorExtraDamage: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1115,6 +1119,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     skeletonWeaponThrowOnDeath: !!card.skeletonWeaponThrowOnDeath,
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
+    tormentorExtraDamage: !!card.tormentorExtraDamage,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -4158,6 +4163,25 @@ function resolveCombatPass(match, events, isEligible) {
         const amount = bUnit.impAtkGrowOnHeroHit;
         bUnit.atk += amount;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: bUnit.uid });
+      }
+
+      // Бес-мучитель: same "own attack lands directly on the enemy
+      // hero" trigger family as Чертенок/Яростный бес above, but
+      // instead of growing itself, deals 1 EXTRA damage to BOTH heroes
+      // — the enemy hero (on top of the attack that already landed)
+      // AND its own owner's hero. Routed through damageHero() so it
+      // still correctly triggers Огненная муха (or anything similar)
+      // on the enemy side for the extra hit, same as any other source
+      // of hero damage.
+      if (aAttacks && !aTarget && aUnit.tormentorExtraDamage) {
+        damageHero(match, nameB, 1, events);
+        damageHero(match, nameA, 1, events);
+        events.push({ type: 'tormentorHit', side: nameA, targetSide: nameB, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, amount: 1 });
+      }
+      if (bAttacks && !bTarget && bUnit.tormentorExtraDamage) {
+        damageHero(match, nameA, 1, events);
+        damageHero(match, nameB, 1, events);
+        events.push({ type: 'tormentorHit', side: nameB, targetSide: nameA, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, amount: 1 });
       }
 
       // Небесный воин: whenever his own attack lands directly on the
