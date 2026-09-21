@@ -554,6 +554,10 @@ export const CARD_POOL = [
   // reusing applyAxeFanaticThrow's exact mirrored-row mechanic both
   // times.
   { id: 'c145', name: '\u0414\u0438\u043a\u0430\u0440\u043a\u0430 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 5, atk: 3, hp: 4, axeWomanThrow: true, rarity: 'epic', faction: 'savages' },
+  // \u041a\u0430\u0439 \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439: see applyKaiBloodyLifestealGrants (start-of-round
+  // lifesteal grant) and applyKaiBloodyHealTrigger (on-heal self-buff
+  // + one-time trample grant) above.
+  { id: 'c146', name: '\u041a\u0430\u0439 \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439', type: 'creature', cost: 5, atk: 4, hp: 4, kaiBloodyLifestealGrant: true, kaiBloodyHealBuff: true, rarity: 'legendary', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1056,6 +1060,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lizardWarriorShot: !!card.lizardWarriorShot,
     badgerHealBuff: !!card.badgerHealBuff,
     oneEyedBeastHealBuff: !!card.oneEyedBeastHealBuff,
+    kaiBloodyLifestealGrant: !!card.kaiBloodyLifestealGrant,
+    kaiBloodyHealBuff: !!card.kaiBloodyHealBuff,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
@@ -2051,6 +2057,12 @@ function healHero(match, side, amount, events) {
   // the amount differs, shared with Шеф дома Вкуса's doubling the same
   // way.
   if (events) applyOneEyedBeastHealTrigger(match, side, events);
+  // Кай Кровавый: same "every heal" trigger as every card above, but
+  // +2 attack / +1 health EVERY time plus a one-time permanent Топот
+  // grant — a separate helper since the shape (a conditional flag grant
+  // alongside the numeric buff) is new, shared with Шеф дома Вкуса's
+  // doubling the same way.
+  if (events) applyKaiBloodyHealTrigger(match, side, events);
   return applied;
 }
 
@@ -2191,6 +2203,33 @@ function applyOneEyedBeastHealTrigger(match, side, events) {
         events.push({
           type: 'rallyBuff', side, laneIdx: l,
           targetDepth: d, buffAtk: 3, buffHp: 3, sourceUid: u.uid,
+        });
+      }
+    }
+  }
+}
+
+// Кай Кровавый: same "every heal" trigger as Барсук/Одноглазая тварь
+// above, but +2 attack AND +1 health EVERY time, plus a PERMANENT
+// Топот grant the first time only — once he already has trample,
+// later heals still give the +2/+1 but the trample part is simply
+// already true, so buffTrample comes through false on the event (per
+// explicit spec: "if he already has Топот, only the atk/hp buff
+// fires").
+function applyKaiBloodyHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.kaiBloodyHealBuff) {
+        u.atk += 2;
+        u.hp += 1;
+        u.maxHp += 1;
+        const grantedTrample = !u.trample;
+        if (grantedTrample) u.trample = true;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l, targetDepth: d,
+          buffAtk: 2, buffHp: 1, buffTrample: grantedTrample, sourceUid: u.uid,
         });
       }
     }
@@ -2972,6 +3011,42 @@ function applySavageTotemBuffs(match, events) {
       for (let d = 0; d < DEPTH; d++) {
         const unit = board[l][d];
         if (unit && unit.savageTotemBuff) applyDawnBuff(match, side, events, unit.uid, 1, 0);
+      }
+    }
+  }
+}
+
+// Кай Кровавый: at the start of every round he's alive, permanently
+// grants EVERY ally (himself included) Кража жизни (lifesteal) — no
+// atk/hp change at all, so this can't reuse applyDawnBuff (which
+// always touches atk/hp). Only units that don't already have lifesteal
+// get touched/get an event — a unit that already has it (from this or
+// any other source) is silently skipped, so a second copy of Кай (or a
+// round where everyone's already been granted it) produces no
+// redundant events.
+function applyKaiBloodyLifestealGrant(match, side, events, sourceUid) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && !u.lifesteal) {
+        u.lifesteal = true;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: l, targetDepth: d,
+          buffAtk: 0, buffHp: 0, buffLifesteal: true, sourceUid,
+        });
+      }
+    }
+  }
+}
+
+function applyKaiBloodyLifestealGrants(match, events) {
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (unit && unit.kaiBloodyLifestealGrant) applyKaiBloodyLifestealGrant(match, side, events, unit.uid);
       }
     }
   }
@@ -4454,6 +4529,9 @@ export function tryEndTurn(match, username) {
   // throw as her own pre-attack hook below, so she throws twice per
   // round in total (once here, once before her attack).
   applyAxeWomanStartOfRoundThrows(match, events);
+  // Кай Кровавый also fires here — grants every ally (himself included)
+  // Кража жизни, every round he's alive.
+  applyKaiBloodyLifestealGrants(match, events);
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
   applyLunaBlind(match, events);
@@ -4696,6 +4774,7 @@ export function tryEndTurn(match, username) {
               applyLizardWarriorTrigger(match, name, events);
               applyBadgerHealTrigger(match, name, events);
               applyOneEyedBeastHealTrigger(match, name, events);
+              applyKaiBloodyHealTrigger(match, name, events);
             }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
