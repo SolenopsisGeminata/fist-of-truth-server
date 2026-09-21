@@ -584,6 +584,10 @@ export const CARD_POOL = [
   // \u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439: see applyPrairieDragonSpit/applyPrairieDragonFireball
   // above for the 4-fireball battlecry + on-heal mechanic.
   { id: 'c152', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 8, atk: 7, hp: 21, prairieDragonSpit: true, rarity: 'epic', faction: 'savages' },
+  // \u0421\u043e\u043b\u043d\u0435\u0447\u043d\u044b\u0439 \u0434\u0440\u0430\u043a\u043e\u043d: see applySolarDragonWave above \u2014 same per-depth
+  // lane sweep as the \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441/\u041a\u0430\u043c\u0435\u043d\u043d\u044b\u0439 \u0433\u0440\u0430\u0434 wrath mechanic, fired
+  // as a pre-attack creature ability instead of a cast spell.
+  { id: 'c153', name: '\u0421\u043e\u043b\u043d\u0435\u0447\u043d\u044b\u0439 \u0434\u0440\u0430\u043a\u043e\u043d', type: 'creature', cost: 9, atk: 20, hp: 20, solarDragonWave: true, rarity: 'legendary', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1057,6 +1061,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cyclopsThrow: !!card.cyclopsThrow,
     rumaBuff: !!card.rumaBuff,
     prairieDragonSpit: !!card.prairieDragonSpit,
+    solarDragonWave: !!card.solarDragonWave,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -3556,6 +3561,43 @@ function applyPrairieDragonSpit(match, side, events, sourceUid, sourceLaneIdx, s
   }
 }
 
+// Солнечный дракон: fires right before his own attack, every round
+// he's eligible to act (same no-bornRound-gate family as every other
+// single-trigger pre-attack card) — same "every depth in the chosen
+// lane" sweep as Гнев небес/Каменный град's own wrath spell mechanic,
+// just as a creature's pre-attack ability via his own 'dragonWave'
+// event (a fire-wave visual) instead of the spell-only 'wrath' kind.
+// Units only — like every wrath-family mechanic, an empty cell is
+// struck harmlessly for visual continuity but never redirects to the
+// hero. Чаростойкость blocks a given cell outright, no redirect.
+function applySolarDragonWave(match, side, enemySide, laneIdx, events, sourceUid) {
+  const board = match.boards[enemySide];
+  for (let d = 0; d < DEPTH; d++) {
+    if (anyHeroDown(match)) break;
+    const targetUnit = board[laneIdx][d];
+    if (!targetUnit) {
+      events.push({
+        type: 'dragonWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: 0, died: false, empty: true, resisted: false, sourceUid,
+      });
+    } else if (targetUnit.spellResist) {
+      events.push({
+        type: 'dragonWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: 0, died: false, empty: false, resisted: true, sourceUid,
+      });
+    } else {
+      const applied = 5;
+      targetUnit.hp -= applied;
+      const died = targetUnit.hp <= 0;
+      events.push({
+        type: 'dragonWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: applied, died, empty: false, resisted: false, sourceUid,
+      });
+      if (died) killUnit(match, enemySide, laneIdx, d, events);
+    }
+  }
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -3689,6 +3731,10 @@ function resolveCombatPass(match, events, isEligible) {
       // it) on his own bornRound — no separate gate needed here.
       if (aEligible && aUnit.cyclopsThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth, 7, 'boulderThrow');
       if (bEligible && bUnit.cyclopsThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth, 7, 'boulderThrow');
+      // Солнечный дракон: same "no bornRound gate" reasoning as every
+      // other single-trigger pre-attack card above.
+      if (aEligible && aUnit.solarDragonWave) applySolarDragonWave(match, nameA, nameB, l, events, aUnit.uid);
+      if (bEligible && bUnit.solarDragonWave) applySolarDragonWave(match, nameB, nameA, l, events, bUnit.uid);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
