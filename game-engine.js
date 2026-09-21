@@ -546,6 +546,9 @@ export const CARD_POOL = [
   // \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d: pure stat-stick with the existing \u0421\u043e\u043d (sleep) flag
   // \u2014 no new fields or logic needed.
   { id: 'c143', name: '\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d', type: 'creature', cost: 5, atk: 9, hp: 9, sleep: true, rarity: 'rare', faction: 'savages' },
+  // \u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439: see the savageChiefBuff battlecry in placeCard above
+  // for the adjacent-ally +2/+2 + trample mechanic.
+  { id: 'c144', name: '\u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 5, hp: 5, trample: true, savageChiefBuff: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1391,6 +1394,20 @@ export function placeCard(match, username, uid, lane, depth) {
     if (neighbours.length > 0) {
       const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: unit.uid });
+    }
+  }
+
+  // Вождь дикарей: same adjacent-ally-only targeting as Шумная
+  // дикарка/Родная тетушка above, but +2/+2 AND permanently grants
+  // Топот (trample) on top — same deferred pendingRallyBuffs queue,
+  // just with buffTrample added (see the drain loop in tryEndTurn,
+  // which now threads it through same as buffAtk/buffHp).
+  if (card.savageChiefBuff) {
+    const board = match.boards[username];
+    const neighbours = adjacentAllyPositions(board, lane, depth);
+    if (neighbours.length > 0) {
+      const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 2, buffHp: 2, buffTrample: true, sourceUid: unit.uid });
     }
   }
 
@@ -3861,9 +3878,13 @@ export function tryEndTurn(match, username) {
     unit.atk += buff.buffAtk;
     unit.hp += buff.buffHp;
     unit.maxHp += buff.buffHp;
+    // Вождь дикарей: the first pendingRallyBuffs source to also grant
+    // Топот (trample) permanently, alongside the usual atk/hp bump.
+    if (buff.buffTrample) unit.trample = true;
     events.push({
       type: 'rallyBuff', side: buff.side, laneIdx: buff.laneIdx,
       targetDepth: buff.depthIdx, buffAtk: buff.buffAtk, buffHp: buff.buffHp,
+      buffTrample: !!buff.buffTrample,
     });
   }
 
