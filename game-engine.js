@@ -617,6 +617,10 @@ export const CARD_POOL = [
   // above, but +2 per hit instead of +1 \u2014 a much higher-risk 3/1 body
   // to make up for it.
   { id: 'c159', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 1, impAtkGrowOnHeroHit: 2, rarity: 'rare', faction: 'inferno' },
+  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (a NEW card despite reusing an OLD card's former
+  // name \u2014 c156 was renamed to \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441 earlier, freeing this name
+  // up): see trampleDiscountOnPlay/pendingTrampleDiscounts above.
+  { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -978,6 +982,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBattlecrySummons: [],
     pendingLinSwaps: [],
     pendingFireImpThrows: [],
+    pendingTrampleDiscounts: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1209,9 +1214,13 @@ export function placeCard(match, username, uid, lane, depth) {
   const card = cardById(hand[idx].id);
   if (!card || card.type !== 'creature') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0431\u043e\u0435\u0446.' };
   if (match.boards[username][lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
-  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
+  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (the new one): a hand card can carry its own
+  // per-instance discount (set by trampleDiscountOnPlay below) on top
+  // of its static card.cost \u2014 never below 0.
+  const effectiveCost = Math.max(0, card.cost - (hand[idx].discount || 0));
+  if (match.mana[username] < effectiveCost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  match.mana[username] -= card.cost;
+  match.mana[username] -= effectiveCost;
   hand.splice(idx, 1);
   const unit = buildUnitFromCard(card, true, match.round);
   match.boards[username][lane][depth] = unit;
@@ -1575,6 +1584,17 @@ export function placeCard(match, username, uid, lane, depth) {
   // sides have finished placing for the round.
   if (card.fireImpThrowOnPlay) {
     match.pendingFireImpThrows.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.fireImpThrowOnPlay });
+  }
+
+  // Горящий бес (the new one, distinct from Огненный бес): picks a
+  // random Топот card still in its OWNER's own hand once resolution
+  // starts (deferred, same as every other battlecry — reads the hand
+  // as it stands once placing is fully done for the round) and gives
+  // it a permanent -1 cost discount. A silent no-op if the hand has no
+  // Топот card at all. See the pendingTrampleDiscounts drain in
+  // tryEndTurn for the actual pick/apply.
+  if (card.trampleDiscountOnPlay) {
+    match.pendingTrampleDiscounts.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -4974,6 +4994,32 @@ export function tryEndTurn(match, username) {
   for (const throwEntry of fireImpThrowQueue) {
     const targetSide = otherPlayer(match, throwEntry.side);
     applyFireImpThrow(match, throwEntry.side, targetSide, events, throwEntry.sourceUid, throwEntry.laneIdx, throwEntry.depthIdx, throwEntry.amount);
+  }
+
+  // Горящий бес's battlecry discount — picks a random Топот card in
+  // its owner's OWN hand and permanently reduces its cost by 1. The
+  // event deliberately carries no card identity at all (not even a
+  // uid) — hand contents are private, and every other hand-privacy-
+  // sensitive event in this file (deathDraw, moneyTreeDraw, etc.)
+  // reveals nothing beyond "something happened" for exactly this
+  // reason, even though it's broadcast to both players identically.
+  const trampleDiscountQueue = match.pendingTrampleDiscounts;
+  match.pendingTrampleDiscounts = [];
+  for (const entry of trampleDiscountQueue) {
+    const hand = match.hands[entry.side];
+    const candidates = hand.filter((c) => {
+      const def = cardById(c.id);
+      return def && def.trample;
+    });
+    const applied = candidates.length > 0;
+    if (applied) {
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+      chosen.discount = (chosen.discount || 0) + 1;
+    }
+    events.push({
+      type: 'trampleDiscount', side: entry.side,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, applied,
+    });
   }
 
   // Епископ fires here too — at the very start of resolution, same
