@@ -528,6 +528,9 @@ export const CARD_POOL = [
   // \u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c: pure reuse of the existing endOfRoundSummon
   // mechanic (same as \u041e\u0445\u043e\u0442\u043d\u0438\u043a \u043d\u0430 \u0432\u043e\u043b\u043a\u043e\u0432) \u2014 no new code needed.
   { id: 'c137', name: '\u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c', type: 'creature', cost: 4, atk: 0, hp: 2, endOfRoundSummon: 'c136', rarity: 'epic', faction: 'savages' },
+  // \u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d: see applyHighShamanManaBuff above for the
+  // pre-attack mana-buff mechanic.
+  { id: 'c138', name: '\u0412\u0435\u0440\u0445\u043e\u0432\u043d\u044b\u0439 \u0448\u0430\u043c\u0430\u043d', type: 'creature', cost: 4, atk: 5, hp: 5, highShamanManaBuff: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -993,6 +996,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
     randomShotRecurring: card.randomShotRecurring || 0,
+    highShamanManaBuff: !!card.highShamanManaBuff,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
@@ -3158,6 +3162,36 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
+// Верховный шаман (highShamanManaBuff): fires right before his own
+// attack every round he's eligible to act (see the resolveCombatPass
+// pre-attack hooks) — the buff amount is read fresh from match.mana at
+// that exact moment, i.e. however much of the caster's own mana is
+// STILL unspent this turn, which can be 0. The random target is picked
+// from every unit currently on the caster's own board, himself
+// included (no "other ally" exclusion, unlike Колдун прерий) — always
+// finds at least one candidate since he himself is on the board to
+// trigger this at all. Reuses the plain 'rallyBuff' event/animation.
+function applyHighShamanManaBuff(match, side, events, sourceUid, laneIdx, depthIdx) {
+  const amount = match.mana[side];
+  const board = match.boards[side];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (board[l][d]) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+  targetUnit.atk += amount;
+  targetUnit.hp += amount;
+  targetUnit.maxHp += amount;
+  events.push({
+    type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+    targetDepth: chosen.depthIdx, buffAtk: amount, buffHp: amount, sourceUid,
+  });
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -3259,6 +3293,12 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.bambooShotRecurring && match.round > bUnit.bornRound) applyBambooRecurringShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.randomShotRecurring && match.round > aUnit.bornRound) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, aUnit.randomShotRecurring);
       if (bEligible && bUnit.randomShotRecurring && match.round > bUnit.bornRound) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, bUnit.randomShotRecurring);
+      // Верховный шаман: no bornRound gate, unlike the recurring shots
+      // above — this is his ONLY trigger (no separate on-play battlecry
+      // to avoid double-firing with), so it fires before every attack of
+      // his, starting the very round he's placed.
+      if (aEligible && aUnit.highShamanManaBuff) applyHighShamanManaBuff(match, nameA, events, aUnit.uid, l, aInfo.depth);
+      if (bEligible && bUnit.highShamanManaBuff) applyHighShamanManaBuff(match, nameB, events, bUnit.uid, l, bInfo.depth);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
