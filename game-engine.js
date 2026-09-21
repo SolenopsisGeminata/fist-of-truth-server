@@ -441,7 +441,7 @@ export const CARD_POOL = [
   { id: 'c120', name: '\u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 3, atk: 3, hp: 2, randomShotOnPlay: 1, randomShotRecurring: 1, rarity: 'rare', faction: 'savages' },
   // noisyBuff: see placeCard above \u2014 same adjacent-ally targeting as
   // \u0420\u043e\u0434\u043d\u0430\u044f \u0442\u0435\u0442\u0443\u0448\u043a\u0430's own auntBuff, just +2 attack only instead of +1/+1.
-  { id: 'c121', name: '\u0428\u0443\u043c\u043d\u0430\u044f \u0434\u0438\u043a\u0430\u0440\u043a\u0430', type: 'creature', cost: 3, atk: 3, hp: 1, noisyBuff: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c121', name: '\u0428\u0443\u043c\u043d\u0430\u044f \u0434\u0438\u043a\u0430\u0440\u043a\u0430', type: 'creature', cost: 3, atk: 3, hp: 1, noisyBuff: true, rarity: 'common', faction: 'savages' },
   // boarRiderSpear: see resolveCombatPass above \u2014 whenever his own
   // attack lands directly on the enemy hero, throws a spear at a random
   // enemy unit for 2 damage (reuses applyRandomEnemyShot, same as
@@ -496,14 +496,14 @@ export const CARD_POOL = [
   // axeWarriorGrowth: see the end-of-round loop above \u2014 same
   // roundStartHp-based permanent-growth family as \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d/\u0426\u0432\u0435\u0442\u043e\u043a
   // \u043f\u0440\u0435\u0440\u0438\u0439, just +1 attack AND +1 health this time.
-  { id: 'c131', name: '\u0412\u043e\u0438\u043d \u0441 \u0442\u043e\u043f\u043e\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 5, axeWarriorGrowth: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c131', name: '\u0412\u043e\u0438\u043d \u0441 \u0442\u043e\u043f\u043e\u0440\u043e\u043c', type: 'creature', cost: 3, atk: 3, hp: 5, axeWarriorGrowth: true, rarity: 'common', faction: 'savages' },
   // prairieWarlockBuff: see the end-of-round loop above \u2014 same
   // target-selection/timing as \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u0438\u043a (one random OTHER ally,
   // end-of-round), but +2 attack only instead of +2 health only.
   { id: 'c132', name: '\u041a\u043e\u043b\u0434\u0443\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 4, atk: 2, hp: 3, prairieWarlockBuff: true, rarity: 'rare', faction: 'savages' },
   // Plain stat-and-keyword card \u2014 reuses the existing trample mechanic
   // as-is, no new code needed.
-  { id: 'c133', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 4, hp: 4, trample: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c133', name: '\u0411\u0435\u0440\u0441\u0435\u0440\u043a', type: 'creature', cost: 4, atk: 4, hp: 4, trample: true, rarity: 'common', faction: 'savages' },
   // Pure reuse of the existing healOnPlay mechanic \u2014 no new code needed.
   { id: 'c134', name: '\u0412\u043e\u0438\u043d \u0441 \u043c\u043e\u043b\u043e\u0442\u043e\u043c', type: 'creature', cost: 4, atk: 3, hp: 4, healOnPlay: 2, rarity: 'rare', faction: 'savages' },
   // carnivorousPlantBite: see the end-of-round loop above \u2014 same
@@ -545,7 +545,7 @@ export const CARD_POOL = [
   { id: 'c142', name: '\u0422\u043e\u0442\u0435\u043c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 0, hp: 8, savageTotemBuff: true, rarity: 'rare', faction: 'savages' },
   // \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d: pure stat-stick with the existing \u0421\u043e\u043d (sleep) flag
   // \u2014 no new fields or logic needed.
-  { id: 'c143', name: '\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d', type: 'creature', cost: 5, atk: 9, hp: 9, sleep: true, rarity: 'rare', faction: 'savages' },
+  { id: 'c143', name: '\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d', type: 'creature', cost: 5, atk: 9, hp: 9, sleep: true, rarity: 'common', faction: 'savages' },
   // \u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439: see the savageChiefBuff battlecry in placeCard above
   // for the adjacent-ally +2/+2 + trample mechanic.
   { id: 'c144', name: '\u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 5, hp: 5, trample: true, savageChiefBuff: true, rarity: 'epic', faction: 'savages' },
@@ -660,10 +660,12 @@ export function zenStarterDeckCounts() {
 // placeholder reasoning as zenStarterDeckCounts above (the faction
 // itself is locked, hidden from new accounts, and its unlock
 // conditions aren't built yet). Волк прерий, Воин с копьем, Глупый
-// дикарь, Детеныш кабана, and Сила кабана are the confirmed cards so
+// дикарь, Детеныш кабана, Сила кабана, Мамонт, Шумная дикарка, Воин с
+// топором, Берсерк, and Горный великан (the last four downgraded to
+// Common specifically to join this deck) are the confirmed cards so
 // far, at 3 copies each same as every other starter deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3, c107: 3, c109: 3, c119: 3, s31: 3, c136: 3 };
+  return { c104: 3, c107: 3, c109: 3, c119: 3, s31: 3, c136: 3, c121: 3, c131: 3, c133: 3, c143: 3 };
 }
 
 // ---------- Factions ----------
