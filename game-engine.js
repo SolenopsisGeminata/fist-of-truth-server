@@ -522,6 +522,12 @@ export const CARD_POOL = [
   // in castSpell/resolveSpells. \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c/\u0429\u0438\u0442 blocks the kill (and
   // therefore the heal too), same as every other targeted spell here.
   { id: 's35', name: '\u041a\u0430\u043f\u043a\u0430\u043d', type: 'spell', cost: 4, trapKill: true, rarity: 'rare', faction: 'savages' },
+  // \u041c\u0430\u043c\u043e\u043d\u0442: plain stat-stick, starter deck member (see
+  // savagesStarterDeckCounts) \u2014 no special fields at all.
+  { id: 'c136', name: '\u041c\u0430\u043c\u043e\u043d\u0442', type: 'creature', cost: 6, atk: 4, hp: 6, rarity: 'common', faction: 'savages' },
+  // \u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c: pure reuse of the existing endOfRoundSummon
+  // mechanic (same as \u041e\u0445\u043e\u0442\u043d\u0438\u043a \u043d\u0430 \u0432\u043e\u043b\u043a\u043e\u0432) \u2014 no new code needed.
+  { id: 'c137', name: '\u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c', type: 'creature', cost: 4, atk: 0, hp: 2, endOfRoundSummon: 'c136', rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -593,7 +599,7 @@ export function zenStarterDeckCounts() {
 // дикарь, Детеныш кабана, and Сила кабана are the confirmed cards so
 // far, at 3 copies each same as every other starter deck.
 export function savagesStarterDeckCounts() {
-  return { c104: 3, c107: 3, c109: 3, c119: 3, s31: 3 };
+  return { c104: 3, c107: 3, c109: 3, c119: 3, s31: 3, c136: 3 };
 }
 
 // ---------- Factions ----------
@@ -1594,15 +1600,14 @@ export function castSpell(match, username, uid, lane, depth) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
   } else if (card.trapKill) {
-    // \u041a\u0430\u043f\u043a\u0430\u043d: unlike \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c above, the targeted cell isn't a
-    // formality \u2014 it must hold an actual enemy unit right now, since
-    // the whole point of the card is destroying that specific unit.
+    // Kapkan (\u041a\u0430\u043f\u043a\u0430\u043d): unlike the strict own-unit buff branch
+    // above, an empty enemy cell is now a VALID target (per explicit user
+    // correction) \u2014 the cast always succeeds on a valid cell, and it's only
+    // checked again at resolution whether a unit actually ended up there by
+    // then (see the 'trapKill' branch in resolveSpells). Same "any enemy
+    // cell" bounds-only validation as \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c above.
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
-    }
-    const enemyName = otherPlayer(match, username);
-    if (!match.boards[enemyName][lane][depth]) {
-      return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0432\u0440\u0430\u0436\u0435\u0441\u043a\u043e\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
     }
   }
 
