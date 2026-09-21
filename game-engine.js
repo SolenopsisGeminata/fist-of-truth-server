@@ -581,6 +581,9 @@ export const CARD_POOL = [
   // fired both on play and every end of round, always a random OTHER
   // ally (never herself).
   { id: 'c151', name: '\u0420\u0443\u043c\u0430, \u0428\u0430\u043c\u0430\u043d \u041f\u0443\u0441\u0442\u043e\u0448\u0438', type: 'creature', cost: 7, atk: 3, hp: 10, rumaBuff: true, rarity: 'legendary', faction: 'savages' },
+  // \u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439: see applyPrairieDragonSpit/applyPrairieDragonFireball
+  // above for the 4-fireball battlecry + on-heal mechanic.
+  { id: 'c152', name: '\u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439', type: 'creature', cost: 8, atk: 7, hp: 21, prairieDragonSpit: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -905,6 +908,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingBraveTeacher: [],
     pendingNualFrontStab: [],
     pendingNualQuadStab: [],
+    pendingDragonSpits: [],
     pendingWiseDeerDebuff: [],
     pendingWiseDeerBuff: [],
     pendingSpearmanBuff: [],
@@ -1052,6 +1056,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bigMouthChiefSummon: !!card.bigMouthChiefSummon,
     cyclopsThrow: !!card.cyclopsThrow,
     rumaBuff: !!card.rumaBuff,
+    prairieDragonSpit: !!card.prairieDragonSpit,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -1470,6 +1475,16 @@ export function placeCard(match, username, uid, lane, depth) {
       const chosen = targets[Math.floor(Math.random() * targets.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 5, buffHp: 5, buffTrample: true, sourceUid: unit.uid });
     }
+  }
+
+  // Дракон прерий: battlecry queued the same deferred way as every
+  // other battlecry — resolved at the start of the next resolution
+  // (see pendingDragonSpits in tryEndTurn), which fires all 4 fireballs
+  // via applyPrairieDragonSpit. His heal-triggered copy of the same
+  // effect fires immediately instead, from healHero()'s own trigger
+  // chain (see applyPrairieDragonHealTrigger).
+  if (card.prairieDragonSpit) {
+    match.pendingDragonSpits.push({ side: username, sourceUid: unit.uid, laneIdx: lane, depthIdx: depth });
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -2112,6 +2127,10 @@ function healHero(match, side, amount, events) {
   // alongside the numeric buff) is new, shared with Шеф дома Вкуса's
   // doubling the same way.
   if (events) applyKaiBloodyHealTrigger(match, side, events);
+  // Дракон прерий: same "every heal" trigger family as above, but
+  // fires his 4-fireball spit instead of a self/ally buff — shared
+  // with Шеф дома Вкуса's doubling the same way.
+  if (events) applyPrairieDragonHealTrigger(match, side, events);
   return applied;
 }
 
@@ -2281,6 +2300,20 @@ function applyKaiBloodyHealTrigger(match, side, events) {
           buffAtk: 2, buffHp: 1, buffTrample: grantedTrample, sourceUid: u.uid,
         });
       }
+    }
+  }
+}
+
+// Дракон прерий: same "every heal" trigger family as Кай Кровавый
+// above, but instead of buffing himself, fires his full 4-fireball
+// spit (applyPrairieDragonSpit, shared with his own on-play battlecry
+// — see pendingDragonSpits) every time his own hero is healed.
+function applyPrairieDragonHealTrigger(match, side, events) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.prairieDragonSpit) applyPrairieDragonSpit(match, side, events, u.uid, l, d);
     }
   }
 }
@@ -3475,6 +3508,54 @@ function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, dep
   if (died) killUnit(match, enemySide, laneIdx, targetDepth, events);
 }
 
+// Дракон прерий: a single fireball — targets a FULLY random cell
+// anywhere on the enemy board (any lane, any depth, not restricted to
+// a mirrored lane like Фанатик с топорами's axe), 2 damage. A unit
+// there takes it alone; an empty cell sends it straight to the hero
+// (per explicit confirmation — every fireball either hits whatever's
+// in its cell or the hero, never just fizzles). Чаростойкость blocks
+// it outright, same resisted-no-redirect precedent as everywhere else.
+function applyPrairieDragonFireball(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx) {
+  const enemyBoard = match.boards[enemySide];
+  const targetLane = Math.floor(Math.random() * LANES);
+  const targetDepth = Math.floor(Math.random() * DEPTH);
+  const cellUnit = enemyBoard[targetLane][targetDepth];
+  const resisted = !!(cellUnit && cellUnit.spellResist);
+  const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+  const amount = 2;
+  let died = false;
+  if (resisted) {
+    // no-op: the fireball fizzles harmlessly
+  } else if (targetUnit) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  } else {
+    match.hp[enemySide] -= amount;
+  }
+  events.push({
+    type: 'dragonFireball', side, targetSide: enemySide,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
+    amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, sourceUid,
+  });
+  if (died) killUnit(match, enemySide, targetLane, targetDepth, events);
+}
+
+// Дракон прерий: fires 4 independent fireballs (see
+// applyPrairieDragonFireball above) — shared by both his on-play
+// battlecry (see pendingDragonSpits in tryEndTurn) and his own
+// "every heal" trigger (applyPrairieDragonHealTrigger). Since each
+// fireball CAN reach the hero directly, this checks anyHeroDown before
+// every shot so it never keeps firing into an already-decided match.
+function applyPrairieDragonSpit(match, side, events, sourceUid, sourceLaneIdx, sourceDepthIdx) {
+  if (anyHeroDown(match)) return;
+  const enemySide = otherPlayer(match, side);
+  for (let i = 0; i < 4; i++) {
+    if (anyHeroDown(match)) break;
+    applyPrairieDragonFireball(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx);
+  }
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -4440,6 +4521,16 @@ export function tryEndTurn(match, username) {
     }
   }
 
+  // Дракон прерий: battlecry queued the same deferred way as every
+  // other battlecry above — his 4-fireball spit (see
+  // applyPrairieDragonFireball/applyPrairieDragonSpit) fires here, at
+  // the very start of resolution.
+  const dragonSpitQueue = match.pendingDragonSpits;
+  match.pendingDragonSpits = [];
+  for (const spit of dragonSpitQueue) {
+    applyPrairieDragonSpit(match, spit.side, events, spit.sourceUid, spit.laneIdx, spit.depthIdx);
+  }
+
   // Мудрый олень (first cell): -1 attack (floored at 0) and -1 health
   // to EVERY enemy unit on the board — Чаростойкость/Щит protects
   // individual units from just their own hit, the rest still get
@@ -4859,6 +4950,7 @@ export function tryEndTurn(match, username) {
               applyBadgerHealTrigger(match, name, events);
               applyOneEyedBeastHealTrigger(match, name, events);
               applyKaiBloodyHealTrigger(match, name, events);
+              applyPrairieDragonHealTrigger(match, name, events);
             }
           }
           // Корова: 50/50 per round — heals for her own CURRENT hp at
