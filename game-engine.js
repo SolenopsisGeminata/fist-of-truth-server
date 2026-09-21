@@ -537,6 +537,9 @@ export const CARD_POOL = [
   // \u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438: see applyAxeFanaticThrow above for the
   // pre-attack mirrored-row axe-throw mechanic.
   { id: 'c140', name: '\u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 4, atk: 2, hp: 4, axeFanaticThrow: true, rarity: 'epic', faction: 'savages' },
+  // \u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438: see the coinFlipAttack roll in tryEndTurn, right
+  // before resolveCombat, for the every-round 50/50 mechanic.
+  { id: 'c141', name: '\u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438', type: 'creature', cost: 4, atk: 8, hp: 8, trample: true, coinFlipAttack: true, rarity: 'legendary', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1004,6 +1007,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     randomShotRecurring: card.randomShotRecurring || 0,
     highShamanManaBuff: !!card.highShamanManaBuff,
     axeFanaticThrow: !!card.axeFanaticThrow,
+    coinFlipAttack: !!card.coinFlipAttack,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
@@ -4376,6 +4380,26 @@ export function tryEndTurn(match, username) {
   match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'endOfRoundSpell');
 
   resolveSpells(match, events);
+  // Билл и Билли: a fresh 50/50 coin flip every single round, right
+  // before combat resolves — a "tails" roll sets the exact same
+  // cantAttackThisRound flag Трусливый убийца uses, so he simply
+  // doesn't attack that wave (still fully targetable/blockable as
+  // normal). No event pushed — same silent "just doesn't attack this
+  // round" precedent as every other cantAttackThisRound source. The
+  // loop right after combat below already resets this flag to false
+  // for every unit regardless of source, so no separate cleanup is
+  // needed here — next round rolls fresh again.
+  for (const name of match.players) {
+    const board = match.boards[name];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.coinFlipAttack && Math.random() < 0.5) {
+          u.cantAttackThisRound = true;
+        }
+      }
+    }
+  }
   resolveCombat(match, events);
   match.blindedUids = null; // Рейна's effect only ever covers the one round it's cast for
   // Трусливый убийца: same "only covers the one round it applies to"
