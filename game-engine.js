@@ -534,6 +534,9 @@ export const CARD_POOL = [
   // \u041e\u0434\u043d\u043e\u0433\u043b\u0430\u0437\u0430\u044f \u0442\u0432\u0430\u0440\u044c: see applyOneEyedBeastHealTrigger above \u2014 same
   // "every heal" trigger shape as \u0411\u0430\u0440\u0441\u0443\u043a, just +3/+3 instead of +1/+1.
   { id: 'c139', name: '\u041e\u0434\u043d\u043e\u0433\u043b\u0430\u0437\u0430\u044f \u0442\u0432\u0430\u0440\u044c', type: 'creature', cost: 4, atk: 4, hp: 10, oneEyedBeastHealBuff: true, rarity: 'epic', faction: 'savages' },
+  // \u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438: see applyAxeFanaticThrow above for the
+  // pre-attack mirrored-row axe-throw mechanic.
+  { id: 'c140', name: '\u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 4, atk: 2, hp: 4, axeFanaticThrow: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1000,6 +1003,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bambooShotRecurring: card.bambooShotRecurring || 0,
     randomShotRecurring: card.randomShotRecurring || 0,
     highShamanManaBuff: !!card.highShamanManaBuff,
+    axeFanaticThrow: !!card.axeFanaticThrow,
     counterattack: !!card.counterattack,
     daoistSwordsman: !!card.daoistSwordsman,
     drunkenDisciple: !!card.drunkenDisciple,
@@ -3226,6 +3230,42 @@ function applyHighShamanManaBuff(match, side, events, sourceUid, laneIdx, depthI
   });
 }
 
+// Фанатик с топорами (axeFanaticThrow): fires right before his own
+// attack every round he's eligible to act (see the resolveCombatPass
+// pre-attack hooks, same family/timing as Верховный шаман above) — a
+// random depth within the SAME lane index on the ENEMY's board, same
+// "opposite row" targeting as Метеоритный страж's own weaponThrowOnDeath.
+// Unlike Ярость древа, the hero is only hit when the rolled cell is
+// EMPTY — if a unit is there, only that unit takes the damage, never
+// both. Чаростойкость blocks it outright (struck harmlessly, no
+// redirect to the hero), same resisted-no-redirect precedent as every
+// other cross-side mechanic here. Damage equals his own CURRENT attack,
+// read fresh at the moment of the throw (not his base stat).
+function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, depthIdx) {
+  const targetBoard = match.boards[enemySide];
+  const targetDepth = Math.floor(Math.random() * DEPTH);
+  const cellUnit = targetBoard[laneIdx][targetDepth];
+  const resisted = !!(cellUnit && cellUnit.spellResist);
+  const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+  const amount = unit.atk;
+  let died = false;
+  if (resisted) {
+    // no-op: the axe lands on her harmlessly
+  } else if (targetUnit) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  } else {
+    match.hp[enemySide] -= amount;
+  }
+  events.push({
+    type: 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    laneIdx, depthIdx, sourceUid: unit.uid,
+    targetLaneIdx: laneIdx, targetDepthIdx: targetDepth,
+    targetHero: !cellUnit, died, resisted,
+  });
+  if (died) killUnit(match, enemySide, laneIdx, targetDepth, events);
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -3333,6 +3373,11 @@ function resolveCombatPass(match, events, isEligible) {
       // his, starting the very round he's placed.
       if (aEligible && aUnit.highShamanManaBuff) applyHighShamanManaBuff(match, nameA, events, aUnit.uid, l, aInfo.depth);
       if (bEligible && bUnit.highShamanManaBuff) applyHighShamanManaBuff(match, nameB, events, bUnit.uid, l, bInfo.depth);
+      // Фанатик с топорами: same "no bornRound gate" reasoning as
+      // Верховный шаман right above — his only trigger, so it fires
+      // before every attack of his, starting the round he's placed.
+      if (aEligible && aUnit.axeFanaticThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.axeFanaticThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
