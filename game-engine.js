@@ -543,6 +543,9 @@ export const CARD_POOL = [
   // \u0422\u043e\u0442\u0435\u043c \u0434\u0438\u043a\u0430\u0440\u0435\u0439: see applySavageTotemBuffs above for the start-of-
   // round attack-only buff mechanic.
   { id: 'c142', name: '\u0422\u043e\u0442\u0435\u043c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 0, hp: 8, savageTotemBuff: true, rarity: 'rare', faction: 'savages' },
+  // \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d: pure stat-stick with the existing \u0421\u043e\u043d (sleep) flag
+  // \u2014 no new fields or logic needed.
+  { id: 'c143', name: '\u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u0435\u043b\u0438\u043a\u0430\u043d', type: 'creature', cost: 5, atk: 9, hp: 9, sleep: true, rarity: 'rare', faction: 'savages' },
 ];
 
 export function cardById(id) {
