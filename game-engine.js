@@ -606,12 +606,17 @@ export const CARD_POOL = [
   { id: 'c156', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 2, hp: 2, fireImpThrowOnPlay: 2, rarity: 'common', faction: 'inferno' },
   // \u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a: same "own attack lands directly on the enemy hero"
   // trigger as \u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441, but atk-only \u2014 see impAtkGrowOnHeroHit
-  // in resolveCombatPass above.
-  { id: 'c157', name: '\u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, impAtkGrowOnHeroHit: true, rarity: 'common', faction: 'inferno' },
+  // in resolveCombatPass above. Part of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see
+  // infernoStarterDeckCounts below).
+  { id: 'c157', name: '\u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, impAtkGrowOnHeroHit: 1, rarity: 'common', faction: 'inferno' },
   // \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e: see skeletonWeaponThrowOnDeath in killUnit
   // above \u2014 part of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see
   // infernoStarterDeckCounts below).
   { id: 'c158', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 2, atk: 2, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'common', faction: 'inferno' },
+  // \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441: same impAtkGrowOnHeroHit mechanic as \u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a
+  // above, but +2 per hit instead of +1 \u2014 a much higher-risk 3/1 body
+  // to make up for it.
+  { id: 'c159', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 1, impAtkGrowOnHeroHit: 2, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -690,15 +695,14 @@ export function savagesStarterDeckCounts() {
 
 // The Инферно starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts/savagesStarterDeckCounts
-// above. Огненный бес and Скелет-воин инферно are the confirmed
-// starter-deck cards so far (Страж реки Стикс and Молния are both
-// Rare so neither joins; Чертенок is Common but was never asked to
-// join this deck, same "starter decks are Common-only, but not every
-// Common card is necessarily IN one" convention as every other
-// faction) — more will be added here as they're made Common and
-// explicitly requested for it.
+// above. Огненный бес, Скелет-воин инферно, and Чертенок are the
+// confirmed starter-deck cards so far (Страж реки Стикс, Молния, and
+// Яростный бес are all Rare, so none of them join, same "starter
+// decks are Common-only" convention as every other faction) — more
+// will be added here as they're made Common and explicitly requested
+// for it.
 export function infernoStarterDeckCounts() {
-  return { c156: 3, c158: 3 };
+  return { c156: 3, c158: 3, c157: 3 };
 }
 
 // ---------- Factions ----------
@@ -1117,7 +1121,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     drunkenDisciple: !!card.drunkenDisciple,
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
-    impAtkGrowOnHeroHit: !!card.impAtkGrowOnHeroHit,
+    impAtkGrowOnHeroHit: card.impAtkGrowOnHeroHit || 0,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
     heavenlyWarrior: !!card.heavenlyWarrior,
@@ -4056,15 +4060,21 @@ function resolveCombatPass(match, events, isEligible) {
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: bUnit.uid });
       }
 
-      // Чертенок: same "own attack lands directly on the enemy hero"
-      // trigger as Стойкий Даос above, but atk-only — no hp change.
+      // Чертенок/Яростный бес: same "own attack lands directly on the
+      // enemy hero" trigger as Стойкий Даос above, but atk-only (no hp
+      // change) and by a card-specific amount — impAtkGrowOnHeroHit is
+      // a numeric amount now (1 for Чертенок, 2 for Яростный бес), not
+      // a plain boolean, same "amount lives on the flag itself"
+      // convention as explodeOnDeathAmount/randomShotOnPlay elsewhere.
       if (aAttacks && !aTarget && aUnit.impAtkGrowOnHeroHit) {
-        aUnit.atk += 1;
-        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+        const amount = aUnit.impAtkGrowOnHeroHit;
+        aUnit.atk += amount;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: aUnit.uid });
       }
       if (bAttacks && !bTarget && bUnit.impAtkGrowOnHeroHit) {
-        bUnit.atk += 1;
-        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
+        const amount = bUnit.impAtkGrowOnHeroHit;
+        bUnit.atk += amount;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: bUnit.uid });
       }
 
       // Небесный воин: whenever his own attack lands directly on the
