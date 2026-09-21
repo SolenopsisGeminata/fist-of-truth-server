@@ -549,6 +549,11 @@ export const CARD_POOL = [
   // \u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439: see the savageChiefBuff battlecry in placeCard above
   // for the adjacent-ally +2/+2 + trample mechanic.
   { id: 'c144', name: '\u0412\u043e\u0436\u0434\u044c \u0434\u0438\u043a\u0430\u0440\u0435\u0439', type: 'creature', cost: 5, atk: 5, hp: 5, trample: true, savageChiefBuff: true, rarity: 'epic', faction: 'savages' },
+  // \u0414\u0438\u043a\u0430\u0440\u043a\u0430 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438: see applyAxeWomanStartOfRoundThrows and the
+  // axeWomanThrow pre-attack hook above \u2014 throws twice per round,
+  // reusing applyAxeFanaticThrow's exact mirrored-row mechanic both
+  // times.
+  { id: 'c145', name: '\u0414\u0438\u043a\u0430\u0440\u043a\u0430 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 5, atk: 3, hp: 4, axeWomanThrow: true, rarity: 'epic', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1016,6 +1021,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     randomShotRecurring: card.randomShotRecurring || 0,
     highShamanManaBuff: !!card.highShamanManaBuff,
     axeFanaticThrow: !!card.axeFanaticThrow,
+    axeWomanThrow: !!card.axeWomanThrow,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -2971,6 +2977,32 @@ function applySavageTotemBuffs(match, events) {
   }
 }
 
+// Дикарка с топорами: fires the exact same applyAxeFanaticThrow throw
+// (see below) here, at the very start of every round she's alive —
+// ON TOP OF the identical pre-attack hook in resolveCombatPass (see
+// axeWomanThrow there), so she throws TWICE per round: once here,
+// once again right before her own attack. Unlike every other
+// start-of-round effect above, this one CAN reduce a hero straight to
+// 0 (an empty target cell hits the hero), so — unlike Шаман
+// костей/Тотем дикарей/Музыкальный Даос, none of which can ever end
+// the match from here — this checks anyHeroDown between throws so a
+// second/third copy never fires after the match is already decided.
+function applyAxeWomanStartOfRoundThrows(match, events) {
+  for (const side of match.players) {
+    if (anyHeroDown(match)) break;
+    const enemySide = otherPlayer(match, side);
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      if (anyHeroDown(match)) break;
+      for (let d = 0; d < DEPTH; d++) {
+        if (anyHeroDown(match)) break;
+        const unit = board[l][d];
+        if (unit && unit.axeWomanThrow) applyAxeFanaticThrow(match, side, enemySide, events, unit, l, d);
+      }
+    }
+  }
+}
+
 // One full pass over every lane's combat, but only units for which
 // `isEligible(unit)` returns true actually get to act this pass —
 // everyone else just sits there (still targetable, still able to block,
@@ -3426,6 +3458,12 @@ function resolveCombatPass(match, events, isEligible) {
       // before every attack of his, starting the round he's placed.
       if (aEligible && aUnit.axeFanaticThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.axeFanaticThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      // Дикарка с топорами: same throw, same no-bornRound-gate timing —
+      // this is her SECOND throw of the round (see
+      // applyAxeWomanStartOfRoundThrows for her first, at start of
+      // round).
+      if (aEligible && aUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      if (bEligible && bUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
@@ -4412,6 +4450,10 @@ export function tryEndTurn(match, username) {
   // Тотем дикарей also fires here — +1 attack (only) to every ally
   // including itself, every round it's alive.
   applySavageTotemBuffs(match, events);
+  // Дикарка с топорами also fires here — the same mirrored-row axe
+  // throw as her own pre-attack hook below, so she throws twice per
+  // round in total (once here, once before her attack).
+  applyAxeWomanStartOfRoundThrows(match, events);
   // Луна, голос будущего also fires here — re-evaluated fresh every
   // round she's alive.
   applyLunaBlind(match, events);
