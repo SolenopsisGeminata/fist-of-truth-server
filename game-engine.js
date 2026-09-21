@@ -621,6 +621,8 @@ export const CARD_POOL = [
   // name \u2014 c156 was renamed to \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441 earlier, freeing this name
   // up): see trampleDiscountOnPlay/pendingTrampleDiscounts above.
   { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
+  // \u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437: see evilEyeDiscardOnDeath in killUnit above.
+  { id: 'c161', name: '\u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 2, atk: 1, hp: 1, evilEyeDiscardOnDeath: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1105,6 +1107,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     statueBuff: !!card.statueBuff,
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     skeletonWeaponThrowOnDeath: !!card.skeletonWeaponThrowOnDeath,
+    evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -2002,6 +2005,26 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     events.push({
       type: 'skeletonWeaponThrow', side, targetSide, amount,
       laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id,
+    });
+  }
+  // Злой глаз: on death, the OPPONENT loses a random card from their
+  // own hand — discarded outright, not returned to their deck. Silent
+  // no-op if their hand is already empty. Same privacy discipline as
+  // every other hand-touching event (deathDraw, trampleDiscount,
+  // etc.): never names which card was lost, even to the player who
+  // lost it — match.events is broadcast identically to both sides, so
+  // any card identity here would leak straight to Злой глаз's owner.
+  if (unit && unit.evilEyeDiscardOnDeath && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    const targetHand = match.hands[targetSide];
+    const discarded = targetHand.length > 0;
+    if (discarded) {
+      const idx = Math.floor(Math.random() * targetHand.length);
+      targetHand.splice(idx, 1);
+    }
+    events.push({
+      type: 'evilEyeDiscard', side, targetSide,
+      laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id, discarded,
     });
   }
   // Наследие (Отшельник and anyone who inherits it): on death, if the
