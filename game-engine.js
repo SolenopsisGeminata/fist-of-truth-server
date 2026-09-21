@@ -623,6 +623,12 @@ export const CARD_POOL = [
   { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
   // \u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437: see evilEyeDiscardOnDeath in killUnit above.
   { id: 'c161', name: '\u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 2, atk: 1, hp: 1, evilEyeDiscardOnDeath: true, rarity: 'rare', faction: 'inferno' },
+  // \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430: see fireFlyGrowOnEnemyHeroDamage \u2014 the new damageHero()
+  // funnel above (now the single place every hero-damage site in the
+  // file routes through, mirroring killUnit for deaths) checks this
+  // flag on ANY source of damage to the enemy hero, not just her own
+  // attack.
+  { id: 'c162', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1108,6 +1114,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     weaponThrowOnDeath: !!card.weaponThrowOnDeath,
     skeletonWeaponThrowOnDeath: !!card.skeletonWeaponThrowOnDeath,
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
+    fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -1927,7 +1934,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   }
   if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
     const amount = unit.explodeOnDeathAmount;
-    match.hp[side] -= amount;
+    damageHero(match, side, amount, events);
     events.push({ type: 'selfExplosion', side, amount, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx });
   }
   // Детеныш кабана: on death (from anything), heals its owner's hero
@@ -1982,7 +1989,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       targetUnit.hp -= amount;
       died = targetUnit.hp <= 0;
     } else {
-      match.hp[targetSide] -= amount;
+      damageHero(match, targetSide, amount, events);
     }
     events.push({
       type: 'weaponThrow', side, targetSide, amount: resisted ? 0 : amount,
@@ -2001,7 +2008,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   if (unit && unit.skeletonWeaponThrowOnDeath && !anyHeroDown(match)) {
     const targetSide = otherPlayer(match, side);
     const amount = unit.atk;
-    match.hp[targetSide] -= amount;
+    damageHero(match, targetSide, amount, events);
     events.push({
       type: 'skeletonWeaponThrow', side, targetSide, amount,
       laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id,
@@ -2305,6 +2312,39 @@ function healHero(match, side, amount, events) {
   // with Шеф дома Вкуса's doubling the same way.
   if (events) applyPrairieDragonHealTrigger(match, side, events);
   return applied;
+}
+
+// Огненная муха: same "every X actually lands, from ANY source"
+// reactive-trigger shape as healHero() above, but for HERO DAMAGE
+// instead of healing, and reacting on the OPPOSING side rather than
+// the side it happens to — every unit anywhere on the board (for
+// EITHER player) with fireFlyGrowOnEnemyHeroDamage checks whether the
+// hero that just got hit belongs to ITS OWN owner's enemy, and if so
+// permanently gains +1 attack. This is now the single funnel every
+// hero-damage site in the file should go through (mirroring how
+// killUnit is the one place a unit ever dies), so this reaction never
+// has to be bolted on at each of the many individual damage sources
+// separately.
+function damageHero(match, side, amount, events) {
+  if (amount <= 0) return 0;
+  match.hp[side] -= amount;
+  const attackerSide = otherPlayer(match, side);
+  const board = match.boards[attackerSide];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const unit = board[l][d];
+      if (unit && unit.fireFlyGrowOnEnemyHeroDamage) {
+        unit.atk += 1;
+        if (events) {
+          events.push({
+            type: 'rallyBuff', side: attackerSide, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
+          });
+        }
+      }
+    }
+  }
+  return amount;
 }
 
 // Суслик: shared by both healHero() above and Шеф дома Вкуса's own
@@ -2786,7 +2826,7 @@ function resolveSpells(match, events) {
       const cellUnit = board[spell.laneIdx][targetDepth];
       const resisted = !!(cellUnit && cellUnit.spellResist);
       const amount = spell.treeWrathAmount;
-      match.hp[defenderName] -= amount;
+      damageHero(match, defenderName, amount, events);
       let died = false;
       if (cellUnit && !resisted) {
         cellUnit.hp -= amount;
@@ -2809,7 +2849,7 @@ function resolveSpells(match, events) {
       const cellUnit = board[spell.laneIdx][spell.depthIdx];
       const resisted = !!(cellUnit && cellUnit.spellResist);
       const amount = spell.lightningDmg;
-      match.hp[defenderName] -= amount;
+      damageHero(match, defenderName, amount, events);
       let died = false;
       if (cellUnit && !resisted) {
         cellUnit.hp -= amount;
@@ -2849,7 +2889,7 @@ function resolveSpells(match, events) {
         });
         if (died) killUnit(match, defenderName, spell.laneIdx, info.depth, events);
       } else {
-        match.hp[defenderName] -= spell.dmg;
+        damageHero(match, defenderName, spell.dmg, events);
         events.push({
           type: 'spell', kind: 'damage', side: spell.side, cardId: spell.cardId,
           laneIdx: spell.laneIdx, targetSide: defenderName, targetHero: true, amount: spell.dmg,
@@ -3227,7 +3267,7 @@ function applyStyxGuardPunish(match, events) {
         const unit = board[l][d];
         if (!unit || !unit.styxGuardSelfHit) continue;
         const amount = 2;
-        match.hp[side] -= amount;
+        damageHero(match, side, amount, events);
         events.push({ type: 'styxGuardHit', side, amount, sourceUid: unit.uid, laneIdx: l, depthIdx: d });
         if (anyHeroDown(match)) break;
       }
@@ -3423,7 +3463,7 @@ function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDep
     }
   }
   if (remaining > 0) {
-    match.hp[defenderSide] -= remaining;
+    damageHero(match, defenderSide, remaining, events);
     let heroLifesteal = 0;
     if (attackerUnit.lifesteal) {
       heroLifesteal = healHero(match, attackerSide, remaining, events);
@@ -3584,7 +3624,7 @@ function applyBambooRecurringShot(match, side, enemySide, events, sourceUnit, so
     targetUnit.hp -= amount;
     died = targetUnit.hp <= 0;
   } else {
-    match.hp[enemySide] -= amount;
+    damageHero(match, enemySide, amount, events);
   }
   events.push({
     type: 'bambooShot', side, targetSide: enemySide, amount: resisted ? 0 : amount,
@@ -3748,7 +3788,7 @@ function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, dep
     targetUnit.hp -= amount;
     died = targetUnit.hp <= 0;
   } else {
-    match.hp[enemySide] -= amount;
+    damageHero(match, enemySide, amount, events);
   }
   events.push({
     type: eventType || 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : amount,
@@ -3781,7 +3821,7 @@ function applyPrairieDragonFireball(match, side, enemySide, events, sourceUid, s
     targetUnit.hp -= amount;
     died = targetUnit.hp <= 0;
   } else {
-    match.hp[enemySide] -= amount;
+    damageHero(match, enemySide, amount, events);
   }
   events.push({
     type: 'dragonFireball', side, targetSide: enemySide,
@@ -3876,7 +3916,7 @@ function applyFollowupAttack(match, side, laneIdx, depthIdx, events) {
     died = target.unit.hp <= 0;
   } else {
     applied = atk;
-    match.hp[targetSide] -= applied;
+    damageHero(match, targetSide, applied, events);
     if (unit.lifesteal) lifesteal = healHero(match, side, atk, events);
   }
   events.push({
@@ -4016,7 +4056,7 @@ function resolveCombatPass(match, events, isEligible) {
           aTarget.unit.hp -= aApplied;
         } else {
           aApplied = aAtk;
-          match.hp[nameB] -= aApplied;
+          damageHero(match, nameB, aApplied, events);
           // A unit with lifesteal that lands its hit directly on the
           // enemy hero heals its own owner's hero for its attack value.
           if (aUnit.lifesteal) {
@@ -4031,7 +4071,7 @@ function resolveCombatPass(match, events, isEligible) {
           bTarget.unit.hp -= bApplied;
         } else {
           bApplied = bAtk;
-          match.hp[nameA] -= bApplied;
+          damageHero(match, nameA, bApplied, events);
           if (bUnit.lifesteal) {
             bLifesteal = healHero(match, nameB, bAtk, events);
           }
@@ -4484,7 +4524,7 @@ export function tryEndTurn(match, username) {
     if (!unit) continue;
     const targetSide = match.players.find((p) => p !== shot.side);
     const amount = effectiveAtk(match.boards[shot.side], shot.laneIdx, shot.depthIdx);
-    match.hp[targetSide] -= amount;
+    damageHero(match, targetSide, amount, events);
     events.push({
       type: 'heroShot', side: shot.side, targetSide, amount,
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
@@ -4505,7 +4545,7 @@ export function tryEndTurn(match, username) {
         if (unit && unit.shootHeroStartOfTurn && match.round > unit.bornRound) {
           const targetSide = match.players.find((p) => p !== side);
           const amount = effectiveAtk(board, l, d);
-          match.hp[targetSide] -= amount;
+          damageHero(match, targetSide, amount, events);
           events.push({
             type: 'heroShot', side, targetSide, amount,
             laneIdx: l, depthIdx: d, sourceUid: unit.uid,
@@ -4536,7 +4576,7 @@ export function tryEndTurn(match, username) {
       targetUnit.hp -= amount;
       died = targetUnit.hp <= 0;
     } else {
-      match.hp[targetSide] -= amount;
+      damageHero(match, targetSide, amount, events);
     }
     events.push({
       type: 'bambooShot', side: shot.side, targetSide, amount: resisted ? 0 : amount,
@@ -4577,7 +4617,7 @@ export function tryEndTurn(match, username) {
       events.push({ type: 'heroHeal', side: entry.side, amount: healed, sourceUid: entry.sourceUid, laneIdx: entry.laneIdx, depthIdx: entry.depthIdx });
     } else {
       const targetSide = otherPlayer(match, entry.side);
-      match.hp[targetSide] -= amount;
+      damageHero(match, targetSide, amount, events);
       events.push({
         type: 'heroShot', side: entry.side, targetSide, amount,
         laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
@@ -5278,7 +5318,7 @@ export function tryEndTurn(match, username) {
             const startHp = match.roundStartHp[unit.uid];
             if (startHp !== undefined && unit.hp < startHp && !anyHeroDown(match)) {
               const targetSide = otherPlayer(match, name);
-              match.hp[targetSide] -= unit.atk;
+              damageHero(match, targetSide, unit.atk, events);
               events.push({
                 type: 'heroShot', side: name, targetSide, amount: unit.atk,
                 laneIdx: l, depthIdx: d, sourceUid: unit.uid,
@@ -5344,7 +5384,7 @@ export function tryEndTurn(match, username) {
           if (unit && unit.shootHero) {
             const targetSide = match.players.find((p) => p !== name);
             const amount = effectiveAtk(board, l, d);
-            match.hp[targetSide] -= amount;
+            damageHero(match, targetSide, amount, events);
             events.push({
               type: 'heroShot', side: name, targetSide, amount,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
@@ -5405,7 +5445,7 @@ export function tryEndTurn(match, username) {
               targetUnit.hp -= amount;
               died = targetUnit.hp <= 0;
             } else {
-              match.hp[targetSide] -= amount;
+              damageHero(match, targetSide, amount, events);
             }
             events.push({
               type: 'powderKegShot', side: name, targetSide, amount: resisted ? 0 : amount,
@@ -5457,7 +5497,7 @@ export function tryEndTurn(match, username) {
                 targetUnit.hp -= amount;
                 died = targetUnit.hp <= 0;
               } else {
-                match.hp[targetSide] -= amount;
+                damageHero(match, targetSide, amount, events);
               }
               events.push({
                 type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : amount,
