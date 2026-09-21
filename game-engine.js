@@ -576,6 +576,11 @@ export const CARD_POOL = [
   // mirrored-row throw as \u0424\u0430\u043d\u0430\u0442\u0438\u043a \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438, but a fixed 7 damage
   // and his own 'boulderThrow' event.
   { id: 'c150', name: '\u0426\u0438\u043a\u043b\u043e\u043f', type: 'creature', cost: 7, atk: 7, hp: 15, sleep: true, cyclopsThrow: true, rarity: 'epic', faction: 'savages' },
+  // \u0420\u0443\u043c\u0430, \u0428\u0430\u043c\u0430\u043d \u041f\u0443\u0441\u0442\u043e\u0448\u0438: see the rumaBuff battlecry in placeCard and
+  // the rumaBuff end-of-round block above \u2014 same +5/+5 + \u0422\u043e\u043f\u043e\u0442 effect,
+  // fired both on play and every end of round, always a random OTHER
+  // ally (never herself).
+  { id: 'c151', name: '\u0420\u0443\u043c\u0430, \u0428\u0430\u043c\u0430\u043d \u041f\u0443\u0441\u0442\u043e\u0448\u0438', type: 'creature', cost: 7, atk: 3, hp: 10, rumaBuff: true, rarity: 'legendary', faction: 'savages' },
 ];
 
 export function cardById(id) {
@@ -1046,6 +1051,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     axeWomanThrow: !!card.axeWomanThrow,
     bigMouthChiefSummon: !!card.bigMouthChiefSummon,
     cyclopsThrow: !!card.cyclopsThrow,
+    rumaBuff: !!card.rumaBuff,
     coinFlipAttack: !!card.coinFlipAttack,
     savageTotemBuff: !!card.savageTotemBuff,
     counterattack: !!card.counterattack,
@@ -1441,6 +1447,28 @@ export function placeCard(match, username, uid, lane, depth) {
     if (neighbours.length > 0) {
       const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 2, buffHp: 2, buffTrample: true, sourceUid: unit.uid });
+    }
+  }
+
+  // Рума, Шаман Пустоши: same deferred pendingRallyBuffs mechanism as
+  // Вождь дикарей above, but targets a random OTHER ally ANYWHERE on
+  // the board (never herself — per explicit confirmation), not just an
+  // adjacent one, and for a bigger amount (+5/+5 + Топот). Her
+  // end-of-round copy of this same effect lives separately in the
+  // end-of-round loop (see rumaBuff there) since that one applies
+  // immediately rather than through this deferred queue.
+  if (card.rumaBuff) {
+    const board = match.boards[username];
+    const targets = [];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        if (l2 === lane && d2 === depth) continue; // never herself
+        if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+      }
+    }
+    if (targets.length > 0) {
+      const chosen = targets[Math.floor(Math.random() * targets.length)];
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 5, buffHp: 5, buffTrample: true, sourceUid: unit.uid });
     }
   }
 
@@ -5093,6 +5121,33 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
                 targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Рума, Шаман Пустоши: same target-selection/timing as
+          // Колдун прерий right above (one random OTHER ally,
+          // end-of-round, every round she's alive), but +5/+5 AND
+          // permanently grants Топот too — her on-play battlecry copy
+          // of this same effect is a separate deferred pendingRallyBuffs
+          // push in placeCard (see rumaBuff there).
+          if (unit && unit.rumaBuff) {
+            const targets = [];
+            for (let l2 = 0; l2 < LANES; l2++) {
+              for (let d2 = 0; d2 < DEPTH; d2++) {
+                if (l2 === l && d2 === d) continue; // never herself
+                if (board[l2][d2]) targets.push({ laneIdx: l2, depthIdx: d2 });
+              }
+            }
+            if (targets.length > 0) {
+              const chosen = targets[Math.floor(Math.random() * targets.length)];
+              const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+              targetUnit.atk += 5;
+              targetUnit.hp += 5;
+              targetUnit.maxHp += 5;
+              targetUnit.trample = true;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
+                targetDepth: chosen.depthIdx, buffAtk: 5, buffHp: 5, buffTrample: true, sourceUid: unit.uid,
               });
             }
           }
