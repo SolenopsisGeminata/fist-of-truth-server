@@ -682,6 +682,10 @@ export const CARD_POOL = [
   { id: 'c172', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 1, hp: 3, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
   // \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442: see bloodPoolSelfHitDraw in the end-of-round loop above.
   { id: 'c173', name: '\u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442', type: 'creature', cost: 3, atk: 0, hp: 6, defender: true, bloodPoolSelfHitDraw: true, rarity: 'rare', faction: 'inferno' },
+  // \u0413\u043e\u0440\u044f\u0449\u0435\u0435 \u0434\u0435\u0440\u0435\u0432\u043e: pure reuse of \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430's exact
+  // fireFlyGrowOnEnemyHeroDamage mechanic (see damageHero() above), no
+  // new mechanic needed.
+  { id: 'c174', name: '\u0413\u043e\u0440\u044f\u0449\u0435\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 3, atk: 2, hp: 5, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
