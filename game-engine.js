@@ -657,6 +657,9 @@ export const CARD_POOL = [
   { id: 'c166', name: '\u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442', type: 'creature', cost: 2, atk: 1, hp: 3, trample: true, bigMouthGrowOnEnemyHeroDamage: true, rarity: 'epic', faction: 'inferno' },
   // \u0427\u0430\u0441\u043e\u0432\u043e\u0439 \u0431\u043e\u043b\u0438: see painSentinelPulse in the end-of-round loop above.
   { id: 'c167', name: '\u0427\u0430\u0441\u043e\u0432\u043e\u0439 \u0431\u043e\u043b\u0438', type: 'creature', cost: 2, atk: 2, hp: 5, painSentinelPulse: true, rarity: 'epic', faction: 'inferno' },
+  // \u0411\u0435\u0441 \u0441 \u0442\u0440\u0435\u0437\u0443\u0431\u0446\u0435\u043c: see impTridentDamage in placeCard above \u2014 part of the
+  // \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see infernoStarterDeckCounts below).
+  { id: 'c168', name: '\u0411\u0435\u0441 \u0441 \u0442\u0440\u0435\u0437\u0443\u0431\u0446\u0435\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, impTridentDamage: 2, rarity: 'common', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -735,14 +738,14 @@ export function savagesStarterDeckCounts() {
 
 // The Инферно starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts/savagesStarterDeckCounts
-// above. Огненный бес, Скелет-воин инферно, and Чертенок are the
-// confirmed starter-deck cards so far (Страж реки Стикс, Молния, and
-// Яростный бес are all Rare, so none of them join, same "starter
-// decks are Common-only" convention as every other faction) — more
-// will be added here as they're made Common and explicitly requested
-// for it.
+// above. Огненный бес, Скелет-воин инферно, Чертенок, and Бес с
+// трезубцем are the confirmed starter-deck cards so far (every other
+// Инферно card so far is Rare or Epic, so none of them join, same
+// "starter decks are Common-only" convention as every other faction)
+// — more will be added here as they're made Common and explicitly
+// requested for it.
 export function infernoStarterDeckCounts() {
-  return { c156: 3, c158: 3, c157: 3 };
+  return { c156: 3, c158: 3, c157: 3, c168: 3 };
 }
 
 // ---------- Factions ----------
@@ -1020,6 +1023,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingFireImpThrows: [],
     pendingTrampleDiscounts: [],
     pendingSkullCrusherSelfHits: [],
+    pendingImpTridentShots: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1646,6 +1650,17 @@ export function placeCard(match, username, uid, lane, depth) {
   // else rather than a silent HP change during placing.
   if (card.skullCrusherSelfDamage) {
     match.pendingSkullCrusherSelfHits.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.skullCrusherSelfDamage });
+  }
+
+  // Бес с трезубцем: on play, deals a FIXED amount of damage straight
+  // to the enemy hero — same "hits the hero directly" shape as
+  // Арбалетчик's own battlecry shot, but a flat amount rather than his
+  // live attack, so it gets its own queue instead of reusing
+  // pendingShots (whose drain always reads effectiveAtk). Reuses the
+  // exact same 'heroShot' event/animation regardless, since visually
+  // it's identical.
+  if (card.impTridentDamage) {
+    match.pendingImpTridentShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.impTridentDamage });
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -5239,6 +5254,18 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'skullCrusherSelfHit', side: entry.side,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, amount: entry.amount,
+    });
+  }
+
+  // Бес с трезубцем's battlecry shot — see impTridentDamage above.
+  const impTridentQueue = match.pendingImpTridentShots;
+  match.pendingImpTridentShots = [];
+  for (const entry of impTridentQueue) {
+    const targetSide = otherPlayer(match, entry.side);
+    damageHero(match, targetSide, entry.amount, events);
+    events.push({
+      type: 'heroShot', side: entry.side, targetSide, amount: entry.amount,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
     });
   }
 
