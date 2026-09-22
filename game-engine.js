@@ -660,6 +660,10 @@ export const CARD_POOL = [
   // \u0411\u0435\u0441 \u0441 \u0442\u0440\u0435\u0437\u0443\u0431\u0446\u0435\u043c: see impTridentDamage in placeCard above \u2014 part of the
   // \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see infernoStarterDeckCounts below).
   { id: 'c168', name: '\u0411\u0435\u0441 \u0441 \u0442\u0440\u0435\u0437\u0443\u0431\u0446\u0435\u043c', type: 'creature', cost: 3, atk: 3, hp: 2, impTridentDamage: 2, rarity: 'common', faction: 'inferno' },
+  // \u0421\u0435\u0440\u0434\u0446\u0435 \u0431\u043e\u043b\u0438: see painHeartCurse in castSpell/tryEndTurn above \u2014
+  // discards a random card from the opponent's hand, summons \u0427\u0430\u0441\u043e\u0432\u043e\u0439
+  // \u0431\u043e\u043b\u0438 (c167) if that empties them, and returns itself to hand.
+  { id: 's40', name: '\u0421\u0435\u0440\u0434\u0446\u0435 \u0431\u043e\u043b\u0438', type: 'spell', cost: 2, painHeartCurse: true, rarity: 'legendary', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1919,6 +1923,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.painHeartCurse) {
+    // \u0421\u0435\u0440\u0434\u0446\u0435 \u0431\u043e\u043b\u0438: any enemy cell is a valid target, occupied or empty
+    // \u2014 the cell itself is never actually read at resolution, this is
+    // purely a targeting formality (same "any cell" bounds-only
+    // validation as \u041d\u0435\u0431\u0435\u0441\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c/\u041a\u0430\u043f\u043a\u0430\u043d).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -1926,7 +1938,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : 'buff')))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : 'buff'))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -4560,6 +4572,39 @@ export function tryEndTurn(match, username) {
       }
     }
     summonUnitToRandomFreeCell(match, guardSpell.side, guardSpell.summonCardId, events);
+  }
+
+  // Сердце боли: same "fires in the Мгновенный призыв phase" timing as
+  // Отряд ополченцев/Вызов стражи above — resolves immediately at the
+  // very start of this round's resolution. Doesn't actually read the
+  // targeted cell at all (any cell on the enemy board is a valid
+  // target, purely as a targeting formality) — makes the OPPONENT
+  // discard 1 random card from hand, and if that leaves them at
+  // exactly 0 cards, summons Часовой боли (c167) onto a random free
+  // cell on the CASTER's own board. The spell card itself is NOT
+  // consumed — a fresh copy returns to the caster's hand right after
+  // resolving, same "always a fresh instance, never literally the same
+  // one" convention as every other return-to-hand mechanic here.
+  const painHeartQueue = match.pendingSpells.filter((sp) => sp.kind === 'painHeartCurse');
+  match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'painHeartCurse');
+  for (const curseSpell of painHeartQueue) {
+    const targetSide = otherPlayer(match, curseSpell.side);
+    const targetHand = match.hands[targetSide];
+    const discarded = targetHand.length > 0;
+    if (discarded) {
+      const idx = Math.floor(Math.random() * targetHand.length);
+      targetHand.splice(idx, 1);
+    }
+    const emptied = discarded && targetHand.length === 0;
+    if (emptied) {
+      summonUnitToRandomFreeCell(match, curseSpell.side, 'c167', events);
+    }
+    match.hands[curseSpell.side].push({ id: curseSpell.cardId, uid: nextUid('card') });
+    events.push({
+      type: 'painHeartCurse', side: curseSpell.side, targetSide,
+      laneIdx: curseSpell.laneIdx, depthIdx: curseSpell.depthIdx,
+      discarded, emptied,
+    });
   }
 
   // Карающий ангел: right after Мгновенный призыв above (so a
