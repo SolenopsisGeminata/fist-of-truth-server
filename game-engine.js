@@ -720,6 +720,10 @@ export const CARD_POOL = [
   // \u041f\u043b\u044e\u044e\u0449\u0438\u0439\u0441\u044f \u0434\u0435\u043c\u043e\u043d: see spittingDemonAcidSpit in the pre-attack combat loop
   // above.
   { id: 'c179', name: '\u041f\u043b\u044e\u044e\u0449\u0438\u0439\u0441\u044f \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, spittingDemonAcidSpit: true, rarity: 'rare', faction: 'inferno' },
+  // \u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c: pierce (new mechanic, see the
+  // aTarget/bTarget computation in resolveCombatPass above) plus
+  // demonicBatGrowChance (see damageHero above).
+  { id: 'c180', name: '\u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c', type: 'creature', cost: 4, atk: 1, hp: 6, pierce: true, demonicBatGrowChance: 0.6, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1198,6 +1202,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // mechanic exists yet to guard, but any added later must check it too.
     spellResist: !!card.spellResist,
     trample: !!card.trample,
+    // Пробитие (Pierce): see the aTarget/bTarget computation in
+    // resolveCombatPass above.
+    pierce: !!card.pierce,
     punisherKill: !!card.punisherKill,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
@@ -1223,6 +1230,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
+    demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
@@ -2650,6 +2658,23 @@ function damageHero(match, side, amount, events) {
       // for a fixed 1 damage.
       if (unit && unit.bloodShadowBladeOnEnemyHeroDamage && events) {
         applyRandomEnemyShot(match, attackerSide, side, events, unit.uid, l, d, 1, 'bloodShadowBlade');
+      }
+      // Демоническая летучая мышь: same "any source of damage to the
+      // enemy hero" trigger family as Огненная муха/Большерот above,
+      // but only a CHANCE (demonicBatGrowChance, a 0..1 fraction) of
+      // the same +1/+1 rather than guaranteed every time. A failed roll
+      // pushes no event at all — same "silent miss" convention as any
+      // other coin-flip mechanic in this file.
+      if (unit && unit.demonicBatGrowChance && Math.random() < unit.demonicBatGrowChance) {
+        unit.atk += 1;
+        unit.hp += 1;
+        unit.maxHp += 1;
+        if (events) {
+          events.push({
+            type: 'rallyBuff', side: attackerSide, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+          });
+        }
       }
     }
   }
@@ -4504,8 +4529,20 @@ function resolveCombatPass(match, events, isEligible) {
       const aAttacks = !!(aEligible && aAtk > 0);
       const bAttacks = !!(bEligible && bAtk > 0);
       if (!aAttacks && !bAttacks) continue; // nobody eligible acted this wave — nothing to animate or apply
-      const aTarget = aAttacks ? frontUnit(match.boards[nameB], l) : null;
-      const bTarget = bAttacks ? frontUnit(match.boards[nameA], l) : null;
+      // Пробитие (Pierce): a piercing attacker's own target is forced
+      // to null here, exactly as if the opposing lane were empty —
+      // every "!aTarget means the hit landed on the hero" branch below
+      // (damage application, lifesteal, and every pre-attack-hook's own
+      // hero-landed check like impAtkGrowOnHeroHit/tormentorExtraDamage/
+      // thiefImpStealOnHeroHit above) already treats a null target as a
+      // direct hero hit, so piercing needs no separate damage-routing
+      // logic of its own. Whatever unit WOULD have blocked simply never
+      // takes damage and is never referenced at all — Чаростойкость and
+      // Щит are irrelevant since they only ever protected against being
+      // the target of a spell, not of a normal attack, and this makes
+      // the piercer's own attack not target anyone in the first place.
+      const aTarget = (aAttacks && !aUnit.pierce) ? frontUnit(match.boards[nameB], l) : null;
+      const bTarget = (bAttacks && !bUnit.pierce) ? frontUnit(match.boards[nameA], l) : null;
 
       // Armor reduces incoming damage per hit (never goes negative, never
       // consumed) — only units can have it, heroes always take the full
