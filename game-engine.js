@@ -648,6 +648,9 @@ export const CARD_POOL = [
   // specific-cell targeting like \u041c\u043e\u043b\u043d\u0438\u044f, but unit-OR-hero (never
   // both), plus an unconditional self-heal.
   { id: 's39', name: '\u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430', type: 'spell', cost: 2, heatSurge: true, heatSurgeDmg: 4, heatSurgeHeal: 4, rarity: 'rare', faction: 'inferno' },
+  // \u041a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c \u0447\u0435\u0440\u0435\u043f\u043e\u0432: see skullCrusherSelfDamage in placeCard
+  // (queued via pendingSkullCrusherSelfHits) above.
+  { id: 'c165', name: '\u041a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c \u0447\u0435\u0440\u0435\u043f\u043e\u0432', type: 'creature', cost: 2, atk: 4, hp: 5, skullCrusherSelfDamage: 3, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1010,6 +1013,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingLinSwaps: [],
     pendingFireImpThrows: [],
     pendingTrampleDiscounts: [],
+    pendingSkullCrusherSelfHits: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1626,6 +1630,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // tryEndTurn for the actual pick/apply.
   if (card.trampleDiscountOnPlay) {
     match.pendingTrampleDiscounts.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Крушитель черепов: on play, deals a fixed amount of damage to its
+  // OWN owner's hero — deferred to resolution same as every other
+  // battlecry, so it plays as a revealed event alongside everything
+  // else rather than a silent HP change during placing.
+  if (card.skullCrusherSelfDamage) {
+    match.pendingSkullCrusherSelfHits.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.skullCrusherSelfDamage });
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -5193,6 +5205,19 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'trampleDiscount', side: entry.side,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, applied,
+    });
+  }
+
+  // Крушитель черепов's battlecry self-hit — routed through
+  // damageHero() so it can still trigger any opponent reaction like
+  // Огненная муха, same as every other hero-damage source.
+  const skullCrusherQueue = match.pendingSkullCrusherSelfHits;
+  match.pendingSkullCrusherSelfHits = [];
+  for (const entry of skullCrusherQueue) {
+    damageHero(match, entry.side, entry.amount, events);
+    events.push({
+      type: 'skullCrusherSelfHit', side: entry.side,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, amount: entry.amount,
     });
   }
 
