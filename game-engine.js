@@ -717,6 +717,9 @@ export const CARD_POOL = [
   // \u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440: pure reuse of the existing doubleStrike trait, no
   // new mechanic needed.
   { id: 'c178', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 6, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
+  // \u041f\u043b\u044e\u044e\u0449\u0438\u0439\u0441\u044f \u0434\u0435\u043c\u043e\u043d: see spittingDemonAcidSpit in the pre-attack combat loop
+  // above.
+  { id: 'c179', name: '\u041f\u043b\u044e\u044e\u0449\u0438\u0439\u0441\u044f \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 4, hp: 2, spittingDemonAcidSpit: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1219,6 +1222,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
+    spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
@@ -4473,6 +4477,15 @@ function resolveCombatPass(match, events, isEligible) {
         bUnit.atk += 1;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
       }
+      // Плюющийся демон: same "no bornRound gate" timing as every
+      // other single-trigger pre-attack card above — right before
+      // every attack of his, spits acid at a random enemy unit for a
+      // fixed 2 damage. Reuses applyRandomEnemyShot's exact targeting
+      // pool (Чаростойкость excluded, silent no-op if none qualify)
+      // with its own 'acidSpit' event (same override technique as
+      // Циклоп/Бесконечная Кровавая Тень above).
+      if (aEligible && aUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 2, 'acidSpit');
+      if (bEligible && bUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 2, 'acidSpit');
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
