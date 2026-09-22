@@ -686,6 +686,9 @@ export const CARD_POOL = [
   // fireFlyGrowOnEnemyHeroDamage mechanic (see damageHero() above), no
   // new mechanic needed.
   { id: 'c174', name: '\u0413\u043e\u0440\u044f\u0449\u0435\u0435 \u0434\u0435\u0440\u0435\u0432\u043e', type: 'creature', cost: 3, atk: 2, hp: 5, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'rare', faction: 'inferno' },
+  // \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437: see badEyeGrowOnFactionDeath in killUnit above \u2014 reacts to
+  // ANY \u0418\u043d\u0444\u0435\u0440\u043d\u043e/\u0425\u043e\u043b\u043e\u0434 unit dying anywhere on the board, either side.
+  { id: 'c175', name: '\u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 3, atk: 5, hp: 1, badEyeGrowOnFactionDeath: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1179,6 +1182,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
+    badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -2332,6 +2336,38 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           type: 'rallyBuff', side, laneIdx: chosen.laneIdx, targetDepth: chosen.depthIdx,
           buffAtk: 0, buffHp: 0, buffDoubleStrike: true, sourceUid: targetUnit.uid,
         });
+      }
+    }
+  }
+  // Дурной глаз: reacts to ANY unit's death, anywhere on the
+  // battlefield (his own side OR the enemy's) — not just his own
+  // owner's losses. If the unit that just died belonged to the
+  // Инферно or Холод faction, EVERY Дурной глаз currently on the
+  // board (either player's side) permanently gains +1 attack. Looked
+  // up by card id since the dying unit is already gone from the board
+  // by this point, same as every other cardId-based on-death lookup
+  // above — this scan naturally excludes the unit that just died
+  // itself (already nulled out at the top of this function), but a
+  // DIFFERENT Дурной глаз elsewhere still reacts even if the dying
+  // unit was itself a Дурной глаз (Инферно faction).
+  if (unit) {
+    const diedCard = cardById(unit.id);
+    const diedFaction = diedCard ? diedCard.faction : null;
+    if (diedFaction === 'inferno' || diedFaction === 'frost') {
+      for (const reactSide of match.players) {
+        const reactBoard = match.boards[reactSide];
+        for (let l2 = 0; l2 < LANES; l2++) {
+          for (let d2 = 0; d2 < DEPTH; d2++) {
+            const reactUnit = reactBoard[l2][d2];
+            if (reactUnit && reactUnit.badEyeGrowOnFactionDeath) {
+              reactUnit.atk += 1;
+              events.push({
+                type: 'rallyBuff', side: reactSide, laneIdx: l2,
+                targetDepth: d2, buffAtk: 1, buffHp: 0, sourceUid: reactUnit.uid,
+              });
+            }
+          }
+        }
       }
     }
   }
