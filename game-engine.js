@@ -651,6 +651,10 @@ export const CARD_POOL = [
   // \u041a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c \u0447\u0435\u0440\u0435\u043f\u043e\u0432: see skullCrusherSelfDamage in placeCard
   // (queued via pendingSkullCrusherSelfHits) above.
   { id: 'c165', name: '\u041a\u0440\u0443\u0448\u0438\u0442\u0435\u043b\u044c \u0447\u0435\u0440\u0435\u043f\u043e\u0432', type: 'creature', cost: 2, atk: 4, hp: 5, skullCrusherSelfDamage: 3, rarity: 'epic', faction: 'inferno' },
+  // \u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442: see bigMouthGrowOnEnemyHeroDamage in damageHero() above \u2014
+  // same "any source" trigger as \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430, but +1/+1 instead of
+  // atk-only.
+  { id: 'c166', name: '\u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442', type: 'creature', cost: 2, atk: 1, hp: 3, trample: true, bigMouthGrowOnEnemyHeroDamage: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1138,6 +1142,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     skeletonWeaponThrowOnDeath: !!card.skeletonWeaponThrowOnDeath,
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
+    bigMouthGrowOnEnemyHeroDamage: !!card.bigMouthGrowOnEnemyHeroDamage,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -2416,6 +2421,19 @@ function damageHero(match, side, amount, events) {
           events.push({
             type: 'rallyBuff', side: attackerSide, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
+          });
+        }
+      }
+      // Большерот: same "any source of damage to the enemy hero"
+      // trigger as Огненная муха above, but +1/+1 instead of atk-only.
+      if (unit && unit.bigMouthGrowOnEnemyHeroDamage) {
+        unit.atk += 1;
+        unit.hp += 1;
+        unit.maxHp += 1;
+        if (events) {
+          events.push({
+            type: 'rallyBuff', side: attackerSide, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
           });
         }
       }
