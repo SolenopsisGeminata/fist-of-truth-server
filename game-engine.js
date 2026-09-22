@@ -643,7 +643,11 @@ export const CARD_POOL = [
   // validation, the resolveSpells branch, the client's generic
   // playPvpSpellEvent handler) already existed, unused, before this
   // card gave it something to serve.
-  { id: 's38', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 4, dmg: 4, rarity: 'rare', faction: 'inferno' },
+  { id: 's38', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 2, dmg: 4, rarity: 'rare', faction: 'inferno' },
+  // \u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430: see the 'heatSurge' spell kind in resolveSpells above \u2014
+  // specific-cell targeting like \u041c\u043e\u043b\u043d\u0438\u044f, but unit-OR-hero (never
+  // both), plus an unconditional self-heal.
+  { id: 's39', name: '\u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430', type: 'spell', cost: 2, heatSurge: true, heatSurgeDmg: 4, heatSurgeHeal: 4, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1871,6 +1875,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.heatSurge) {
+    // \u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430: same "specific enemy cell, empty or occupied"
+    // targeting as \u041c\u043e\u043b\u043d\u0438\u044f above \u2014 unlike \u041c\u043e\u043b\u043d\u0438\u044f (which hits BOTH the
+    // unit AND the hero), this one is either/or (same fallback shape
+    // as the plain 'damage' kind), plus an unconditional self-heal
+    // regardless of what the primary hit does.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -1878,7 +1891,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : 'buff'))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : 'buff')))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1904,6 +1917,8 @@ export function castSpell(match, username, uid, lane, depth) {
     buffSpellResist: card.buffSpellResist,
     buffLegacy: card.buffLegacy,
     lightningDmg: card.lightningDmg,
+    heatSurgeDmg: card.heatSurgeDmg,
+    heatSurgeHeal: card.heatSurgeHeal,
   });
   return { ok: true };
 }
@@ -2909,6 +2924,33 @@ function resolveSpells(match, events) {
         type: 'lightningStrike', side: spell.side, targetSide: defenderName, amount,
         laneIdx: spell.laneIdx, targetDepthIdx: spell.depthIdx,
         targetHero: !cellUnit, died, resisted,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'heatSurge') {
+      // Прилив тепла: specific-cell targeting like Молния above, but
+      // EITHER the unit there takes the hit OR the hero does (never
+      // both) — same fallback shape as the plain 'damage' kind, just
+      // aimed at a chosen cell instead of the front of a lane. The
+      // self-heal always fires, win or resisted.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && cellUnit.spellResist);
+      const amount = spell.heatSurgeDmg;
+      let died = false;
+      if (resisted) {
+        // no-op: the lava blob burns off her harmlessly
+      } else if (cellUnit) {
+        cellUnit.hp -= amount;
+        died = cellUnit.hp <= 0;
+      } else {
+        damageHero(match, defenderName, amount, events);
+      }
+      const healed = healHero(match, spell.side, spell.heatSurgeHeal, events);
+      events.push({
+        type: 'heatSurge', side: spell.side, targetSide: defenderName,
+        laneIdx: spell.laneIdx, targetDepthIdx: spell.depthIdx,
+        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, healed,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'damage') {
