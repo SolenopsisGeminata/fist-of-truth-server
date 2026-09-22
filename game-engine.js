@@ -714,6 +714,9 @@ export const CARD_POOL = [
   // damageHero above (passive: throws a blade at a random enemy unit
   // whenever the enemy hero takes damage from ANY source).
   { id: 'c177', name: '\u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u041a\u0440\u043e\u0432\u0430\u0432\u0430\u044f \u0422\u0435\u043d\u044c', type: 'creature', cost: 3, atk: 4, hp: 1, bloodShadowSelfHit: 2, bloodShadowBladeOnEnemyHeroDamage: true, rarity: 'legendary', faction: 'inferno' },
+  // \u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440: pure reuse of the existing doubleStrike trait, no
+  // new mechanic needed.
+  { id: 'c178', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 6, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
