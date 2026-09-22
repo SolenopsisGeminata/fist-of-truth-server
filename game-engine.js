@@ -677,6 +677,9 @@ export const CARD_POOL = [
   { id: 'c170', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 5, blazeImpEmptyHandGrow: true, rarity: 'rare', faction: 'inferno' },
   // \u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441: see thiefImpStealOnHeroHit in resolveCombatPass above.
   { id: 'c171', name: '\u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 2, thiefImpStealOnHeroHit: true, rarity: 'rare', faction: 'inferno' },
+  // \u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441: pure reuse of the existing doubleStrike trait, no new
+  // mechanic needed.
+  { id: 'c172', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 1, hp: 3, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
