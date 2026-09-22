@@ -726,6 +726,9 @@ export const CARD_POOL = [
   { id: 'c180', name: '\u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c', type: 'creature', cost: 4, atk: 1, hp: 6, pierce: true, demonicBatGrowChance: 0.6, rarity: 'rare', faction: 'inferno' },
   // \u0422\u0443\u0447\u043d\u044b\u0439 \u0434\u0435\u043c\u043e\u043d: see fatDemonTrampleBuffOnPlay in placeCard/tryEndTurn above.
   { id: 'c181', name: '\u0422\u0443\u0447\u043d\u044b\u0439 \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 3, hp: 4, trample: true, fatDemonTrampleBuffOnPlay: true, rarity: 'rare', faction: 'inferno' },
+  // \u041f\u043e\u0434\u043b\u044b\u0439 \u0432\u0440\u0435\u0434\u0438\u0442\u0435\u043b\u044c: see vileVerminSelfAcid in the pre-attack combat loop
+  // above.
+  { id: 'c182', name: '\u041f\u043e\u0434\u043b\u044b\u0439 \u0432\u0440\u0435\u0434\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 4, atk: 3, hp: 4, armor: 2, vileVerminSelfAcid: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1233,6 +1236,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
+    vileVerminSelfAcid: !!card.vileVerminSelfAcid,
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
@@ -4522,6 +4526,21 @@ function resolveCombatPass(match, events, isEligible) {
       // Циклоп/Бесконечная Кровавая Тень above).
       if (aEligible && aUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 2, 'acidSpit');
       if (bEligible && bUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 2, 'acidSpit');
+      // Подлый вредитель: same "no bornRound gate" timing as every
+      // other single-trigger pre-attack card above — right before
+      // every attack of his, surrounds himself with a cloud of acid
+      // that deals a fixed 1 damage to his OWN owner's hero, then
+      // vanishes. Routed through damageHero() so it can still trigger
+      // any opponent reaction like Огненная муха, same as every other
+      // hero-damage source.
+      if (aEligible && aUnit.vileVerminSelfAcid) {
+        damageHero(match, nameA, 1, events);
+        events.push({ type: 'vileVerminAcid', side: nameA, amount: 1, sourceUid: aUnit.uid, laneIdx: l, depthIdx: aInfo.depth });
+      }
+      if (bEligible && bUnit.vileVerminSelfAcid) {
+        damageHero(match, nameB, 1, events);
+        events.push({ type: 'vileVerminAcid', side: nameB, amount: 1, sourceUid: bUnit.uid, laneIdx: l, depthIdx: bInfo.depth });
+      }
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
