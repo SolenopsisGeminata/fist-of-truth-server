@@ -637,13 +637,14 @@ export const CARD_POOL = [
   // random any-lane-any-depth targeting as \u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439's own
   // fireball.
   { id: 'c164', name: '\u042f\u0434\u043e\u0432\u0438\u0442\u044b\u0439 \u0436\u0443\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, acidShotOnDeath: true, rarity: 'rare', faction: 'inferno' },
-  // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440: the very first card to actually use the
-  // 'damage'/card.dmg spell kind (frontUnit-in-lane targeting, hero
-  // fallback if the lane is empty) \u2014 that whole pipeline (castSpell
-  // validation, the resolveSpells branch, the client's generic
-  // playPvpSpellEvent handler) already existed, unused, before this
-  // card gave it something to serve.
-  { id: 's38', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 2, dmg: 4, rarity: 'rare', faction: 'inferno' },
+  // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 (renamed from \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440, that
+  // name now belongs to a different card below): the very first card
+  // to actually use the 'damage'/card.dmg spell kind (frontUnit-in-lane
+  // targeting, hero fallback if the lane is empty) \u2014 that whole
+  // pipeline (castSpell validation, the resolveSpells branch, the
+  // client's generic playPvpSpellEvent handler) already existed,
+  // unused, before this card gave it something to serve.
+  { id: 's38', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 2, dmg: 4, rarity: 'rare', faction: 'inferno' },
   // \u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430: see the 'heatSurge' spell kind in resolveSpells above \u2014
   // specific-cell targeting like \u041c\u043e\u043b\u043d\u0438\u044f, but unit-OR-hero (never
   // both), plus an unconditional self-heal.
@@ -694,6 +695,12 @@ export const CARD_POOL = [
   // marks it to gain +1 attack every time a new unit appears ANYWHERE
   // on the enemy board.
   { id: 's42', name: '\u0411\u0435\u0448\u0435\u043d\u0441\u0442\u0432\u043e', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffRageOnEnemySummon: true, rarity: 'rare', faction: 'inferno' },
+  // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 (the new one, reusing the name freed up
+  // by the s38 rename above): see the 'madFireball' spell kind in
+  // resolveSpells above \u2014 specific-cell targeting, fixed 10 damage to
+  // a unit there, but absolutely no effect (not even to the hero) if
+  // the cell is empty.
+  { id: 's43', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 3, madFireballDmg: 10, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1979,6 +1986,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.madFireballDmg) {
+    // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 (the new one): same "specific enemy
+    // cell, empty or occupied" bounds-only validation as \u041a\u0430\u043f\u043a\u0430\u043d above \u2014
+    // unlike \u041a\u0430\u043f\u043a\u0430\u043d, an empty cell means the spell simply does
+    // NOTHING at resolution (no hero redirect at all, see the
+    // 'madFireball' branch in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -1986,7 +2002,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : 'buff')))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : 'buff'))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -2017,6 +2033,7 @@ export function castSpell(match, username, uid, lane, depth) {
     ragingFireDmg: card.ragingFireDmg,
     ragingFireHeroDmg: card.ragingFireHeroDmg,
     buffRageOnEnemySummon: card.buffRageOnEnemySummon,
+    madFireballDmg: card.madFireballDmg,
   });
   return { ok: true };
 }
@@ -3327,6 +3344,32 @@ function resolveSpells(match, events) {
           sourceUid: null, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx,
         });
       }
+    } else if (spell.kind === 'madFireball') {
+      // Безумный огненный шар (the new one, distinct from Огненный
+      // шар): targets a specific enemy cell chosen at cast time, same
+      // "any cell, empty or occupied" validation as Капкан above — but
+      // unlike EVERY other cross-side damage spell in this file, an
+      // empty cell (or a Чаростойкость/Щит-protected unit) means the
+      // spell does NOTHING at all: no damage to a unit, no redirect to
+      // the enemy hero, not even a resisted hit registering as
+      // "applied". Spell damage still ignores armor entirely, same as
+      // every other spell-damage source.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targetUnit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(targetUnit && (targetUnit.spellResist || targetUnit.shieldEffect));
+      let died = false;
+      if (targetUnit && !resisted) {
+        targetUnit.hp -= spell.madFireballDmg;
+        died = targetUnit.hp <= 0;
+      }
+      events.push({
+        type: 'spell', kind: 'madFireball', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        amount: (targetUnit && !resisted) ? spell.madFireballDmg : 0,
+        resisted, empty: !targetUnit, died,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     }
   }
 }
