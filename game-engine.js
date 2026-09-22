@@ -620,7 +620,7 @@ export const CARD_POOL = [
   // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (a NEW card despite reusing an OLD card's former
   // name \u2014 c156 was renamed to \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441 earlier, freeing this name
   // up): see trampleDiscountOnPlay/pendingTrampleDiscounts above.
-  { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
+  { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0447\u0435\u0440\u0442', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
   // \u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437: see evilEyeDiscardOnDeath in killUnit above.
   { id: 'c161', name: '\u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 2, atk: 1, hp: 1, evilEyeDiscardOnDeath: true, rarity: 'rare', faction: 'inferno' },
   // \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430: see fireFlyGrowOnEnemyHeroDamage \u2014 the new damageHero()
@@ -667,6 +667,10 @@ export const CARD_POOL = [
   // \u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439 \u043e\u0433\u043e\u043d\u044c: see ragingFire in castSpell/resolveSpells above \u2014 part
   // of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see infernoStarterDeckCounts below).
   { id: 's41', name: '\u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439 \u043e\u0433\u043e\u043d\u044c', type: 'spell', cost: 3, ragingFire: true, ragingFireDmg: 2, ragingFireHeroDmg: 2, rarity: 'common', faction: 'inferno' },
+  // \u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e: pure reuse of \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d
+  // \u0438\u043d\u0444\u0435\u0440\u043d\u043e's exact skeletonWeaponThrowOnDeath mechanic (see killUnit
+  // above), just a bigger 4/2 body instead of 2/2.
+  { id: 'c169', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 3, atk: 4, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1641,7 +1645,7 @@ export function placeCard(match, username, uid, lane, depth) {
     match.pendingFireImpThrows.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.fireImpThrowOnPlay });
   }
 
-  // Горящий бес (the new one, distinct from Огненный бес): picks a
+  // Горящий черт (the new one, distinct from Огненный бес): picks a
   // random Топот card still in its OWNER's own hand once resolution
   // starts (deferred, same as every other battlecry — reads the hand
   // as it stands once placing is fully done for the round) and gives
@@ -5321,7 +5325,7 @@ export function tryEndTurn(match, username) {
     applyFireImpThrow(match, throwEntry.side, targetSide, events, throwEntry.sourceUid, throwEntry.laneIdx, throwEntry.depthIdx, throwEntry.amount);
   }
 
-  // Горящий бес's battlecry discount — picks a random Топот card in
+  // Горящий черт's battlecry discount — picks a random Топот card in
   // its owner's OWN hand and permanently reduces its cost by 1. The
   // event deliberately carries no card identity at all (not even a
   // uid) — hand contents are private, and every other hand-privacy-
