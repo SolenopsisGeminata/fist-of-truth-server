@@ -655,6 +655,8 @@ export const CARD_POOL = [
   // same "any source" trigger as \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430, but +1/+1 instead of
   // atk-only.
   { id: 'c166', name: '\u0411\u043e\u043b\u044c\u0448\u0435\u0440\u043e\u0442', type: 'creature', cost: 2, atk: 1, hp: 3, trample: true, bigMouthGrowOnEnemyHeroDamage: true, rarity: 'epic', faction: 'inferno' },
+  // \u0427\u0430\u0441\u043e\u0432\u043e\u0439 \u0431\u043e\u043b\u0438: see painSentinelPulse in the end-of-round loop above.
+  { id: 'c167', name: '\u0427\u0430\u0441\u043e\u0432\u043e\u0439 \u0431\u043e\u043b\u0438', type: 'creature', cost: 2, atk: 2, hp: 5, painSentinelPulse: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1143,6 +1145,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
     bigMouthGrowOnEnemyHeroDamage: !!card.bigMouthGrowOnEnemyHeroDamage,
+    painSentinelPulse: !!card.painSentinelPulse,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -5478,6 +5481,31 @@ export function tryEndTurn(match, username) {
                 laneIdx: l, depthIdx: d, sourceUid: unit.uid,
               });
             }
+          }
+          // Часовой боли: at the end of every round he's alive
+          // (unconditional, not gated on having taken damage), first
+          // grows +2 attack / +3 health, THEN shrinks by 1/1 for EACH
+          // card currently in the OPPONENT's hand — net could be
+          // positive, negative, or zero depending on how full their
+          // hand is. A dedicated event (not the generic rallyBuff)
+          // since the net change can be negative, which rallyBuff's
+          // "+N" popup text can't represent. Attack never displays
+          // below 0; health can, in which case he dies like anything
+          // else via killUnit.
+          if (unit && unit.painSentinelPulse) {
+            const enemySide = otherPlayer(match, name);
+            const handSize = match.hands[enemySide].length;
+            const netAtk = 2 - handSize;
+            const netHp = 3 - handSize;
+            unit.atk = Math.max(0, unit.atk + netAtk);
+            unit.hp += netHp;
+            unit.maxHp += netHp;
+            const died = unit.hp <= 0;
+            events.push({
+              type: 'painSentinelPulse', side: name, laneIdx: l, depthIdx: d,
+              sourceUid: unit.uid, handSize, netAtk, netHp, died,
+            });
+            if (died) killUnit(match, name, l, d, events);
           }
           // Большой кактус прерий: same roundStartHp-based "took damage
           // this round" check as Горный воин/Бегемот/Цветок прерий
