@@ -724,6 +724,8 @@ export const CARD_POOL = [
   // aTarget/bTarget computation in resolveCombatPass above) plus
   // demonicBatGrowChance (see damageHero above).
   { id: 'c180', name: '\u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c', type: 'creature', cost: 4, atk: 1, hp: 6, pierce: true, demonicBatGrowChance: 0.6, rarity: 'rare', faction: 'inferno' },
+  // \u0422\u0443\u0447\u043d\u044b\u0439 \u0434\u0435\u043c\u043e\u043d: see fatDemonTrampleBuffOnPlay in placeCard/tryEndTurn above.
+  { id: 'c181', name: '\u0422\u0443\u0447\u043d\u044b\u0439 \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 3, hp: 4, trample: true, fatDemonTrampleBuffOnPlay: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1086,6 +1088,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingLinSwaps: [],
     pendingFireImpThrows: [],
     pendingTrampleDiscounts: [],
+    pendingFatDemonBuffs: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1731,6 +1734,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // tryEndTurn for the actual pick/apply.
   if (card.trampleDiscountOnPlay) {
     match.pendingTrampleDiscounts.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Тучный демон: on play, gives every ALLY carrying Топот (trample)
+  // +1 attack, excluding himself — deferred same as every other
+  // battlecry, so the buff plays as a revealed event once resolution
+  // starts rather than a silent stat change during placing.
+  if (card.fatDemonTrampleBuffOnPlay) {
+    match.pendingFatDemonBuffs.push({ side: username, sourceUid: unit.uid });
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -5686,6 +5697,30 @@ export function tryEndTurn(match, username) {
       type: 'trampleDiscount', side: entry.side,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, applied,
     });
+  }
+
+  // Тучный демон's battlecry — see fatDemonTrampleBuffOnPlay above.
+  // Every ally on the SAME board carrying Топот (trample), except the
+  // Тучный демон himself, permanently gains +1 attack. Reuses the
+  // plain 'rallyBuff' event per target, so no new client code is
+  // needed — same pattern as every other simple stat buff in this
+  // file.
+  const fatDemonQueue = match.pendingFatDemonBuffs;
+  match.pendingFatDemonBuffs = [];
+  for (const entry of fatDemonQueue) {
+    const board = match.boards[entry.side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const ally = board[l][d];
+        if (ally && ally.trample && ally.uid !== entry.sourceUid) {
+          ally.atk += 1;
+          events.push({
+            type: 'rallyBuff', side: entry.side, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: ally.uid,
+          });
+        }
+      }
+    }
   }
 
   // Крушитель черепов's battlecry self-hit — routed through
