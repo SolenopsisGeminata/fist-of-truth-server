@@ -633,6 +633,10 @@ export const CARD_POOL = [
   // extra 1 damage to BOTH heroes routes through damageHero(), so it
   // can itself trigger \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430 (or anything similar) too.
   { id: 'c163', name: '\u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 3, hp: 2, tormentorExtraDamage: true, rarity: 'rare', faction: 'inferno' },
+  // \u042f\u0434\u043e\u0432\u0438\u0442\u044b\u0439 \u0436\u0443\u043a: see acidShotOnDeath in killUnit above \u2014 same fully
+  // random any-lane-any-depth targeting as \u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439's own
+  // fireball.
+  { id: 'c164', name: '\u042f\u0434\u043e\u0432\u0438\u0442\u044b\u0439 \u0436\u0443\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, acidShotOnDeath: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1120,6 +1124,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
+    acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -2038,6 +2043,39 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       type: 'evilEyeDiscard', side, targetSide,
       laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id, discarded,
     });
+  }
+  // Ядовитый жук: on death, spits acid at a FULLY random cell anywhere
+  // on the enemy board (any lane, any depth — not restricted to a
+  // mirrored lane, same targeting shape as Дракон прерий's own
+  // applyPrairieDragonFireball). A unit there takes the 2 damage
+  // alone; an empty cell sends it straight to the hero instead.
+  // Чаростойкость blocks it outright, same resisted-no-redirect
+  // precedent as every other cross-side damage mechanic here.
+  if (unit && unit.acidShotOnDeath && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    const targetBoard = match.boards[targetSide];
+    const targetLane = Math.floor(Math.random() * LANES);
+    const targetDepth = Math.floor(Math.random() * DEPTH);
+    const cellUnit = targetBoard[targetLane][targetDepth];
+    const resisted = !!(cellUnit && cellUnit.spellResist);
+    const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+    const amount = 2;
+    let died = false;
+    if (resisted) {
+      // no-op: the acid burns off her harmlessly
+    } else if (targetUnit) {
+      targetUnit.hp -= amount;
+      died = targetUnit.hp <= 0;
+    } else {
+      damageHero(match, targetSide, amount, events);
+    }
+    events.push({
+      type: 'acidShot', side, targetSide, amount: resisted ? 0 : amount,
+      laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id,
+      targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
+      targetHero: !cellUnit, died, resisted,
+    });
+    if (died) killUnit(match, targetSide, targetLane, targetDepth, events);
   }
   // Наследие (Отшельник and anyone who inherits it): on death, if the
   // unit is currently carrying a Legacy value (its own starting value,
