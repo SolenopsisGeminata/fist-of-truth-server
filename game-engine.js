@@ -612,7 +612,7 @@ export const CARD_POOL = [
   // \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e: see skeletonWeaponThrowOnDeath in killUnit
   // above \u2014 part of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see
   // infernoStarterDeckCounts below).
-  { id: 'c158', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0438\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 2, atk: 2, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'common', faction: 'inferno' },
+  { id: 'c158', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 2, atk: 2, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'common', faction: 'inferno' },
   // \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441: same impAtkGrowOnHeroHit mechanic as \u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a
   // above, but +2 per hit instead of +1 \u2014 a much higher-risk 3/1 body
   // to make up for it.
@@ -671,6 +671,10 @@ export const CARD_POOL = [
   // \u0438\u043d\u0444\u0435\u0440\u043d\u043e's exact skeletonWeaponThrowOnDeath mechanic (see killUnit
   // above), just a bigger 4/2 body instead of 2/2.
   { id: 'c169', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 3, atk: 4, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'rare', faction: 'inferno' },
+  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (the newest one, distinct from \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0447\u0435\u0440\u0442 and
+  // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441): see blazeImpEmptyHandGrow in the pre-attack combat
+  // loop above.
+  { id: 'c170', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 5, blazeImpEmptyHandGrow: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -749,7 +753,7 @@ export function savagesStarterDeckCounts() {
 
 // The Инферно starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as zenStarterDeckCounts/savagesStarterDeckCounts
-// above. Огненный бес, Скелет-воин инферно, Чертенок, and Бес с
+// above. Огненный бес, Скелет-воин Инферно, Чертенок, and Бес с
 // трезубцем are the confirmed starter-deck cards so far (every other
 // Инферно card so far is Rare or Epic, so none of them join, same
 // "starter decks are Common-only" convention as every other faction)
@@ -1161,6 +1165,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
     bigMouthGrowOnEnemyHeroDamage: !!card.bigMouthGrowOnEnemyHeroDamage,
     painSentinelPulse: !!card.painSentinelPulse,
+    blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -2088,7 +2093,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     });
     if (died) killUnit(match, targetSide, laneIdx, targetDepth, events);
   }
-  // Скелет-воин инферно: on death, throws his short sword straight at
+  // Скелет-воин Инферно: on death, throws his short sword straight at
   // the enemy HERO — unlike Метеоритный страж's weaponThrowOnDeath
   // above, there's no random-cell targeting and no unit in between to
   // hit; it's a fixed hero-only shot, amount equal to his own current
@@ -4230,6 +4235,21 @@ function resolveCombatPass(match, events, isEligible) {
       // other single-trigger pre-attack card above.
       if (aEligible && aUnit.solarDragonWave) applySolarDragonWave(match, nameA, nameB, l, events, aUnit.uid);
       if (bEligible && bUnit.solarDragonWave) applySolarDragonWave(match, nameB, nameA, l, events, bUnit.uid);
+      // Горящий бес (the newest one): same "no bornRound gate" timing as
+      // every other single-trigger pre-attack card above — right before
+      // every attack of his, checks BOTH hands (his own owner's and the
+      // opponent's) and permanently gains +1 attack if EITHER one is
+      // currently empty. Reuses the plain 'rallyBuff' event, same as
+      // every other simple self-buff in this file — no dedicated client
+      // code needed.
+      if (aEligible && aUnit.blazeImpEmptyHandGrow && (match.hands[nameA].length === 0 || match.hands[nameB].length === 0)) {
+        aUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+      }
+      if (bEligible && bUnit.blazeImpEmptyHandGrow && (match.hands[nameB].length === 0 || match.hands[nameA].length === 0)) {
+        bUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
+      }
 
       // Synergy units fight with their live effective attack (base + 1
       // per adjacent ally on their own board), recomputed fresh right
