@@ -708,6 +708,12 @@ export const CARD_POOL = [
   // specific-cell targeting, unit-or-hero fallback (never both), no
   // self-heal.
   { id: 's44', name: '\u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442', type: 'spell', cost: 3, meteorDmg: 7, rarity: 'epic', faction: 'inferno' },
+  // \u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u041a\u0440\u043e\u0432\u0430\u0432\u0430\u044f \u0422\u0435\u043d\u044c: see bloodShadowSelfHit in
+  // placeCard/tryEndTurn above (battlecry: self-hit + a fresh copy
+  // straight to hand) and bloodShadowBladeOnEnemyHeroDamage in
+  // damageHero above (passive: throws a blade at a random enemy unit
+  // whenever the enemy hero takes damage from ANY source).
+  { id: 'c177', name: '\u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u041a\u0440\u043e\u0432\u0430\u0432\u0430\u044f \u0422\u0435\u043d\u044c', type: 'creature', cost: 3, atk: 4, hp: 1, bloodShadowSelfHit: 2, bloodShadowBladeOnEnemyHeroDamage: true, rarity: 'legendary', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1072,6 +1078,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingTrampleDiscounts: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
+    pendingBloodShadowSpawns: [],
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1208,6 +1215,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     painSentinelPulse: !!card.painSentinelPulse,
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
+    bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
@@ -1727,6 +1735,17 @@ export function placeCard(match, username, uid, lane, depth) {
   // it's identical.
   if (card.impTridentDamage) {
     match.pendingImpTridentShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.impTridentDamage });
+  }
+
+  // Бесконечная Кровавая Тень: on play, deals a fixed amount of
+  // self-damage (deferred through damageHero, same as Крушитель
+  // черепов above) AND adds a fresh copy of itself straight to its
+  // OWNER's hand — same "always a fresh instance, never literally the
+  // same one" convention as every other add/return-to-hand mechanic in
+  // this file (Сердце боли, bounceCellAndNeighbor), and no MAX_HAND cap
+  // check either, matching that same precedent.
+  if (card.bloodShadowSelfHit) {
+    match.pendingBloodShadowSpawns.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.bloodShadowSelfHit, cardId: card.id });
   }
 
   // Монахиня: heals her owner's hero — queued, not applied immediately,
@@ -2612,6 +2631,18 @@ function damageHero(match, side, amount, events) {
             targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
           });
         }
+      }
+      // Бесконечная Кровавая Тень: same "any source of damage to the
+      // enemy hero" trigger family as Огненная муха/Большерот above,
+      // but instead of buffing itself, throws a curved blade at a
+      // random enemy unit — reuses applyRandomEnemyShot's exact
+      // targeting pool (Чаростойкость units excluded entirely, silent
+      // no-op if none qualify), same as Мушкетёр/Дикарь-стрелок, just
+      // with its own 'bloodShadowBlade' event (own flavor text/visual,
+      // same override technique Циклоп uses on applyAxeFanaticThrow)
+      // for a fixed 1 damage.
+      if (unit && unit.bloodShadowBladeOnEnemyHeroDamage && events) {
+        applyRandomEnemyShot(match, attackerSide, side, events, unit.uid, l, d, 1, 'bloodShadowBlade');
       }
     }
   }
@@ -4077,7 +4108,7 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
 // picked-then-blocked) and deals fixed damage. Silently does nothing if
 // the enemy board has no legal target. Reuses the exact musketShot
 // event/animation.
-function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount) {
+function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount, eventType) {
   const targetBoard = match.boards[enemySide];
   const targets = [];
   for (let l = 0; l < LANES; l++) {
@@ -4091,7 +4122,7 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
   targetUnit.hp -= amount;
   const died = targetUnit.hp <= 0;
   events.push({
-    type: 'musketShot', side, targetSide: enemySide, amount,
+    type: eventType || 'musketShot', side, targetSide: enemySide, amount,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
     targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
     sourceUid, resisted: false, died,
@@ -5626,6 +5657,22 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'heroShot', side: entry.side, targetSide, amount: entry.amount,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+    });
+  }
+
+  // Бесконечная Кровавая Тень's battlecry — see bloodShadowSelfHit
+  // above. The self-hit is routed through damageHero() (same reasoning
+  // as Крушитель черепов above, so it can still trigger any opponent
+  // reaction like Огненная муха), and the fresh copy lands straight in
+  // hand alongside it.
+  const bloodShadowQueue = match.pendingBloodShadowSpawns;
+  match.pendingBloodShadowSpawns = [];
+  for (const entry of bloodShadowQueue) {
+    damageHero(match, entry.side, entry.amount, events);
+    match.hands[entry.side].push({ id: entry.cardId, uid: nextUid('card') });
+    events.push({
+      type: 'bloodShadowSpawn', side: entry.side,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, amount: entry.amount,
     });
   }
 
