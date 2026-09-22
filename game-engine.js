@@ -740,6 +740,10 @@ export const CARD_POOL = [
   { id: 's45', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, ragingFire: true, ragingFireDmg: 4, ragingFireHeroDmg: 5, rarity: 'rare', faction: 'inferno' },
   // \u0421\u0443\u043a\u043a\u0443\u0431: see succubusDrainOnRoundEnd in the end-of-round loop above.
   { id: 'c184', name: '\u0421\u0443\u043a\u043a\u0443\u0431', type: 'creature', cost: 4, atk: 3, hp: 2, succubusDrainOnRoundEnd: true, rarity: 'epic', faction: 'inferno' },
+  // \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u043f\u043e\u0442\u0440\u043e\u0448\u0438\u0442\u0435\u043b\u044c: pure reuse of \u0421\u0442\u043e\u0439\u043a\u0438\u0439 \u0414\u0430\u043e\u0441's exact
+  // steadfastDaoist mechanic (self +1/+1 on own attack landing on the
+  // enemy hero), no new mechanic needed.
+  { id: 'c185', name: '\u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u043f\u043e\u0442\u0440\u043e\u0448\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 4, atk: 4, hp: 5, trample: true, steadfastDaoist: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
