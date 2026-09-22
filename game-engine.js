@@ -675,6 +675,8 @@ export const CARD_POOL = [
   // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441): see blazeImpEmptyHandGrow in the pre-attack combat
   // loop above.
   { id: 'c170', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 5, blazeImpEmptyHandGrow: true, rarity: 'rare', faction: 'inferno' },
+  // \u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441: see thiefImpStealOnHeroHit in resolveCombatPass above.
+  { id: 'c171', name: '\u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 2, thiefImpStealOnHeroHit: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1166,6 +1168,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bigMouthGrowOnEnemyHeroDamage: !!card.bigMouthGrowOnEnemyHeroDamage,
     painSentinelPulse: !!card.painSentinelPulse,
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
+    thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -4387,6 +4390,49 @@ function resolveCombatPass(match, events, isEligible) {
         const amount = bUnit.impAtkGrowOnHeroHit;
         bUnit.atk += amount;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: bUnit.uid });
+      }
+
+      // Вороватый бес: same "own attack lands directly on the enemy
+      // hero" trigger family as Чертенок/Яростный бес above — makes the
+      // OPPONENT discard a random card from hand (same privacy
+      // discipline as Злой глаз: only a boolean, never a card
+      // identity). If the opponent's hand is ALREADY empty (so nothing
+      // could be lost as a result of this hit), it permanently grows
+      // its own attack by 1 instead, via a separate reused 'rallyBuff'
+      // event — no new client code needed for that half.
+      if (aAttacks && !aTarget && aUnit.thiefImpStealOnHeroHit) {
+        const targetHand = match.hands[nameB];
+        const discarded = targetHand.length > 0;
+        if (discarded) {
+          const idx = Math.floor(Math.random() * targetHand.length);
+          targetHand.splice(idx, 1);
+        } else {
+          aUnit.atk += 1;
+        }
+        events.push({
+          type: 'thiefImpSteal', side: nameA, targetSide: nameB,
+          laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, cardId: aUnit.id, discarded,
+        });
+        if (!discarded) {
+          events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+        }
+      }
+      if (bAttacks && !bTarget && bUnit.thiefImpStealOnHeroHit) {
+        const targetHand = match.hands[nameA];
+        const discarded = targetHand.length > 0;
+        if (discarded) {
+          const idx = Math.floor(Math.random() * targetHand.length);
+          targetHand.splice(idx, 1);
+        } else {
+          bUnit.atk += 1;
+        }
+        events.push({
+          type: 'thiefImpSteal', side: nameB, targetSide: nameA,
+          laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, cardId: bUnit.id, discarded,
+        });
+        if (!discarded) {
+          events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
+        }
       }
 
       // Бес-мучитель: same "own attack lands directly on the enemy
