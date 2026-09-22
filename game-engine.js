@@ -738,6 +738,8 @@ export const CARD_POOL = [
   // ragingFire spell kind (see resolveSpells above), just bigger
   // numbers \u2014 no new mechanic needed.
   { id: 's45', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, ragingFire: true, ragingFireDmg: 4, ragingFireHeroDmg: 5, rarity: 'rare', faction: 'inferno' },
+  // \u0421\u0443\u043a\u043a\u0443\u0431: see succubusDrainOnRoundEnd in the end-of-round loop above.
+  { id: 'c184', name: '\u0421\u0443\u043a\u043a\u0443\u0431', type: 'creature', cost: 4, atk: 3, hp: 2, succubusDrainOnRoundEnd: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1248,6 +1250,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
     vileVerminSelfAcid: !!card.vileVerminSelfAcid,
     hellScarecrowGrowOnEmptyHand: !!card.hellScarecrowGrowOnEmptyHand,
+    succubusDrainOnRoundEnd: !!card.succubusDrainOnRoundEnd,
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
@@ -6117,6 +6120,32 @@ export function tryEndTurn(match, username) {
                 targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
               });
             }
+          }
+          // Суккуб: at the end of every round she's alive
+          // (unconditional, same "no roundStartHp gate" timing as
+          // Адское пугало above), forces the OPPONENT to lose a random
+          // card from their own hand — same privacy discipline as
+          // every other hand-touching event (only a boolean, never a
+          // card identity). If their hand is ALREADY empty (nothing to
+          // discard), deals a fixed 4 damage to their hero INSTEAD,
+          // routed through damageHero() so it can still trigger any
+          // opponent reaction like Огненная муха.
+          if (unit && unit.succubusDrainOnRoundEnd) {
+            const enemySide = otherPlayer(match, name);
+            const targetHand = match.hands[enemySide];
+            const discarded = targetHand.length > 0;
+            let heroDamage = 0;
+            if (discarded) {
+              const idx = Math.floor(Math.random() * targetHand.length);
+              targetHand.splice(idx, 1);
+            } else if (!anyHeroDown(match)) {
+              heroDamage = 4;
+              damageHero(match, enemySide, heroDamage, events);
+            }
+            events.push({
+              type: 'succubusDrain', side: name, targetSide: enemySide,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid, discarded, amount: heroDamage,
+            });
           }
           // Кровавый Омут: at the end of every round he's alive
           // (unconditional, same "no roundStartHp gate" timing as
