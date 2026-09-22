@@ -689,6 +689,11 @@ export const CARD_POOL = [
   // \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437: see badEyeGrowOnFactionDeath in killUnit above \u2014 reacts to
   // ANY \u0418\u043d\u0444\u0435\u0440\u043d\u043e/\u0425\u043e\u043b\u043e\u0434 unit dying anywhere on the board, either side.
   { id: 'c175', name: '\u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 3, atk: 5, hp: 1, badEyeGrowOnFactionDeath: true, rarity: 'rare', faction: 'inferno' },
+  // \u0411\u0435\u0448\u0435\u043d\u0441\u0442\u0432\u043e: see buffRageOnEnemySummon/rageGrowOnEnemySummon/applyRageOnSummon
+  // above \u2014 targets an own unit for an immediate +2/+2, then permanently
+  // marks it to gain +1 attack every time a new unit appears ANYWHERE
+  // on the enemy board.
+  { id: 's42', name: '\u0411\u0435\u0448\u0435\u043d\u0441\u0442\u0432\u043e', type: 'spell', cost: 3, buffAtk: 2, buffHp: 2, buffRageOnEnemySummon: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1056,6 +1061,14 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingPunisherKills: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
+    // Бешенство: placeCard has no `events` array to push a live
+    // rallyBuff into, so every plain creature placement that puts a
+    // unit on a previously-empty cell just queues its OWN side here
+    // (same "defer until resolution has events" convention as every
+    // other placeCard-time battlecry) — drained once resolveSpells has
+    // finished, so a Бешенство cast THIS SAME round already has its
+    // rageGrowOnEnemySummon flag applied before these are checked.
+    pendingRageSummonSides: [],
     sacrifices: { [nameA]: 0, [nameB]: 0 },
     readyToEnd: { [nameA]: false, [nameB]: false },
     phase: 'placing', // placing | resolving | over
@@ -1183,6 +1196,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
+    rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -1283,6 +1297,7 @@ function summonUnitToRandomFreeCell(match, side, cardId, events, onlyLaneIdx) {
   const unit = buildUnitFromCard(summonedCard, false, match.round);
   board[l][d] = unit;
   events.push({ type: 'summon', side, cardId, laneIdx: l, depthIdx: d, uid: unit.uid });
+  applyRageOnSummon(match, side, events);
   return true;
 }
 
@@ -1305,6 +1320,9 @@ export function placeCard(match, username, uid, lane, depth) {
   hand.splice(idx, 1);
   const unit = buildUnitFromCard(card, true, match.round);
   match.boards[username][lane][depth] = unit;
+  // Бешенство: no `events` array exists here — see pendingRageSummonSides
+  // above for why this just queues its own side for a deferred check.
+  match.pendingRageSummonSides.push(username);
 
   // Олень-мечник: which depth he's placed at (first/last/middle of the
   // lane, regardless of which lane) permanently shapes his own starting
@@ -1849,7 +1867,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist || card.buffRageOnEnemySummon) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
     // Архат в доспехах: Щит makes a unit immune to being the TARGET of
@@ -1998,6 +2016,7 @@ export function castSpell(match, username, uid, lane, depth) {
     heatSurgeHeal: card.heatSurgeHeal,
     ragingFireDmg: card.ragingFireDmg,
     ragingFireHeroDmg: card.ragingFireHeroDmg,
+    buffRageOnEnemySummon: card.buffRageOnEnemySummon,
   });
   return { ok: true };
 }
@@ -2303,6 +2322,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
             targetLaneIdx: dest.laneIdx, targetDepthIdx: dest.depthIdx, cardId: copy.id, sourceUid: targetUnit.uid,
             copyUid: copy.uid, atk: copy.atk, hp: copy.hp, maxHp: copy.maxHp, armor: copy.armor,
           });
+          applyRageOnSummon(match, side, events);
         }
       }
       // Странствующий ученик: whenever THIS specific unit is the
@@ -2488,6 +2508,35 @@ function healHero(match, side, amount, events) {
   // with Шеф дома Вкуса's doubling the same way.
   if (events) applyPrairieDragonHealTrigger(match, side, events);
   return applied;
+}
+
+// Бешенство: whenever a brand-new unit appears on a given side's
+// board — a previously EMPTY cell becomes occupied, whether from a
+// plain placeCard, an instant-summon spell/battlecry, or a copy like
+// Отшельник-Даос's hermitCopy — every unit on the OPPOSING side
+// currently carrying rageGrowOnEnemySummon (granted once, permanently,
+// by the Бешенство spell) gains +1 attack. Deliberately does NOT fire
+// for a mere reposition/swap (Иллюзионист времени, moveUnit) or a
+// transform that replaces a unit already standing on an occupied cell
+// (Странствующий ученик) — the battlefield's actual unit COUNT has to
+// have gone up. Called at every genuine "new unit" site in the file;
+// see pendingRageSummonSides above for how placeCard (which has no
+// `events` array of its own) defers into this same reaction.
+function applyRageOnSummon(match, summonedSide, events) {
+  const enemySide = otherPlayer(match, summonedSide);
+  const enemyBoard = match.boards[enemySide];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const reactUnit = enemyBoard[l][d];
+      if (reactUnit && reactUnit.rageGrowOnEnemySummon) {
+        reactUnit.atk += 1;
+        events.push({
+          type: 'rallyBuff', side: enemySide, laneIdx: l,
+          targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: reactUnit.uid,
+        });
+      }
+    }
+  }
 }
 
 // Огненная муха: same "every X actually lands, from ANY source"
@@ -2909,6 +2958,7 @@ function resolveSpells(match, events) {
             const unit = buildUnitFromCard(summonedCard, false, match.round);
             board[spell.laneIdx][spell.depthIdx] = unit;
             events.push({ type: 'summon', side: spell.side, cardId: spell.summonCardId, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, uid: unit.uid });
+            applyRageOnSummon(match, spell.side, events);
             summoned = true;
           }
         }
@@ -3000,6 +3050,7 @@ function resolveSpells(match, events) {
           const unit = buildUnitFromCard(targetedCard, false, match.round);
           board[spell.laneIdx][spell.depthIdx] = unit;
           events.push({ type: 'summon', side: spell.side, cardId: 'c79', laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, uid: unit.uid });
+          applyRageOnSummon(match, spell.side, events);
         }
       }
       summonUnitToRandomFreeCell(match, spell.side, 'c79', events);
@@ -3205,6 +3256,11 @@ function resolveSpells(match, events) {
         if (spell.buffLegacy) unit.legacyValue = (unit.legacyValue || 0) + spell.buffLegacy;
         // Духовный щит: permanently grants Чаростойкость (spellResist).
         if (spell.buffSpellResist) unit.spellResist = true;
+        // Бешенство: permanently marks the target so it reacts to every
+        // future enemy summon — see applyRageOnSummon above for the
+        // actual +1-attack-per-appearance reaction; this just plants
+        // the flag on this specific unit instance.
+        if (spell.buffRageOnEnemySummon) unit.rageGrowOnEnemySummon = true;
         // Двойной удар (the spell): grants a stack of the SAME
         // doubleStrike counter already used by Имперский полководец's
         // warlordBuff — genuinely stacks now if recast on the same unit
@@ -3229,7 +3285,7 @@ function resolveSpells(match, events) {
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
           buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike,
           buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0,
-          buffSpellResist: !!spell.buffSpellResist, drewCard,
+          buffSpellResist: !!spell.buffSpellResist, buffRageOnEnemySummon: !!spell.buffRageOnEnemySummon, drewCard,
         });
         // Бурный рост: also heals the CASTER's own hero, alongside the
         // stat buff on the target unit — reuses the exact same
@@ -4738,6 +4794,7 @@ export function tryEndTurn(match, username) {
         const unit = buildUnitFromCard(summonedCard, false, match.round);
         board[guardSpell.laneIdx][guardSpell.depthIdx] = unit;
         events.push({ type: 'summon', side: guardSpell.side, cardId: guardSpell.summonCardId, laneIdx: guardSpell.laneIdx, depthIdx: guardSpell.depthIdx, uid: unit.uid });
+        applyRageOnSummon(match, guardSpell.side, events);
       }
     }
     summonUnitToRandomFreeCell(match, guardSpell.side, guardSpell.summonCardId, events);
@@ -5529,6 +5586,19 @@ export function tryEndTurn(match, username) {
   match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'endOfRoundSpell');
 
   resolveSpells(match, events);
+
+  // Бешенство: drains the placeCard-side queue AFTER resolveSpells has
+  // run, so a Бешенство cast THIS SAME round (which grants
+  // rageGrowOnEnemySummon during resolveSpells' own 'buff' kind above)
+  // already has its flag in place before these plain creature
+  // placements — made earlier this round, during the placing phase,
+  // before any events existed — are checked here.
+  const rageSummonQueue = match.pendingRageSummonSides;
+  match.pendingRageSummonSides = [];
+  for (const summonedSide of rageSummonQueue) {
+    applyRageOnSummon(match, summonedSide, events);
+  }
+
   // Билл и Билли: a fresh 50/50 coin flip every single round, right
   // before combat resolves — a "tails" roll sets the exact same
   // cantAttackThisRound flag Трусливый убийца uses, so he simply
