@@ -680,6 +680,8 @@ export const CARD_POOL = [
   // \u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441: pure reuse of the existing doubleStrike trait, no new
   // mechanic needed.
   { id: 'c172', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 1, hp: 3, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
+  // \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442: see bloodPoolSelfHitDraw in the end-of-round loop above.
+  { id: 'c173', name: '\u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442', type: 'creature', cost: 3, atk: 0, hp: 6, defender: true, bloodPoolSelfHitDraw: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1172,6 +1174,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     painSentinelPulse: !!card.painSentinelPulse,
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
+    bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     musketShot: !!card.musketShot,
@@ -5709,6 +5712,25 @@ export function tryEndTurn(match, username) {
               sourceUid: unit.uid, handSize, netAtk, netHp, died,
             });
             if (died) killUnit(match, name, l, d, events);
+          }
+          // Кровавый Омут: at the end of every round he's alive
+          // (unconditional, same "no roundStartHp gate" timing as
+          // Часовой боли above), deals 2 damage to his own hero —
+          // routed through damageHero() so it still correctly triggers
+          // Огненная муха/Большерот etc. on the OPPONENT side, same as
+          // any other source of hero damage — and draws 1 card from his
+          // OWNER's own deck, same MAX_HAND-respecting pattern as
+          // Денежное дерево above.
+          if (unit && unit.bloodPoolSelfHitDraw && !anyHeroDown(match)) {
+            damageHero(match, name, 2, events);
+            const hand = match.hands[name];
+            let drew = false;
+            if (hand.length < MAX_HAND) {
+              const beforeLen = hand.length;
+              draw(match.decks[name], hand, 1);
+              drew = hand.length > beforeLen;
+            }
+            events.push({ type: 'bloodPoolPulse', side: name, sourceUid: unit.uid, laneIdx: l, depthIdx: d, amount: 2, drew });
           }
           // Большой кактус прерий: same roundStartHp-based "took damage
           // this round" check as Горный воин/Бегемот/Цветок прерий
