@@ -729,6 +729,11 @@ export const CARD_POOL = [
   // \u041f\u043e\u0434\u043b\u044b\u0439 \u0432\u0440\u0435\u0434\u0438\u0442\u0435\u043b\u044c: see vileVerminSelfAcid in the pre-attack combat loop
   // above.
   { id: 'c182', name: '\u041f\u043e\u0434\u043b\u044b\u0439 \u0432\u0440\u0435\u0434\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 4, atk: 3, hp: 4, armor: 2, vileVerminSelfAcid: true, rarity: 'rare', faction: 'inferno' },
+  // \u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e: see hellScarecrowDiscardOnPlay in
+  // placeCard/tryEndTurn above (battlecry) and
+  // hellScarecrowGrowOnEmptyHand in the end-of-round loop above
+  // (passive).
+  { id: 'c183', name: '\u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 4, atk: 0, hp: 4, hellScarecrowDiscardOnPlay: true, hellScarecrowGrowOnEmptyHand: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1092,6 +1097,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingFireImpThrows: [],
     pendingTrampleDiscounts: [],
     pendingFatDemonBuffs: [],
+    pendingHellScarecrowDiscards: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1237,6 +1243,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
     vileVerminSelfAcid: !!card.vileVerminSelfAcid,
+    hellScarecrowGrowOnEmptyHand: !!card.hellScarecrowGrowOnEmptyHand,
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
@@ -1746,6 +1753,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // starts rather than a silent stat change during placing.
   if (card.fatDemonTrampleBuffOnPlay) {
     match.pendingFatDemonBuffs.push({ side: username, sourceUid: unit.uid });
+  }
+
+  // Адское пугало: on play, forces the OPPONENT to lose a random card
+  // from their own hand — deferred same as every other battlecry, and
+  // routed through the same privacy discipline as Злой глаз/Сердце
+  // боли below (the event only ever carries a boolean, never a card
+  // identity).
+  if (card.hellScarecrowDiscardOnPlay) {
+    match.pendingHellScarecrowDiscards.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -5742,6 +5758,27 @@ export function tryEndTurn(match, username) {
     }
   }
 
+  // Адское пугало's battlecry — see hellScarecrowDiscardOnPlay above.
+  // Same privacy-safe discard shape as Злой глаз (killUnit)/Сердце
+  // боли: only a boolean ever leaves the server, never a card
+  // identity, since match.events broadcasts identically to both
+  // players.
+  const hellScarecrowDiscardQueue = match.pendingHellScarecrowDiscards;
+  match.pendingHellScarecrowDiscards = [];
+  for (const entry of hellScarecrowDiscardQueue) {
+    const targetSide = otherPlayer(match, entry.side);
+    const targetHand = match.hands[targetSide];
+    const discarded = targetHand.length > 0;
+    if (discarded) {
+      const idx = Math.floor(Math.random() * targetHand.length);
+      targetHand.splice(idx, 1);
+    }
+    events.push({
+      type: 'hellScarecrowDiscard', side: entry.side, targetSide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, discarded,
+    });
+  }
+
   // Крушитель черепов's battlecry self-hit — routed through
   // damageHero() so it can still trigger any opponent reaction like
   // Огненная муха, same as every other hero-damage source.
@@ -6060,6 +6097,22 @@ export function tryEndTurn(match, username) {
               sourceUid: unit.uid, handSize, netAtk, netHp, died,
             });
             if (died) killUnit(match, name, l, d, events);
+          }
+          // Адское пугало: at the end of every round he's alive
+          // (unconditional, same "no roundStartHp gate" timing as
+          // Часовой боли/Кровавый Омут above), checks the OPPONENT's
+          // current hand size — if it's exactly 0, permanently gains
+          // +1 attack. Reuses the plain 'rallyBuff' event, same as
+          // every other simple positive-only stat buff in this file.
+          if (unit && unit.hellScarecrowGrowOnEmptyHand) {
+            const enemySide = otherPlayer(match, name);
+            if (match.hands[enemySide].length === 0) {
+              unit.atk += 1;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
+              });
+            }
           }
           // Кровавый Омут: at the end of every round he's alive
           // (unconditional, same "no roundStartHp gate" timing as
