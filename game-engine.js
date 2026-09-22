@@ -664,6 +664,9 @@ export const CARD_POOL = [
   // discards a random card from the opponent's hand, summons \u0427\u0430\u0441\u043e\u0432\u043e\u0439
   // \u0431\u043e\u043b\u0438 (c167) if that empties them, and returns itself to hand.
   { id: 's40', name: '\u0421\u0435\u0440\u0434\u0446\u0435 \u0431\u043e\u043b\u0438', type: 'spell', cost: 2, painHeartCurse: true, rarity: 'legendary', faction: 'inferno' },
+  // \u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439 \u043e\u0433\u043e\u043d\u044c: see ragingFire in castSpell/resolveSpells above \u2014 part
+  // of the \u0418\u043d\u0444\u0435\u0440\u043d\u043e starter deck (see infernoStarterDeckCounts below).
+  { id: 's41', name: '\u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439 \u043e\u0433\u043e\u043d\u044c', type: 'spell', cost: 3, ragingFire: true, ragingFireDmg: 2, ragingFireHeroDmg: 2, rarity: 'common', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -749,7 +752,7 @@ export function savagesStarterDeckCounts() {
 // — more will be added here as they're made Common and explicitly
 // requested for it.
 export function infernoStarterDeckCounts() {
-  return { c156: 3, c158: 3, c157: 3, c168: 3 };
+  return { c156: 3, c158: 3, c157: 3, c168: 3, s41: 3 };
 }
 
 // ---------- Factions ----------
@@ -1247,13 +1250,14 @@ function summonUnitToRandomFreeCell(match, side, cardId, events, onlyLaneIdx) {
       if (!board[l][d]) freeCells.push({ l, d });
     }
   }
-  if (freeCells.length === 0) return;
+  if (freeCells.length === 0) return false;
   const { l, d } = freeCells[Math.floor(Math.random() * freeCells.length)];
   const summonedCard = cardById(cardId);
-  if (!summonedCard) return;
+  if (!summonedCard) return false;
   const unit = buildUnitFromCard(summonedCard, false, match.round);
   board[l][d] = unit;
   events.push({ type: 'summon', side, cardId, laneIdx: l, depthIdx: d, uid: unit.uid });
+  return true;
 }
 
 export function placeCard(match, username, uid, lane, depth) {
@@ -1810,7 +1814,7 @@ export function castSpell(match, username, uid, lane, depth) {
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
   if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath) {
+  if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath || card.ragingFire) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.healHero) {
     // Родник: any cell works, occupied or empty, friendly or not — the
@@ -1938,7 +1942,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : 'buff'))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : 'buff')))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -1966,6 +1970,8 @@ export function castSpell(match, username, uid, lane, depth) {
     lightningDmg: card.lightningDmg,
     heatSurgeDmg: card.heatSurgeDmg,
     heatSurgeHeal: card.heatSurgeHeal,
+    ragingFireDmg: card.ragingFireDmg,
+    ragingFireHeroDmg: card.ragingFireHeroDmg,
   });
   return { ok: true };
 }
@@ -2700,6 +2706,53 @@ function resolveSpells(match, events) {
           });
           if (died) killUnit(match, defenderName, spell.laneIdx, d, events);
         }
+      }
+    } else if (spell.kind === 'ragingFire') {
+      // Бушующий огонь: same "hits every depth in the chosen enemy
+      // lane" shape as Гнев небес (wrathDmg) above, but a fire WAVE
+      // rather than simultaneous strikes — it passes straight through
+      // every unit (dealing damage to each one it flies over, no
+      // redirect-to-hero on an empty cell like the plain 'damage'
+      // kind), then always slams into the enemy hero for a fixed
+      // amount once it reaches the end of the lane, regardless of how
+      // many units it passed through or damaged along the way.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      for (let d = 0; d < DEPTH; d++) {
+        if (anyHeroDown(match)) break;
+        const targetUnit = board[spell.laneIdx][d];
+        if (!targetUnit) {
+          events.push({
+            type: 'spell', kind: 'ragingFire', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: 0, died: false, empty: true, resisted: false,
+          });
+        } else if (targetUnit.spellResist) {
+          events.push({
+            type: 'spell', kind: 'ragingFire', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: 0, died: false, empty: false, resisted: true,
+          });
+        } else {
+          // Spell damage ignores armor entirely — only direct combat hits
+          // are reduced by it.
+          const applied = spell.ragingFireDmg;
+          targetUnit.hp -= applied;
+          const died = targetUnit.hp <= 0;
+          events.push({
+            type: 'spell', kind: 'ragingFire', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            amount: applied, died, empty: false, resisted: false,
+          });
+          if (died) killUnit(match, defenderName, spell.laneIdx, d, events);
+        }
+      }
+      if (!anyHeroDown(match)) {
+        damageHero(match, defenderName, spell.ragingFireHeroDmg, events);
+        events.push({
+          type: 'spell', kind: 'ragingFire', side: spell.side, cardId: spell.cardId,
+          laneIdx: spell.laneIdx, targetSide: defenderName, targetHero: true, amount: spell.ragingFireHeroDmg,
+        });
       }
     } else if (spell.kind === 'skyWhirlwind') {
       // Воздушная буря: for every cell in the chosen enemy lane, a
@@ -4581,10 +4634,12 @@ export function tryEndTurn(match, username) {
   // target, purely as a targeting formality) — makes the OPPONENT
   // discard 1 random card from hand, and if that leaves them at
   // exactly 0 cards, summons Часовой боли (c167) onto a random free
-  // cell on the CASTER's own board. The spell card itself is NOT
-  // consumed — a fresh copy returns to the caster's hand right after
-  // resolving, same "always a fresh instance, never literally the same
-  // one" convention as every other return-to-hand mechanic here.
+  // cell on the CASTER's own board. The spell card returns to the
+  // caster's hand as a fresh instance UNLESS that summon actually
+  // happened (summonUnitToRandomFreeCell returns false if the board
+  // was full, in which case the card still comes back despite the
+  // hand having emptied) — once it successfully calls in a Часовой
+  // боли, the card is spent for good.
   const painHeartQueue = match.pendingSpells.filter((sp) => sp.kind === 'painHeartCurse');
   match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'painHeartCurse');
   for (const curseSpell of painHeartQueue) {
@@ -4596,14 +4651,17 @@ export function tryEndTurn(match, username) {
       targetHand.splice(idx, 1);
     }
     const emptied = discarded && targetHand.length === 0;
+    let summoned = false;
     if (emptied) {
-      summonUnitToRandomFreeCell(match, curseSpell.side, 'c167', events);
+      summoned = summonUnitToRandomFreeCell(match, curseSpell.side, 'c167', events);
     }
-    match.hands[curseSpell.side].push({ id: curseSpell.cardId, uid: nextUid('card') });
+    if (!summoned) {
+      match.hands[curseSpell.side].push({ id: curseSpell.cardId, uid: nextUid('card') });
+    }
     events.push({
       type: 'painHeartCurse', side: curseSpell.side, targetSide,
       laneIdx: curseSpell.laneIdx, depthIdx: curseSpell.depthIdx,
-      discarded, emptied,
+      discarded, emptied, summoned,
     });
   }
 
