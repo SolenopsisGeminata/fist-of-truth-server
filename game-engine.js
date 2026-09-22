@@ -701,6 +701,9 @@ export const CARD_POOL = [
   // a unit there, but absolutely no effect (not even to the hero) if
   // the cell is empty.
   { id: 's43', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 3, madFireballDmg: 10, rarity: 'rare', faction: 'inferno' },
+  // \u0411\u0435\u0441 \u0432 \u0430\u0434\u0441\u043a\u043e\u043c \u0434\u043e\u0441\u043f\u0435\u0445\u0435: pure reuse of the existing armor stat, no new
+  // mechanic needed.
+  { id: 'c176', name: '\u0411\u0435\u0441 \u0432 \u0430\u0434\u0441\u043a\u043e\u043c \u0434\u043e\u0441\u043f\u0435\u0445\u0435', type: 'creature', cost: 3, atk: 3, hp: 1, armor: 3, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
