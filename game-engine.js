@@ -637,6 +637,13 @@ export const CARD_POOL = [
   // random any-lane-any-depth targeting as \u0414\u0440\u0430\u043a\u043e\u043d \u043f\u0440\u0435\u0440\u0438\u0439's own
   // fireball.
   { id: 'c164', name: '\u042f\u0434\u043e\u0432\u0438\u0442\u044b\u0439 \u0436\u0443\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, armor: 1, acidShotOnDeath: true, rarity: 'rare', faction: 'inferno' },
+  // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440: the very first card to actually use the
+  // 'damage'/card.dmg spell kind (frontUnit-in-lane targeting, hero
+  // fallback if the lane is empty) \u2014 that whole pipeline (castSpell
+  // validation, the resolveSpells branch, the client's generic
+  // playPvpSpellEvent handler) already existed, unused, before this
+  // card gave it something to serve.
+  { id: 's38', name: '\u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440', type: 'spell', cost: 4, dmg: 4, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
