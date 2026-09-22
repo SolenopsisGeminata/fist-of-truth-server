@@ -734,6 +734,10 @@ export const CARD_POOL = [
   // hellScarecrowGrowOnEmptyHand in the end-of-round loop above
   // (passive).
   { id: 'c183', name: '\u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 4, atk: 0, hp: 4, hellScarecrowDiscardOnPlay: true, hellScarecrowGrowOnEmptyHand: true, rarity: 'rare', faction: 'inferno' },
+  // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c: pure reuse of \u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439 \u043e\u0433\u043e\u043d\u044c's exact
+  // ragingFire spell kind (see resolveSpells above), just bigger
+  // numbers \u2014 no new mechanic needed.
+  { id: 's45', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c', type: 'spell', cost: 4, ragingFire: true, ragingFireDmg: 4, ragingFireHeroDmg: 5, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
