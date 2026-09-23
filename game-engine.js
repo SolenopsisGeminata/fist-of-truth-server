@@ -771,6 +771,11 @@ export const CARD_POOL = [
   // \u043e\u0433\u043e\u043d\u044c/\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c \u2014 no new server mechanic needed, just
   // bigger numbers.
   { id: 's47', name: '\u0428\u0442\u043e\u0440\u043c \u043c\u043e\u043b\u043d\u0438\u0439', type: 'spell', cost: 5, ragingFire: true, ragingFireDmg: 5, ragingFireHeroDmg: 5, rarity: 'epic', faction: 'inferno' },
+  // \u041f\u043e\u0436\u0438\u0440\u0430\u044e\u0449\u0430\u044f \u0437\u043b\u043e\u0431\u0430: battlecry is a pure reuse of impTridentDamage
+  // (fixed damage straight to the enemy hero on play, no unit
+  // targeting) \u2014 see enemyHealOnDeath above for the new "give it back
+  // on death" half.
+  { id: 'c193', name: '\u041f\u043e\u0436\u0438\u0440\u0430\u044e\u0449\u0430\u044f \u0437\u043b\u043e\u0431\u0430', type: 'creature', cost: 5, atk: 6, hp: 10, impTridentDamage: 8, enemyHealOnDeath: 8, rarity: 'legendary', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1251,6 +1256,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
     fixedHeal: card.fixedHeal || 0,
     healOnDeath: card.healOnDeath || 0,
+    enemyHealOnDeath: card.enemyHealOnDeath || 0,
     // Чаростойкость: see the siegeShot/cannonShot targeting above and the
     // 'damage' spell kind in resolveSpells — every current cross-side
     // damage-dealing mechanic checks this. No enemy-facing stat-reduction
@@ -2269,6 +2275,21 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   if (unit && unit.healOnDeath && !anyHeroDown(match)) {
     const healed = healHero(match, side, unit.healOnDeath, events);
     events.push({ type: 'endOfRound', side, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx, depthIdx });
+  }
+  // Пожирающая злоба: on death (from anything), heals the ENEMY hero
+  // for a fixed amount — the same amount its own battlecry took from
+  // them (impTridentDamage) — giving that stolen health back. Unlike
+  // healOnDeath above (which heals the dying unit's OWN owner), this
+  // benefits the OTHER side, so it gets its own event with an explicit
+  // targetSide, same "different side gets the effect" shape as Мясник
+  // инферно's enemyDrawOnDeath.
+  if (unit && unit.enemyHealOnDeath && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    const healed = healHero(match, targetSide, unit.enemyHealOnDeath, events);
+    events.push({
+      type: 'devouringMaliceReturn', side, targetSide,
+      sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx, amount: healed,
+    });
   }
   // Отшельник-Даос: on death, draws 1 card from her OWNER's own deck.
   // cardId is included (here and on every other on-death event below)
