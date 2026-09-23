@@ -616,19 +616,19 @@ export const CARD_POOL = [
   // \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441: same impAtkGrowOnHeroHit mechanic as \u0427\u0435\u0440\u0442\u0435\u043d\u043e\u043a
   // above, but +2 per hit instead of +1 \u2014 a much higher-risk 3/1 body
   // to make up for it.
-  { id: 'c159', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 1, impAtkGrowOnHeroHit: 2, rarity: 'rare', faction: 'inferno' },
+  { id: 'c159', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 2, atk: 3, hp: 1, impAtkGrowOnHeroHit: 2, rarity: 'common', faction: 'inferno' },
   // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (a NEW card despite reusing an OLD card's former
   // name \u2014 c156 was renamed to \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441 earlier, freeing this name
   // up): see trampleDiscountOnPlay/pendingTrampleDiscounts above.
   { id: 'c160', name: '\u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0447\u0435\u0440\u0442', type: 'creature', cost: 2, atk: 3, hp: 2, trample: true, trampleDiscountOnPlay: true, rarity: 'rare', faction: 'inferno' },
   // \u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437: see evilEyeDiscardOnDeath in killUnit above.
-  { id: 'c161', name: '\u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 2, atk: 1, hp: 1, evilEyeDiscardOnDeath: true, rarity: 'rare', faction: 'inferno' },
+  { id: 'c161', name: '\u0417\u043b\u043e\u0439 \u0433\u043b\u0430\u0437', type: 'creature', cost: 2, atk: 1, hp: 1, evilEyeDiscardOnDeath: true, rarity: 'common', faction: 'inferno' },
   // \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430: see fireFlyGrowOnEnemyHeroDamage \u2014 the new damageHero()
   // funnel above (now the single place every hero-damage site in the
   // file routes through, mirroring killUnit for deaths) checks this
   // flag on ANY source of damage to the enemy hero, not just her own
   // attack.
-  { id: 'c162', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'rare', faction: 'inferno' },
+  { id: 'c162', name: '\u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, fireFlyGrowOnEnemyHeroDamage: true, rarity: 'common', faction: 'inferno' },
   // \u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c: see tormentorExtraDamage in resolveCombatPass above \u2014 the
   // extra 1 damage to BOTH heroes routes through damageHero(), so it
   // can itself trigger \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430 (or anything similar) too.
@@ -671,7 +671,7 @@ export const CARD_POOL = [
   // \u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e: pure reuse of \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d
   // \u0438\u043d\u0444\u0435\u0440\u043d\u043e's exact skeletonWeaponThrowOnDeath mechanic (see killUnit
   // above), just a bigger 4/2 body instead of 2/2.
-  { id: 'c169', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 3, atk: 4, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'rare', faction: 'inferno' },
+  { id: 'c169', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0431\u0435\u0440\u0441\u0435\u0440\u043a \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 3, atk: 4, hp: 2, skeletonWeaponThrowOnDeath: true, rarity: 'common', faction: 'inferno' },
   // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (the newest one, distinct from \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0447\u0435\u0440\u0442 and
   // \u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0431\u0435\u0441): see blazeImpEmptyHandGrow in the pre-attack combat
   // loop above.
@@ -680,7 +680,7 @@ export const CARD_POOL = [
   { id: 'c171', name: '\u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 3, hp: 2, thiefImpStealOnHeroHit: true, rarity: 'rare', faction: 'inferno' },
   // \u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441: pure reuse of the existing doubleStrike trait, no new
   // mechanic needed.
-  { id: 'c172', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 1, hp: 3, doubleStrike: true, rarity: 'rare', faction: 'inferno' },
+  { id: 'c172', name: '\u0414\u0432\u0443\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0431\u0435\u0441', type: 'creature', cost: 3, atk: 1, hp: 3, doubleStrike: true, rarity: 'common', faction: 'inferno' },
   // \u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442: see bloodPoolSelfHitDraw in the end-of-round loop above.
   { id: 'c173', name: '\u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u041e\u043c\u0443\u0442', type: 'creature', cost: 3, atk: 0, hp: 6, defender: true, bloodPoolSelfHitDraw: true, rarity: 'rare', faction: 'inferno' },
   // \u0413\u043e\u0440\u044f\u0449\u0435\u0435 \u0434\u0435\u0440\u0435\u0432\u043e: pure reuse of \u041e\u0433\u043d\u0435\u043d\u043d\u0430\u044f \u043c\u0443\u0445\u0430's exact
@@ -884,7 +884,13 @@ export function savagesStarterDeckCounts() {
 // — more will be added here as they're made Common and explicitly
 // requested for it.
 export function infernoStarterDeckCounts() {
-  return { c156: 3, c158: 3, c157: 3, c168: 3, s41: 3 };
+  return {
+    c156: 3, c158: 3, c157: 3, c168: 3, s41: 3,
+    // Огненная муха, Скелет-берсерк Инферно, Двухголовый бес, Яростный
+    // бес, Злой глаз: downgraded to common and added to the starter
+    // deck alongside the original five, 3 copies each.
+    c162: 3, c169: 3, c172: 3, c159: 3, c161: 3,
+  };
 }
 
 // ---------- Factions ----------
