@@ -783,6 +783,8 @@ export const CARD_POOL = [
   // \u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435: see the 'ignition' spell kind in
   // castSpell/resolveSpells above.
   { id: 's48', name: '\u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435', type: 'spell', cost: 6, ignitionDmg: 6, ignitionEmptyHandDmg: 11, rarity: 'epic', faction: 'inferno' },
+  // \u041f\u043e\u0440\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0431\u0435\u0437\u0434\u043d\u044b: see abyssSpawnDoubleSpikeShot above.
+  { id: 'c195', name: '\u041f\u043e\u0440\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0431\u0435\u0437\u0434\u043d\u044b', type: 'creature', cost: 7, atk: 6, hp: 16, abyssSpawnDoubleSpikeShot: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1310,6 +1312,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
+    abyssSpawnDoubleSpikeShot: !!card.abyssSpawnDoubleSpikeShot,
     vileVerminSelfAcid: !!card.vileVerminSelfAcid,
     hellScarecrowGrowOnEmptyHand: !!card.hellScarecrowGrowOnEmptyHand,
     succubusDrainOnRoundEnd: !!card.succubusDrainOnRoundEnd,
@@ -4862,6 +4865,24 @@ function resolveCombatPass(match, events, isEligible) {
       // Циклоп/Бесконечная Кровавая Тень above).
       if (aEligible && aUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 2, 'acidSpit');
       if (bEligible && bUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 2, 'acidSpit');
+      // Порождение бездны: same "no bornRound gate" timing as every
+      // other single-trigger pre-attack card above — right before every
+      // attack of its, fires TWO spike shots in a row, each at a random
+      // enemy unit for a fixed 3 damage. Each call independently
+      // re-picks from whatever's currently alive (so a single remaining
+      // enemy unit takes both shots, and the second shot correctly
+      // ignores anything the first one just killed), reusing
+      // applyRandomEnemyShot's exact targeting pool (Чаростойкость
+      // excluded, silent no-op with no event at all if no eligible unit
+      // exists) with its own 'spikeShot' event.
+      if (aEligible && aUnit.abyssSpawnDoubleSpikeShot) {
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 3, 'spikeShot');
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 3, 'spikeShot');
+      }
+      if (bEligible && bUnit.abyssSpawnDoubleSpikeShot) {
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
+      }
       // Подлый вредитель: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before
       // every attack of his, surrounds himself with a cloud of acid
