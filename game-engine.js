@@ -749,6 +749,9 @@ export const CARD_POOL = [
   { id: 'c186', name: '\u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 2, hp: 1, howlingDemonDoubleAtkOnPlay: true, rarity: 'epic', faction: 'inferno' },
   // \u041b\u0430\u0432\u043e\u0432\u044b\u0439 \u043a\u043e\u043b\u0434\u0443\u043d: see applyLavaWarlockFireball(s) above.
   { id: 'c187', name: '\u041b\u0430\u0432\u043e\u0432\u044b\u0439 \u043a\u043e\u043b\u0434\u0443\u043d', type: 'creature', cost: 4, atk: 3, hp: 4, lavaWarlockFireball: true, rarity: 'epic', faction: 'inferno' },
+  // \u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438: see the 'soulDrain' spell kind in
+  // castSpell/resolveSpells above.
+  { id: 's46', name: '\u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438', type: 'spell', cost: 4, soulDrainSpell: true, soulDrainDmg: 3, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -2084,6 +2087,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.soulDrainSpell) {
+    // \u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438: any cell on the ENEMY board is a valid target,
+    // occupied or empty \u2014 never actually read at resolution, purely a
+    // targeting formality (same "any enemy cell" bounds-only validation
+    // as \u0421\u0435\u0440\u0434\u0446\u0435 \u0431\u043e\u043b\u0438 above/\u041a\u0430\u043f\u043a\u0430\u043d), since the actual damage target is a
+    // fully random enemy unit picked at resolution.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.madFireballDmg) {
     // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 (the new one): same "specific enemy
     // cell, empty or occupied" bounds-only validation as \u041a\u0430\u043f\u043a\u0430\u043d above \u2014
@@ -2108,7 +2120,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : 'buff')))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : 'buff'))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -2141,6 +2153,7 @@ export function castSpell(match, username, uid, lane, depth) {
     buffRageOnEnemySummon: card.buffRageOnEnemySummon,
     madFireballDmg: card.madFireballDmg,
     meteorDmg: card.meteorDmg,
+    soulDrainDmg: card.soulDrainDmg,
   });
   return { ok: true };
 }
@@ -3088,6 +3101,49 @@ function resolveSpells(match, events) {
           laneIdx: spell.laneIdx, targetSide: defenderName, empty: true,
         });
       }
+    } else if (spell.kind === 'soulDrain') {
+      // Высасывание души: same "collect every non-Чаростойкость enemy
+      // unit, pick one at random" eligibility pool as randomBlind above
+      // — hits it for a fixed amount (no hero redirect if the pool's
+      // empty, the damage portion simply has nothing to hit that round)
+      // — AND, independently and always, the opponent loses 1 random
+      // card from hand regardless of whether a unit was actually hit
+      // (same privacy-safe discard shape as Злой глаз/Адское пугало —
+      // never reveals which card was lost).
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targets = [];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          const u = board[l][d];
+          if (u && !u.spellResist) targets.push({ laneIdx: l, depthIdx: d, unit: u });
+        }
+      }
+      let targetLaneIdx = null;
+      let targetDepthIdx = null;
+      let amount = 0;
+      let died = false;
+      if (targets.length > 0) {
+        const chosen = targets[Math.floor(Math.random() * targets.length)];
+        amount = spell.soulDrainDmg;
+        chosen.unit.hp -= amount;
+        died = chosen.unit.hp <= 0;
+        targetLaneIdx = chosen.laneIdx;
+        targetDepthIdx = chosen.depthIdx;
+      }
+      const targetHand = match.hands[defenderName];
+      const discarded = targetHand.length > 0;
+      if (discarded) {
+        const idx = Math.floor(Math.random() * targetHand.length);
+        targetHand.splice(idx, 1);
+      }
+      events.push({
+        type: 'spell', kind: 'soulDrain', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName,
+        targetLaneIdx, targetDepthIdx, amount, died, discarded,
+        empty: targets.length === 0,
+      });
+      if (died) killUnit(match, defenderName, targetLaneIdx, targetDepthIdx, events);
     } else if (spell.kind === 'lifeLight') {
       // Свет жизни: heals own hero for a fixed amount first (via the
       // shared healHero choke point, so Двойное омоложение/Имперский
