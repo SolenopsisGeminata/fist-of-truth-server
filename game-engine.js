@@ -817,6 +817,10 @@ export const CARD_POOL = [
   // (only the opposing side's board is checked, unlike \u0414\u0443\u0440\u043d\u043e\u0439
   // \u0433\u043b\u0430\u0437's own faction-wide, both-sides badEyeGrowOnFactionDeath).
   { id: 'c202', name: '\u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439', type: 'creature', cost: 2, atk: 2, hp: 3, deathScytheGrowOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
+  // \u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439: pure reuse of defender/counterattack (see
+  // \u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b, c63) plus its own boneWallHealOnEnemyDeath in killUnit
+  // above \u2014 same targeting as \u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439's own reaction, hp-only.
+  { id: 'c203', name: '\u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, counterattack: true, boneWallHealOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1383,6 +1387,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
+    // Стена костей: see the killUnit block right after Смерть с косой's
+    // own deathScytheGrowOnEnemyDeath reaction above.
+    boneWallHealOnEnemyDeath: !!card.boneWallHealOnEnemyDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -2755,6 +2762,25 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           events.push({
             type: 'rallyBuff', side: enemySide, laneIdx: l2,
             targetDepth: d2, buffAtk: 1, buffHp: 1, sourceUid: reactUnit.uid,
+          });
+        }
+      }
+    }
+  }
+  // Стена костей: same "only the opposing side's board" targeting as
+  // Смерть с косой above, but hp-only — no atk change at all.
+  if (unit) {
+    const enemySide = otherPlayer(match, side);
+    const reactBoard = match.boards[enemySide];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        const reactUnit = reactBoard[l2][d2];
+        if (reactUnit && reactUnit.boneWallHealOnEnemyDeath) {
+          reactUnit.hp += 1;
+          reactUnit.maxHp += 1;
+          events.push({
+            type: 'rallyBuff', side: enemySide, laneIdx: l2,
+            targetDepth: d2, buffAtk: 0, buffHp: 1, sourceUid: reactUnit.uid,
           });
         }
       }
