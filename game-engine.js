@@ -803,6 +803,9 @@ export const CARD_POOL = [
   // thawIfFrozenOnPlay in placeCard and freshFrozenGrid/frozenCellPulse
   // above for the new Frozen-cell mechanic itself.
   { id: 'c199', name: '\u0411\u0435\u0437\u043d\u043e\u0433\u0438\u0439 \u0437\u043e\u043c\u0431\u0438', type: 'creature', cost: 1, atk: 1, hp: 1, sleep: true, thawIfFrozenOnPlay: true, rarity: 'rare', faction: 'frost' },
+  // \u0421\u043a\u0435\u043b\u0435\u0442: part of the \u0425\u043e\u043b\u043e\u0434 starter deck (see
+  // frostStarterDeckCounts below) \u2014 no special fields at all.
+  { id: 'c200', name: '\u0421\u043a\u0435\u043b\u0435\u0442', type: 'creature', cost: 2, atk: 2, hp: 1, rarity: 'common', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -897,6 +900,15 @@ export function infernoStarterDeckCounts() {
   };
 }
 
+// The Холод starter deck — same "granted once the faction unlocks"
+// placeholder reasoning as the other faction starter decks above. Скелет
+// is the first confirmed starter-deck card (Безногий зомби is Rare, so
+// it stays shop/draft-only, same "starter decks are Common-only"
+// convention as every other faction).
+export function frostStarterDeckCounts() {
+  return { c200: 3 };
+}
+
 // ---------- Factions ----------
 // The full canonical set of faction ids that exist in the client's own
 // UI (tabs), whether or not they have any cards yet. Server-authoritative
@@ -924,6 +936,7 @@ export function starterDeckCountsForFaction(factionId) {
   if (factionId === 'zen') return zenStarterDeckCounts();
   if (factionId === 'savages') return savagesStarterDeckCounts();
   if (factionId === 'inferno') return infernoStarterDeckCounts();
+  if (factionId === 'frost') return frostStarterDeckCounts();
   return {};
 }
 
