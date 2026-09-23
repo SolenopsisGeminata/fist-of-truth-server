@@ -833,6 +833,9 @@ export const CARD_POOL = [
   // \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435 above, one link further \u2014 summons the existing
   // \u0421\u043a\u0435\u043b\u0435\u0442 (c200) onto its own cell on death.
   { id: 'c206', name: '\u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f', type: 'creature', cost: 2, atk: 2, hp: 3, deathSummonCardId: 'c200', rarity: 'rare', faction: 'frost' },
+  // \u0410\u0440\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e: see arcticScarecrowOnPlay in
+  // placeCard/the pendingArcticScarecrow queue in tryEndTurn above.
+  { id: 'c207', name: '\u0410\u0440\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 2, atk: 0, hp: 4, legacy: 1, arcticScarecrowOnPlay: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1209,6 +1212,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingWiseDeerDebuff: [],
     pendingWiseDeerBuff: [],
     pendingSpearmanBuff: [],
+    pendingArcticScarecrow: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -1643,6 +1647,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution (see pendingCalmNun below).
   if (card.calmNunOnPlay) {
     match.pendingCalmNun.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Арктическое пугало: battlecry — freezes a random ADJACENT cell
+  // (occupancy-agnostic) and chills every enemy unit in its own
+  // mirrored lane (-1 atk each, floored at 0). Same deferred reasoning
+  // as every other battlecry above (resolved at the start of the next
+  // resolution — see pendingArcticScarecrow below).
+  if (card.arcticScarecrowOnPlay) {
+    match.pendingArcticScarecrow.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Смелый учитель: battlecry — increases a random ADJACENT ally's
@@ -6191,6 +6204,45 @@ export function tryEndTurn(match, username) {
         });
         if (died) killUnit(match, enemySide, l, d, events);
       }
+    }
+  }
+
+  // Арктическое пугало: battlecry — freezes a random ADJACENT cell on
+  // its OWN side (occupancy-agnostic, reuses adjacentCellPositions same
+  // as Небесный вихрь), then chills every enemy unit currently in its
+  // own MIRRORED lane by -1 atk (floored at 0, Чаростойкость/Щит
+  // protects individually, same exclusion as Мудрый олень's own
+  // wiseDeerDebuff above) — atk-only, no hp loss, so it can never kill
+  // anyone. Reuses the existing 'cellFrozen' event (cause:'battlecry'
+  // picks the right log wording client-side) for the freeze part, and a
+  // dedicated 'arcticScarecrowChill' event per chilled unit for the
+  // debuff (rallyBuff can't represent a negative delta).
+  const arcticScarecrowQueue = match.pendingArcticScarecrow;
+  match.pendingArcticScarecrow = [];
+  for (const entry of arcticScarecrowQueue) {
+    const board = match.boards[entry.side];
+    const sourceUnit = board[entry.laneIdx][entry.depthIdx];
+    const neighbours = adjacentCellPositions(entry.laneIdx, entry.depthIdx);
+    const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+    match.frozenCells[entry.side][chosen.laneIdx][chosen.depthIdx] = true;
+    events.push({
+      type: 'cellFrozen', side: entry.side, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
+      sourceUid: entry.sourceUid, cardId: sourceUnit ? sourceUnit.id : null, cause: 'battlecry',
+    });
+
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    for (let d = 0; d < DEPTH; d++) {
+      const targetUnit = enemyBoard[entry.laneIdx][d];
+      if (!targetUnit) continue;
+      const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
+      const before = targetUnit.atk;
+      if (!resisted) targetUnit.atk = Math.max(0, targetUnit.atk - 1);
+      events.push({
+        type: 'arcticScarecrowChill', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: d, resisted, delta: targetUnit.atk - before,
+        sourceUid: entry.sourceUid,
+      });
     }
   }
 
