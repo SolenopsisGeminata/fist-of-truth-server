@@ -747,6 +747,8 @@ export const CARD_POOL = [
   // \u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d: see howlingDemonDoubleAtkOnPlay in
   // placeCard/tryEndTurn above.
   { id: 'c186', name: '\u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 2, hp: 1, howlingDemonDoubleAtkOnPlay: true, rarity: 'epic', faction: 'inferno' },
+  // \u041b\u0430\u0432\u043e\u0432\u044b\u0439 \u043a\u043e\u043b\u0434\u0443\u043d: see applyLavaWarlockFireball(s) above.
+  { id: 'c187', name: '\u041b\u0430\u0432\u043e\u0432\u044b\u0439 \u043a\u043e\u043b\u0434\u0443\u043d', type: 'creature', cost: 4, atk: 3, hp: 4, lavaWarlockFireball: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1273,6 +1275,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     highShamanManaBuff: !!card.highShamanManaBuff,
     axeFanaticThrow: !!card.axeFanaticThrow,
     axeWomanThrow: !!card.axeWomanThrow,
+    lavaWarlockFireball: !!card.lavaWarlockFireball,
     bigMouthChiefSummon: !!card.bigMouthChiefSummon,
     cyclopsThrow: !!card.cyclopsThrow,
     rumaBuff: !!card.rumaBuff,
@@ -4319,6 +4322,54 @@ function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, dep
   if (died) killUnit(match, enemySide, laneIdx, targetDepth, events);
 }
 
+// Лавовый колдун: at the start of every round he's alive, hurls a
+// fireball down his own mirrored lane into the enemy board — hits the
+// FIRST (frontmost) enemy unit in that lane, i.e. frontUnit(), same
+// "closest to the front" reading combat itself uses; an empty lane lets
+// the ball fly all the way through to the enemy hero instead. No random
+// depth roll here (unlike Дикарка с топорами's axe throw) — this is a
+// deterministic "first thing in its path" hit. Чаростойкость blocks it
+// outright, same resisted-no-redirect precedent as every other
+// fireball/throw.
+function applyLavaWarlockFireball(match, side, enemySide, events, unit, laneIdx, depthIdx) {
+  const targetBoard = match.boards[enemySide];
+  const front = frontUnit(targetBoard, laneIdx);
+  const resisted = !!(front && front.unit.spellResist);
+  const amount = 3;
+  let died = false;
+  if (resisted) {
+    // no-op: the fireball fizzles harmlessly on her
+  } else if (front) {
+    front.unit.hp -= amount;
+    died = front.unit.hp <= 0;
+  } else {
+    damageHero(match, enemySide, amount, events);
+  }
+  events.push({
+    type: 'lavaWarlockFireball', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    laneIdx, depthIdx, sourceUid: unit.uid,
+    targetLaneIdx: laneIdx, targetDepthIdx: front ? front.depth : null,
+    targetHero: !front, died, resisted,
+  });
+  if (died) killUnit(match, enemySide, laneIdx, front.depth, events);
+}
+
+function applyLavaWarlockFireballs(match, events) {
+  for (const side of match.players) {
+    if (anyHeroDown(match)) break;
+    const enemySide = otherPlayer(match, side);
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      if (anyHeroDown(match)) break;
+      for (let d = 0; d < DEPTH; d++) {
+        if (anyHeroDown(match)) break;
+        const unit = board[l][d];
+        if (unit && unit.lavaWarlockFireball) applyLavaWarlockFireball(match, side, enemySide, events, unit, l, d);
+      }
+    }
+  }
+}
+
 // Дракон прерий: a single fireball — targets a FULLY random cell
 // anywhere on the enemy board (any lane, any depth, not restricted to
 // a mirrored lane like Фанатик с топорами's axe), 2 damage. A unit
@@ -5897,6 +5948,10 @@ export function tryEndTurn(match, username) {
   // throw as her own pre-attack hook below, so she throws twice per
   // round in total (once here, once before her attack).
   applyAxeWomanStartOfRoundThrows(match, events);
+  // Лавовый колдун also fires here — a mirrored-lane fireball at the
+  // frontmost enemy (or straight to the hero if the lane's empty),
+  // every round he's alive.
+  applyLavaWarlockFireballs(match, events);
   // Кай Кровавый also fires here — grants every OTHER ally (never
   // himself) Кража жизни, every round he's alive.
   applyKaiBloodyLifestealGrants(match, events);
