@@ -821,6 +821,10 @@ export const CARD_POOL = [
   // \u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b, c63) plus its own boneWallHealOnEnemyDeath in killUnit
   // above \u2014 same targeting as \u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439's own reaction, hp-only.
   { id: 'c203', name: '\u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, counterattack: true, boneWallHealOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
+  // \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430: reuses freezeCellOnDeath (see \u041b\u0435\u0434\u044f\u043d\u043e\u0439
+  // \u0437\u043e\u043c\u0431\u0438, c201) plus its own iceWallGrowOnFrozenCell in the
+  // end-of-round loop above.
+  { id: 'c204', name: '\u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 2, atk: 0, hp: 6, defender: true, freezeCellOnDeath: true, iceWallGrowOnFrozenCell: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1390,6 +1394,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Стена костей: see the killUnit block right after Смерть с косой's
     // own deathScytheGrowOnEnemyDeath reaction above.
     boneWallHealOnEnemyDeath: !!card.boneWallHealOnEnemyDeath,
+    // Ледяная стена: see the end-of-round block right after
+    // frozenCellPulse above.
+    iceWallGrowOnFrozenCell: !!card.iceWallGrowOnFrozenCell,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -6686,6 +6693,20 @@ export function tryEndTurn(match, username) {
             events.push({
               type: 'frozenCellPulse', side: name, laneIdx: l, depthIdx: d,
               sourceUid: unit.uid, delta: unit.atk - before, isFrost,
+            });
+          }
+          // Ледяная стена: an ADDITIONAL effect layered on top of the
+          // generic frozenCellPulse above (which only ever touches atk)
+          // — while its OWN cell is frozen, at the end of every round it
+          // ALSO permanently gains +2 hp, on top of whatever the generic
+          // pulse just did (being Frost herself, that's +1 atk from the
+          // block right above). Reuses the plain 'rallyBuff' event.
+          if (unit && unit.iceWallGrowOnFrozenCell && match.frozenCells[name][l][d]) {
+            unit.hp += 2;
+            unit.maxHp += 2;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l, targetDepth: d,
+              buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
             });
           }
           if (unit && unit.cookHeal) {
