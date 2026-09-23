@@ -754,6 +754,9 @@ export const CARD_POOL = [
   { id: 's46', name: '\u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438', type: 'spell', cost: 4, soulDrainSpell: true, soulDrainDmg: 3, rarity: 'epic', faction: 'inferno' },
   // \u0411\u0435\u0437\u043b\u0438\u043a\u0438\u0439 \u043c\u044f\u0441\u043d\u0438\u043a: see spikeWaveOnPlay/applyButcherSpikeWave above.
   { id: 'c188', name: '\u0411\u0435\u0437\u043b\u0438\u043a\u0438\u0439 \u043c\u044f\u0441\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 2, hp: 5, spikeWaveOnPlay: true, rarity: 'rare', faction: 'inferno' },
+  // \u041c\u044f\u0441\u043d\u0438\u043a \u0438\u043d\u0444\u0435\u0440\u043d\u043e: see butcherKillOnPlay (pendingButcherKills) and
+  // enemyDrawOnDeath (killUnit) above.
+  { id: 'c189', name: '\u041c\u044f\u0441\u043d\u0438\u043a \u0438\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 5, atk: 5, hp: 5, butcherKillOnPlay: true, enemyDrawOnDeath: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1120,6 +1123,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHellScarecrowDiscards: [],
     pendingHowlingDemonDoubles: [],
     pendingSpikeWaves: [],
+    pendingButcherKills: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1304,6 +1308,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     warriorSheep: !!card.warriorSheep,
     drawOnDeath: !!card.drawOnDeath,
     chanceDrawOnDeath: card.chanceDrawOnDeath || 0,
+    enemyDrawOnDeath: !!card.enemyDrawOnDeath,
     copyOnLegacy: !!card.copyOnLegacy,
     shurikenMaster: !!card.shurikenMaster,
     moneyTree: !!card.moneyTree,
@@ -1804,6 +1809,13 @@ export function placeCard(match, username, uid, lane, depth) {
     match.pendingSpikeWaves.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
+  // Мясник инферно: on play, destroys a fully random enemy unit
+  // outright — deferred same as every other battlecry, so it picks from
+  // the board as it stands once placing is fully done for the round.
+  if (card.butcherKillOnPlay) {
+    match.pendingButcherKills.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
   // Крушитель черепов: on play, deals a fixed amount of damage to its
   // OWN owner's hero — deferred to resolution same as every other
   // battlecry, so it plays as a revealed event alongside everything
@@ -2245,6 +2257,23 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     draw(match.decks[side], match.hands[side], 1);
     const drew = match.hands[side].length > beforeLen;
     events.push({ type: 'deathDraw', side, sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx, drew });
+  }
+  // Мясник инферно: on death (from anything), the OPPONENT of its own
+  // owner draws 1 card from THEIR OWN deck — unlike Отшельник-Даос's
+  // drawOnDeath/Кактус прерий's chanceDrawOnDeath above (both benefit
+  // the dying unit's own owner), this benefits the OTHER side, so it
+  // gets its own event with an explicit targetSide rather than reusing
+  // 'deathDraw' (whose 'side' field always means "the side that draws",
+  // same side as the dying unit's owner there).
+  if (unit && unit.enemyDrawOnDeath) {
+    const targetSide = otherPlayer(match, side);
+    const beforeLen = match.hands[targetSide].length;
+    draw(match.decks[targetSide], match.hands[targetSide], 1);
+    const drew = match.hands[targetSide].length > beforeLen;
+    events.push({
+      type: 'butcherDeathDraw', side, targetSide,
+      sourceUid: unit.uid, cardId: unit.id, laneIdx, depthIdx, drew,
+    });
   }
   // Метеоритный страж: on death, throws his weapon at a random depth
   // within the SAME lane index on the enemy's board — his own mirrored
@@ -6000,6 +6029,41 @@ export function tryEndTurn(match, username) {
     if (anyHeroDown(match)) break;
     const enemySide = otherPlayer(match, entry.side);
     applyButcherSpikeWave(match, entry.side, enemySide, entry.laneIdx, events, entry.sourceUid);
+  }
+
+  // Мясник инферно's battlecry — see butcherKillOnPlay above. Same
+  // "collect every non-Чаростойкость, non-Щит enemy unit, pick one at
+  // random" eligibility pool as Яркий свет/Высасывание души, but an
+  // OUTRIGHT kill (killUnit directly, no hp reduction at all) rather
+  // than damage — same "Щит/Чаростойкость blocks outright, no redirect"
+  // precedent as Капкан's own targeted kill.
+  const butcherKillQueue = match.pendingButcherKills;
+  match.pendingButcherKills = [];
+  for (const entry of butcherKillQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const board = match.boards[enemySide];
+    const targets = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && !u.spellResist && !u.shieldEffect) targets.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    let died = false;
+    let targetLaneIdx = null;
+    let targetDepthIdx = null;
+    if (targets.length > 0) {
+      const chosen = targets[Math.floor(Math.random() * targets.length)];
+      died = true;
+      targetLaneIdx = chosen.laneIdx;
+      targetDepthIdx = chosen.depthIdx;
+    }
+    events.push({
+      type: 'infernoButcherKill', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetLaneIdx, targetDepthIdx, died, empty: targets.length === 0,
+    });
+    if (died) killUnit(match, enemySide, targetLaneIdx, targetDepthIdx, events);
   }
 
   // Крушитель черепов's battlecry self-hit — routed through
