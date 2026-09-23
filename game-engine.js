@@ -836,6 +836,17 @@ export const CARD_POOL = [
   // \u0410\u0440\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e: see arcticScarecrowOnPlay in
   // placeCard/the pendingArcticScarecrow queue in tryEndTurn above.
   { id: 'c207', name: '\u0410\u0440\u043a\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e', type: 'creature', cost: 2, atk: 0, hp: 4, legacy: 1, arcticScarecrowOnPlay: true, rarity: 'rare', faction: 'frost' },
+  // \u041a\u043e\u0441\u0442\u044f\u043d\u0430\u044f \u0433\u043e\u043d\u0447\u0430\u044f: see boneHoundGrowAllyOnDeath in killUnit above \u2014
+  // pure reuse of applyValleyBarn's own "random ally anywhere on the
+  // board" pool (no adjacency requirement). Part of the \u0425\u043e\u043b\u043e\u0434
+  // starter deck (see frostStarterDeckCounts below); also the summon
+  // target of \u041f\u0440\u0438\u0437\u044b\u0432 \u0433\u043e\u043d\u0447\u0435\u0439 (s49) below.
+  { id: 'c208', name: '\u041a\u043e\u0441\u0442\u044f\u043d\u0430\u044f \u0433\u043e\u043d\u0447\u0430\u044f', type: 'creature', cost: 1, atk: 2, hp: 1, boneHoundGrowAllyOnDeath: true, rarity: 'common', faction: 'frost' },
+  // \u041f\u0440\u0438\u0437\u044b\u0432 \u0433\u043e\u043d\u0447\u0435\u0439: see the 'houndCall' spell kind in
+  // resolveSpells/castSpell above \u2014 same "any own cell" targeted-summon
+  // shape as \u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438/\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438, plus an unconditional
+  // extra copy of the summoned card added straight to hand.
+  { id: 's49', name: '\u041f\u0440\u0438\u0437\u044b\u0432 \u0433\u043e\u043d\u0447\u0435\u0439', type: 'spell', cost: 2, houndCall: true, summonCardId: 'c208', rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -931,13 +942,13 @@ export function infernoStarterDeckCounts() {
 }
 
 // The Холод starter deck — same "granted once the faction unlocks"
-// placeholder reasoning as the other faction starter decks above. Скелет
-// and Ледяной зомби (downgraded to common) are the confirmed
-// starter-deck cards so far (Безногий зомби and Смерть с косой are
-// Rare, so they stay shop/draft-only, same "starter decks are
+// placeholder reasoning as the other faction starter decks above.
+// Скелет, Ледяной зомби (downgraded to common), and Костяная гончая are
+// the confirmed starter-deck cards so far (every other Холод card so
+// far is Rare, so none of them join, same "starter decks are
 // Common-only" convention as every other faction).
 export function frostStarterDeckCounts() {
-  return { c200: 3, c201: 3 };
+  return { c200: 3, c201: 3, c208: 3 };
 }
 
 // ---------- Factions ----------
@@ -1412,6 +1423,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Ледяная стена: see the end-of-round block right after
     // frozenCellPulse above.
     iceWallGrowOnFrozenCell: !!card.iceWallGrowOnFrozenCell,
+    // Костяная гончая: see the killUnit block right after Стена костей's
+    // own boneWallHealOnAnyDeath reaction above.
+    boneHoundGrowAllyOnDeath: !!card.boneHoundGrowAllyOnDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -2223,6 +2237,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.houndCall) {
+    // Призыв гончей: same "any own cell" targeted-summon casting as
+    // Вызов стражи above, but no random-cell fallback — the targeted
+    // cell either takes the summon or the summon simply doesn't happen,
+    // and a fresh copy of the summoned card is added to hand either way
+    // (see the 'houndCall' spell kind in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: 'Некорректная позиция.' };
+    }
   } else if (card.heavenlyRays) {
     // Небесные лучи: buffs every allied unit regardless of where the
     // player clicks — same "any own cell" casting as Родник.
@@ -2321,7 +2344,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.ignitionDmg ? 'ignition' : 'buff')))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.ignitionDmg ? 'ignition' : 'buff'))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -2839,6 +2862,29 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           }
         }
       }
+    }
+  }
+  // Костяная гончая: on death, picks ONE random ally anywhere on its
+  // OWN side (no adjacency requirement — pure reuse of applyValleyBarn's
+  // own "any ally, anywhere, excluding the trigger source" pool, which
+  // is already excluded here since it's already been removed from the
+  // board at the top of this function) and permanently gives it +2 atk.
+  // A safe no-op if it has no ally left at all.
+  if (unit && unit.boneHoundGrowAllyOnDeath) {
+    const allies = [];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        if (board[l2][d2]) allies.push({ laneIdx: l2, depthIdx: d2 });
+      }
+    }
+    if (allies.length > 0) {
+      const chosen = allies[Math.floor(Math.random() * allies.length)];
+      const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+      targetUnit.atk += 2;
+      events.push({
+        type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+        targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
+      });
     }
   }
 }
@@ -5657,6 +5703,34 @@ export function tryEndTurn(match, username) {
       }
     }
     summonUnitToRandomFreeCell(match, guardSpell.side, guardSpell.summonCardId, events);
+  }
+
+  // Призыв гончей: same "fires in the Мгновенный призыв phase" timing
+  // as Вызов стражи above, but no random-cell fallback — the summon
+  // either lands on the specifically targeted cell (silently failing
+  // just that part if it's occupied by now) or doesn't happen at all.
+  // A fresh copy of the summoned card is ALWAYS added to the caster's
+  // hand regardless of whether the summon itself landed.
+  const houndCallQueue = match.pendingSpells.filter((sp) => sp.kind === 'houndCall');
+  match.pendingSpells = match.pendingSpells.filter((sp) => sp.kind !== 'houndCall');
+  for (const houndSpell of houndCallQueue) {
+    const board = match.boards[houndSpell.side];
+    let summoned = false;
+    if (!board[houndSpell.laneIdx][houndSpell.depthIdx]) {
+      const summonedCard = cardById(houndSpell.summonCardId);
+      if (summonedCard) {
+        const unit = buildUnitFromCard(summonedCard, false, match.round);
+        board[houndSpell.laneIdx][houndSpell.depthIdx] = unit;
+        events.push({ type: 'summon', side: houndSpell.side, cardId: houndSpell.summonCardId, laneIdx: houndSpell.laneIdx, depthIdx: houndSpell.depthIdx, uid: unit.uid });
+        applyRageOnSummon(match, houndSpell.side, events);
+        summoned = true;
+      }
+    }
+    match.hands[houndSpell.side].push({ id: houndSpell.summonCardId, uid: nextUid('card') });
+    events.push({
+      type: 'houndCall', side: houndSpell.side, laneIdx: houndSpell.laneIdx, depthIdx: houndSpell.depthIdx,
+      summoned, cardId: houndSpell.cardId, summonCardId: houndSpell.summonCardId,
+    });
   }
 
   // Сердце боли: same "fires in the Мгновенный призыв phase" timing as
