@@ -760,6 +760,10 @@ export const CARD_POOL = [
   // \u041a\u043e\u0441\u0430 \u0434\u0443\u0448: see scytheStrikeOnPlay (pendingScytheStrikes) and
   // scytheGrowOnEnemyHeroDamage (damageHero) above.
   { id: 'c190', name: '\u041a\u043e\u0441\u0430 \u0434\u0443\u0448', type: 'creature', cost: 5, atk: 5, hp: 1, scytheStrikeOnPlay: true, scytheStrikeDmg: 6, scytheGrowOnEnemyHeroDamage: true, rarity: 'epic', faction: 'inferno' },
+  // \u0422\u0440\u0435\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440: pure reuse of the doubleStrike stacking
+  // counter at 2 stacks instead of 1 \u2014 see the tripleStrike branch in
+  // buildUnitFromCard above.
+  { id: 'c191', name: '\u0422\u0440\u0435\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440', type: 'creature', cost: 5, atk: 2, hp: 6, tripleStrike: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -979,7 +983,9 @@ export function frontUnit(board, laneIdx) {
 // earlier swing already cleared the original target), and each one
 // fully applies armor/lifesteal/trample/events exactly like any other
 // attack. No bespoke "extra swing" logic needed; this is the only place
-// Double Strike is implemented.
+// Double Strike is implemented. Тройной удар (Трехголовый цербер) is
+// a pure reuse of this same stacking counter, just starting at 2 stacks
+// (see buildUnitFromCard) instead of 1 — 3 total attacks.
 function actingOrder(board, laneIdx) {
   const order = [];
   for (let d = 0; d < DEPTH; d++) {
@@ -1251,7 +1257,13 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
     boneShamanBuff: !!card.boneShamanBuff,
-    doubleStrike: card.doubleStrike ? 1 : 0,
+    // Тройной удар (Трехголовый цербер): pure reuse of the SAME
+    // stacking doubleStrike counter actingOrder already reads (see the
+    // comment above actingOrder) — 2 stacks means the unit appears 3
+    // TOTAL times in its own side's acting order for the lane, i.e.
+    // three full attacks. No new engine mechanic needed, just a card
+    // that starts at 2 stacks instead of the usual 1.
+    doubleStrike: card.doubleStrike ? 1 : (card.tripleStrike ? 2 : 0),
     healTrigger: !!card.healTrigger,
     blacksmithBuff: !!card.blacksmithBuff,
     powderKeg: !!card.powderKeg,
