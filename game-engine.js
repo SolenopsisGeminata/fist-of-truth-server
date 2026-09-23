@@ -847,6 +847,10 @@ export const CARD_POOL = [
   // shape as \u0421\u0432\u0435\u0442 \u0436\u0438\u0437\u043d\u0438/\u0412\u044b\u0437\u043e\u0432 \u0441\u0442\u0440\u0430\u0436\u0438, plus an unconditional
   // extra copy of the summoned card added straight to hand.
   { id: 's49', name: '\u041f\u0440\u0438\u0437\u044b\u0432 \u0433\u043e\u043d\u0447\u0435\u0439', type: 'spell', cost: 2, houndCall: true, summonCardId: 'c208', rarity: 'rare', faction: 'frost' },
+  // \u0421\u043a\u0435\u043b\u0435\u0442-\u043b\u0443\u0447\u043d\u0438\u043a: see skeletonArcherShot in resolveCombatPass/killUnit
+  // above. Part of the \u0425\u043e\u043b\u043e\u0434 starter deck (see
+  // frostStarterDeckCounts below).
+  { id: 'c209', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 1, skeletonArcherShot: true, rarity: 'common', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -943,12 +947,12 @@ export function infernoStarterDeckCounts() {
 
 // The Холод starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Скелет, Ледяной зомби (downgraded to common), and Костяная гончая are
-// the confirmed starter-deck cards so far (every other Холод card so
-// far is Rare, so none of them join, same "starter decks are
-// Common-only" convention as every other faction).
+// Скелет, Ледяной зомби (downgraded to common), Костяная гончая, and
+// Скелет-лучник are the confirmed starter-deck cards so far (every
+// other Холод card so far is Rare, so none of them join, same "starter
+// decks are Common-only" convention as every other faction).
 export function frostStarterDeckCounts() {
-  return { c200: 3, c201: 3, c208: 3 };
+  return { c200: 3, c201: 3, c208: 3, c209: 3 };
 }
 
 // ---------- Factions ----------
@@ -1426,6 +1430,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Костяная гончая: see the killUnit block right after Стена костей's
     // own boneWallHealOnAnyDeath reaction above.
     boneHoundGrowAllyOnDeath: !!card.boneHoundGrowAllyOnDeath,
+    // Скелет-лучник: see skeletonArcherShot in resolveCombatPass
+    // (pre-attack) and killUnit (on-death) above — same flag gates both.
+    skeletonArcherShot: !!card.skeletonArcherShot,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -2603,6 +2610,15 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   if (unit && unit.freezeCellOnDeath) {
     match.frozenCells[side][laneIdx][depthIdx] = true;
     events.push({ type: 'cellFrozen', side, laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id });
+  }
+  // Скелет-лучник: on death, shoots one more arrow at a random enemy
+  // unit for the same fixed 1 damage as his own pre-attack shot (see
+  // skeletonArcherShot in resolveCombatPass above) — same
+  // applyRandomEnemyShot targeting rule (Чаростойкость excluded, silent
+  // no-op if no eligible unit exists, no hero fallback).
+  if (unit && unit.skeletonArcherShot && !anyHeroDown(match)) {
+    const targetSide = otherPlayer(match, side);
+    applyRandomEnemyShot(match, side, targetSide, events, unit.uid, laneIdx, depthIdx, 1, 'skeletonArrowShot');
   }
   // Могильное надгробие / Оживший труп: on death, summons a specific
   // card onto the SAME cell it just died on (guaranteed empty — this
@@ -5165,6 +5181,14 @@ function resolveCombatPass(match, events, isEligible) {
       // Циклоп/Бесконечная Кровавая Тень above).
       if (aEligible && aUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 2, 'acidSpit');
       if (bEligible && bUnit.spittingDemonAcidSpit) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 2, 'acidSpit');
+      // Скелет-лучник: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every
+      // attack of his, shoots an arrow at a random enemy unit for a
+      // fixed 1 damage (Чаростойкость excluded, silent no-op if no
+      // eligible unit exists — no hero fallback). Same skeletonArcherShot
+      // flag also gates his own on-death shot (see killUnit).
+      if (aEligible && aUnit.skeletonArcherShot) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 1, 'skeletonArrowShot');
+      if (bEligible && bUnit.skeletonArcherShot) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 1, 'skeletonArrowShot');
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
       // attack of its, fires TWO spike shots in a row, each at a random
