@@ -744,6 +744,9 @@ export const CARD_POOL = [
   // steadfastDaoist mechanic (self +1/+1 on own attack landing on the
   // enemy hero), no new mechanic needed.
   { id: 'c185', name: '\u041a\u0440\u043e\u0432\u0430\u0432\u044b\u0439 \u043f\u043e\u0442\u0440\u043e\u0448\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 4, atk: 4, hp: 5, trample: true, steadfastDaoist: true, rarity: 'epic', faction: 'inferno' },
+  // \u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d: see howlingDemonDoubleAtkOnPlay in
+  // placeCard/tryEndTurn above.
+  { id: 'c186', name: '\u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d', type: 'creature', cost: 4, atk: 2, hp: 1, howlingDemonDoubleAtkOnPlay: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1108,6 +1111,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingTrampleDiscounts: [],
     pendingFatDemonBuffs: [],
     pendingHellScarecrowDiscards: [],
+    pendingHowlingDemonDoubles: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1773,6 +1777,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // identity).
   if (card.hellScarecrowDiscardOnPlay) {
     match.pendingHellScarecrowDiscards.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Воющий демон: on play, doubles the attack of a random ADJACENT
+  // ally — deferred same as every other battlecry, so it reads the
+  // board as it stands once placing is fully done for the round
+  // (matching every other deferred battlecry's own timing).
+  if (card.howlingDemonDoubleAtkOnPlay) {
+    match.pendingHowlingDemonDoubles.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -5787,6 +5799,44 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'hellScarecrowDiscard', side: entry.side, targetSide,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, discarded,
+    });
+  }
+
+  // Воющий демон's battlecry — see howlingDemonDoubleAtkOnPlay above.
+  // Picks ONE random ADJACENT ally (reuses adjacentAllyPositions, same
+  // "no Щит-protected neighbours" exclusion as every Наследие-transfer
+  // pick) whose OWN card is NOT from the Империя or Дзен faction, and
+  // doubles its current attack. A dedicated 'howlingDemonHowl' event
+  // always fires (so the client's pending-battlecry icon clears either
+  // way), with a separate 'rallyBuff' event alongside it only when a
+  // target was actually found — a 0-attack neighbour (e.g. Дворцовая
+  // стена) still counts as a legitimate pick, since doubling 0 is a
+  // well-defined no-op, not a failure to find a target.
+  const howlingDemonQueue = match.pendingHowlingDemonDoubles;
+  match.pendingHowlingDemonDoubles = [];
+  for (const entry of howlingDemonQueue) {
+    const board = match.boards[entry.side];
+    const neighbours = adjacentAllyPositions(board, entry.laneIdx, entry.depthIdx);
+    const eligible = neighbours.filter((pos) => {
+      const neighborUnit = board[pos.laneIdx][pos.depthIdx];
+      const neighborCard = neighborUnit && cardById(neighborUnit.id);
+      return neighborCard && neighborCard.faction !== 'empire' && neighborCard.faction !== 'zen';
+    });
+    let applied = false;
+    if (eligible.length > 0) {
+      const chosen = eligible[Math.floor(Math.random() * eligible.length)];
+      const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+      const buffAtk = targetUnit.atk;
+      targetUnit.atk += buffAtk;
+      applied = true;
+      events.push({
+        type: 'rallyBuff', side: entry.side, laneIdx: chosen.laneIdx,
+        targetDepth: chosen.depthIdx, buffAtk, buffHp: 0, sourceUid: targetUnit.uid,
+      });
+    }
+    events.push({
+      type: 'howlingDemonHowl', side: entry.side,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, applied,
     });
   }
 
