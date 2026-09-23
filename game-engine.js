@@ -818,13 +818,21 @@ export const CARD_POOL = [
   // \u0433\u043b\u0430\u0437's own faction-wide, both-sides badEyeGrowOnFactionDeath).
   { id: 'c202', name: '\u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439', type: 'creature', cost: 2, atk: 2, hp: 3, deathScytheGrowOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
   // \u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439: pure reuse of defender/counterattack (see
-  // \u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b, c63) plus its own boneWallHealOnEnemyDeath in killUnit
-  // above \u2014 same targeting as \u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439's own reaction, hp-only.
-  { id: 'c203', name: '\u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, counterattack: true, boneWallHealOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
+  // \u0427\u0430\u0441\u0442\u043e\u043a\u043e\u043b, c63) plus its own boneWallHealOnAnyDeath in killUnit
+  // above \u2014 reacts to ANY unit's death, either side (same both-sides
+  // scan as \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437's own badEyeGrowOnFactionDeath), hp-only.
+  { id: 'c203', name: '\u0421\u0442\u0435\u043d\u0430 \u043a\u043e\u0441\u0442\u0435\u0439', type: 'creature', cost: 2, atk: 1, hp: 4, defender: true, counterattack: true, boneWallHealOnAnyDeath: true, rarity: 'rare', faction: 'frost' },
   // \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430: reuses freezeCellOnDeath (see \u041b\u0435\u0434\u044f\u043d\u043e\u0439
   // \u0437\u043e\u043c\u0431\u0438, c201) plus its own iceWallGrowOnFrozenCell in the
   // end-of-round loop above.
   { id: 'c204', name: '\u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430', type: 'creature', cost: 2, atk: 0, hp: 6, defender: true, freezeCellOnDeath: true, iceWallGrowOnFrozenCell: true, rarity: 'rare', faction: 'frost' },
+  // \u041c\u043e\u0433\u0438\u043b\u044c\u043d\u043e\u0435 \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435: see deathSummonCardId in killUnit above \u2014
+  // summons \u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f (c206) onto its own cell on death.
+  { id: 'c205', name: '\u041c\u043e\u0433\u0438\u043b\u044c\u043d\u043e\u0435 \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435', type: 'creature', cost: 2, atk: 0, hp: 4, defender: true, deathSummonCardId: 'c206', rarity: 'rare', faction: 'frost' },
+  // \u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f: same deathSummonCardId chain as \u041c\u043e\u0433\u0438\u043b\u044c\u043d\u043e\u0435
+  // \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435 above, one link further \u2014 summons the existing
+  // \u0421\u043a\u0435\u043b\u0435\u0442 (c200) onto its own cell on death.
+  { id: 'c206', name: '\u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f', type: 'creature', cost: 2, atk: 2, hp: 3, deathSummonCardId: 'c200', rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1321,6 +1329,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     priestHeal: !!card.priestHeal,
     prairieWarlockBuff: !!card.prairieWarlockBuff,
     siegeShot: !!card.siegeShot,
+    // Могильное надгробие / Оживший труп: see the killUnit block right
+    // after Ледяной зомби's own freezeCellOnDeath above.
+    deathSummonCardId: card.deathSummonCardId || null,
     endOfRoundSummon: card.endOfRoundSummon || null,
     // Портал Инферно: an optional OVERRIDE card id, used instead of the
     // normal endOfRoundSummon above whenever the OPPONENT's hand is
@@ -1393,7 +1404,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
     // Стена костей: see the killUnit block right after Смерть с косой's
     // own deathScytheGrowOnEnemyDeath reaction above.
-    boneWallHealOnEnemyDeath: !!card.boneWallHealOnEnemyDeath,
+    boneWallHealOnAnyDeath: !!card.boneWallHealOnAnyDeath,
     // Ледяная стена: see the end-of-round block right after
     // frozenCellPulse above.
     iceWallGrowOnFrozenCell: !!card.iceWallGrowOnFrozenCell,
@@ -2557,6 +2568,27 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     match.frozenCells[side][laneIdx][depthIdx] = true;
     events.push({ type: 'cellFrozen', side, laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id });
   }
+  // Могильное надгробие / Оживший труп: on death, summons a specific
+  // card onto the SAME cell it just died on (guaranteed empty — this
+  // function just nulled it at the very top). The new unit can't attack
+  // the round it appears via the same one-round cantAttackThisRound flag
+  // every other "skip this wave" source uses (Трусливый убийца, Билл и
+  // Билли) — it's cleared for everyone right after this round's combat
+  // fully resolves (see tryEndTurn), so it fights normally from next
+  // round on. Reuses the plain 'summon' event (already handled
+  // generically, same as Вызов стражи's own board-cell summon).
+  if (unit && unit.deathSummonCardId) {
+    const newCard = cardById(unit.deathSummonCardId);
+    if (newCard) {
+      const newUnit = buildUnitFromCard(newCard, false, match.round);
+      newUnit.cantAttackThisRound = true;
+      board[laneIdx][depthIdx] = newUnit;
+      events.push({
+        type: 'summon', side, cardId: newCard.id,
+        laneIdx, depthIdx, uid: newUnit.uid,
+      });
+    }
+  }
   // Наследие (Отшельник and anyone who inherits it): on death, if the
   // unit is currently carrying a Legacy value (its own starting value,
   // or a larger stacked one it received from an earlier death in the
@@ -2774,21 +2806,24 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       }
     }
   }
-  // Стена костей: same "only the opposing side's board" targeting as
-  // Смерть с косой above, but hp-only — no atk change at all.
+  // Стена костей: reacts to ANY unit's death, either side — same
+  // both-sides scan as Дурной глаз's own badEyeGrowOnFactionDeath above
+  // (unlike Смерть с косой, which only ever checks the opposing side),
+  // hp-only, no atk change at all.
   if (unit) {
-    const enemySide = otherPlayer(match, side);
-    const reactBoard = match.boards[enemySide];
-    for (let l2 = 0; l2 < LANES; l2++) {
-      for (let d2 = 0; d2 < DEPTH; d2++) {
-        const reactUnit = reactBoard[l2][d2];
-        if (reactUnit && reactUnit.boneWallHealOnEnemyDeath) {
-          reactUnit.hp += 1;
-          reactUnit.maxHp += 1;
-          events.push({
-            type: 'rallyBuff', side: enemySide, laneIdx: l2,
-            targetDepth: d2, buffAtk: 0, buffHp: 1, sourceUid: reactUnit.uid,
-          });
+    for (const reactSide of match.players) {
+      const reactBoard = match.boards[reactSide];
+      for (let l2 = 0; l2 < LANES; l2++) {
+        for (let d2 = 0; d2 < DEPTH; d2++) {
+          const reactUnit = reactBoard[l2][d2];
+          if (reactUnit && reactUnit.boneWallHealOnAnyDeath) {
+            reactUnit.hp += 1;
+            reactUnit.maxHp += 1;
+            events.push({
+              type: 'rallyBuff', side: reactSide, laneIdx: l2,
+              targetDepth: d2, buffAtk: 0, buffHp: 1, sourceUid: reactUnit.uid,
+            });
+          }
         }
       }
     }
