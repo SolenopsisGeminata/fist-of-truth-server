@@ -635,11 +635,31 @@ const SHOP_TABS = ['gold', 'dust', 'crystals'];
 const SHOP_LIST_SIZE = 6;
 const SHOP_REFRESH_COST = 12; // crystals — same cost regardless of which tab is being refreshed
 
+// `purchased` tracks, per slot index, whether that slot has already been
+// bought from THIS list — reset to all-false here, i.e. whenever (and
+// only whenever) the list itself is regenerated: the daily UTC rollover
+// in getShopState below, or a paid manual refresh of that one tab. This
+// is what makes an already-bought slot stay disabled across leaving and
+// re-entering the shop (unlike ownership counts, which only ever grow),
+// and it lives server-side precisely so a client reload can't forget it.
 function regenerateShopTab(username, tab) {
   const pool = engine.shoppableCards(getUnlockedFactions(username));
   const cardIds = engine.pickRandomShopCards(pool, SHOP_LIST_SIZE);
   if (!db.data.shop[username]) db.data.shop[username] = {};
-  db.data.shop[username][tab] = { day: utcDateString(), cardIds };
+  db.data.shop[username][tab] = { day: utcDateString(), cardIds, purchased: cardIds.map(() => false) };
+}
+
+// Defensive backfill for shop records written before `purchased` existed
+// (same UTC day, so regenerateShopTab won't naturally re-run for them) —
+// treats a missing/mismatched-length array as "nothing bought yet" rather
+// than throwing, so old persisted state upgrades in place on next touch.
+// Returns true if it actually had to backfill anything.
+function ensurePurchasedArray(tabRec) {
+  if (!Array.isArray(tabRec.purchased) || tabRec.purchased.length !== tabRec.cardIds.length) {
+    tabRec.purchased = tabRec.cardIds.map(() => false);
+    return true;
+  }
+  return false;
 }
 
 // Ensures all three tabs have a list generated for "today" (UTC date) —
@@ -654,6 +674,8 @@ function getShopState(username) {
   for (const tab of SHOP_TABS) {
     if (!rec[tab] || rec[tab].day !== today) {
       regenerateShopTab(username, tab);
+      changed = true;
+    } else if (ensurePurchasedArray(rec[tab])) {
       changed = true;
     }
   }
@@ -1134,9 +1156,9 @@ app.get('/api/shop', (req, res) => {
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
   const rec = getShopState(username);
   res.json({
-    gold: { cardIds: rec.gold.cardIds },
-    dust: { cardIds: rec.dust.cardIds },
-    crystals: { cardIds: rec.crystals.cardIds },
+    gold: { cardIds: rec.gold.cardIds, purchased: rec.gold.purchased },
+    dust: { cardIds: rec.dust.cardIds, purchased: rec.dust.purchased },
+    crystals: { cardIds: rec.crystals.cardIds, purchased: rec.crystals.purchased },
   });
 });
 
@@ -1159,7 +1181,11 @@ app.post('/api/shop/refresh', (req, res) => {
   resources.crystals -= SHOP_REFRESH_COST;
   regenerateShopTab(username, tab);
   db.write();
-  res.json({ cardIds: db.data.shop[username][tab].cardIds, crystals: resources.crystals });
+  res.json({
+    cardIds: db.data.shop[username][tab].cardIds,
+    purchased: db.data.shop[username][tab].purchased,
+    crystals: resources.crystals,
+  });
 });
 
 // Buys one specific slot from a tab's currently-listed cards, paying in
@@ -1171,7 +1197,9 @@ app.post('/api/shop/refresh', (req, res) => {
 // card is added to the account's owned cards; the list itself is left
 // as-is (any other slot showing the same card simply becomes "already
 // owned" from the client's perspective, since ownership is per-card, not
-// per-slot).
+// per-slot). THIS slot is also marked bought in rec[tab].purchased so it
+// can't be bought again until the list itself is regenerated (daily UTC
+// rollover or a paid manual refresh of that tab).
 // Buys one specific slot from a tab's currently-listed cards, paying in
 // that tab's own currency (gold tab charges gold, etc. — SHOP_TABS names
 // double as the matching resources keys). `index` (not cardId) identifies
@@ -1194,6 +1222,9 @@ app.post('/api/shop/buy', (req, res) => {
   if (!Number.isInteger(index) || index < 0 || index >= list.length) {
     return res.status(400).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u043a\u0430\u0440\u0442\u0430.' });
   }
+  if (rec[tab].purchased[index]) {
+    return res.status(400).json({ error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u0443\u0436\u0435 \u043a\u0443\u043f\u043b\u0435\u043d\u0430.' });
+  }
   const cardId = list[index];
   const card = engine.cardById(cardId);
   if (!card) return res.status(400).json({ error: '\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u043a\u0430\u0440\u0442\u0430.' });
@@ -1206,6 +1237,7 @@ app.post('/api/shop/buy', (req, res) => {
   resources[tab] -= price;
   const owned = getOwnedCounts(username);
   owned[cardId] = (owned[cardId] || 0) + 1;
+  rec[tab].purchased[index] = true;
   db.write();
   res.json({ ok: true, cardId, ownedCount: owned[cardId], resources });
 });
