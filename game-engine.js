@@ -766,6 +766,11 @@ export const CARD_POOL = [
   { id: 'c191', name: '\u0422\u0440\u0435\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440', type: 'creature', cost: 5, atk: 2, hp: 6, tripleStrike: true, rarity: 'epic', faction: 'inferno' },
   // \u041f\u043e\u0436\u0438\u0440\u0430\u0442\u0435\u043b\u044c: see devourerGrowOnHeroHit above.
   { id: 'c192', name: '\u041f\u043e\u0436\u0438\u0440\u0430\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 6, hp: 6, trample: true, devourerGrowOnHeroHit: true, rarity: 'epic', faction: 'inferno' },
+  // \u0428\u0442\u043e\u0440\u043c \u043c\u043e\u043b\u043d\u0438\u0439: pure reuse of the existing ragingFire spell kind
+  // (see castSpell/resolveSpells above), same as \u0411\u0443\u0448\u0443\u044e\u0449\u0438\u0439
+  // \u043e\u0433\u043e\u043d\u044c/\u041e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0432\u0438\u0445\u0440\u044c \u2014 no new server mechanic needed, just
+  // bigger numbers.
+  { id: 's47', name: '\u0428\u0442\u043e\u0440\u043c \u043c\u043e\u043b\u043d\u0438\u0439', type: 'spell', cost: 5, ragingFire: true, ragingFireDmg: 5, ragingFireHeroDmg: 5, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
