@@ -809,7 +809,14 @@ export const CARD_POOL = [
   // \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438: see freezeCellOnDeath in killUnit above \u2014
   // freezes its OWN cell on death (match.frozenCells), independent of
   // the Frozen-cell mechanic's other trigger (none yet besides this).
-  { id: 'c201', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438', type: 'creature', cost: 2, atk: 2, hp: 2, freezeCellOnDeath: true, rarity: 'rare', faction: 'frost' },
+  // Downgraded to common and added to the \u0425\u043e\u043b\u043e\u0434 starter deck
+  // (see frostStarterDeckCounts below) alongside \u0421\u043a\u0435\u043b\u0435\u0442.
+  { id: 'c201', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438', type: 'creature', cost: 2, atk: 2, hp: 2, freezeCellOnDeath: true, rarity: 'common', faction: 'frost' },
+  // \u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439: see deathScytheGrowOnEnemyDeath in killUnit
+  // above \u2014 grows +1/+1 permanently every time an ENEMY unit dies
+  // (only the opposing side's board is checked, unlike \u0414\u0443\u0440\u043d\u043e\u0439
+  // \u0433\u043b\u0430\u0437's own faction-wide, both-sides badEyeGrowOnFactionDeath).
+  { id: 'c202', name: '\u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439', type: 'creature', cost: 2, atk: 2, hp: 3, deathScytheGrowOnEnemyDeath: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -906,11 +913,12 @@ export function infernoStarterDeckCounts() {
 
 // The Холод starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above. Скелет
-// is the first confirmed starter-deck card (Безногий зомби is Rare, so
-// it stays shop/draft-only, same "starter decks are Common-only"
-// convention as every other faction).
+// and Ледяной зомби (downgraded to common) are the confirmed
+// starter-deck cards so far (Безногий зомби and Смерть с косой are
+// Rare, so they stay shop/draft-only, same "starter decks are
+// Common-only" convention as every other faction).
 export function frostStarterDeckCounts() {
-  return { c200: 3 };
+  return { c200: 3, c201: 3 };
 }
 
 // ---------- Factions ----------
@@ -1372,6 +1380,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
+    // Смерть с косой: see the killUnit block right after Дурной глаз's
+    // own badEyeGrowOnFactionDeath reaction above.
+    deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -2722,6 +2733,29 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
               });
             }
           }
+        }
+      }
+    }
+  }
+  // Смерть с косой: reacts only to an ENEMY unit dying — unlike Дурной
+  // глаз above (any faction match, either side, atk only), this only
+  // ever looks at the board on the OPPOSITE side of whoever just died
+  // (the only side that could call this a death of "their" enemy), and
+  // buffs both atk AND hp by 1, permanently, on every copy found there.
+  if (unit) {
+    const enemySide = otherPlayer(match, side);
+    const reactBoard = match.boards[enemySide];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        const reactUnit = reactBoard[l2][d2];
+        if (reactUnit && reactUnit.deathScytheGrowOnEnemyDeath) {
+          reactUnit.atk += 1;
+          reactUnit.hp += 1;
+          reactUnit.maxHp += 1;
+          events.push({
+            type: 'rallyBuff', side: enemySide, laneIdx: l2,
+            targetDepth: d2, buffAtk: 1, buffHp: 1, sourceUid: reactUnit.uid,
+          });
         }
       }
     }
