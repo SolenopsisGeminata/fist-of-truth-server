@@ -785,6 +785,12 @@ export const CARD_POOL = [
   { id: 's48', name: '\u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435', type: 'spell', cost: 6, ignitionDmg: 6, ignitionEmptyHandDmg: 11, rarity: 'epic', faction: 'inferno' },
   // \u041f\u043e\u0440\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0431\u0435\u0437\u0434\u043d\u044b: see abyssSpawnDoubleSpikeShot above.
   { id: 'c195', name: '\u041f\u043e\u0440\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0431\u0435\u0437\u0434\u043d\u044b', type: 'creature', cost: 7, atk: 6, hp: 16, abyssSpawnDoubleSpikeShot: true, rarity: 'epic', faction: 'inferno' },
+  // \u0418\u043d\u0444\u0435\u0440\u043d\u0430\u043b\u044c\u043d\u0430\u044f \u043f\u0430\u0441\u0442\u044c: see infernalMawSpike above \u2014 three separate
+  // throws per round: applyInfernalMawStartOfRoundSpikes (start of
+  // round), the pre-attack hook in resolveCombatPass, and the
+  // end-of-round loop in tryEndTurn, all sharing applyRandomEnemyShot
+  // with heroFallback:true.
+  { id: 'c196', name: '\u0418\u043d\u0444\u0435\u0440\u043d\u0430\u043b\u044c\u043d\u0430\u044f \u043f\u0430\u0441\u0442\u044c', type: 'creature', cost: 8, atk: 9, hp: 25, infernalMawSpike: true, rarity: 'legendary', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1313,6 +1319,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
     abyssSpawnDoubleSpikeShot: !!card.abyssSpawnDoubleSpikeShot,
+    infernalMawSpike: !!card.infernalMawSpike,
     vileVerminSelfAcid: !!card.vileVerminSelfAcid,
     hellScarecrowGrowOnEmptyHand: !!card.hellScarecrowGrowOnEmptyHand,
     succubusDrainOnRoundEnd: !!card.succubusDrainOnRoundEnd,
@@ -4411,9 +4418,12 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
 // shot) — picks a random ENEMY UNIT (never the hero, and never a
 // Чаростойкость one, excluded from the pool entirely rather than
 // picked-then-blocked) and deals fixed damage. Silently does nothing if
-// the enemy board has no legal target. Reuses the exact musketShot
+// the enemy board has no legal target, UNLESS the optional heroFallback
+// flag is set (Инфернальная пасть is the first/only caller to pass it),
+// in which case an empty pool redirects the shot straight to the enemy
+// hero instead of doing nothing. Reuses the exact musketShot
 // event/animation.
-function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount, eventType) {
+function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount, eventType, heroFallback) {
   const targetBoard = match.boards[enemySide];
   const targets = [];
   for (let l = 0; l < LANES; l++) {
@@ -4421,7 +4431,16 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
       if (targetBoard[l][d] && !targetBoard[l][d].spellResist) targets.push({ laneIdx: l, depthIdx: d });
     }
   }
-  if (targets.length === 0) return;
+  if (targets.length === 0) {
+    if (!heroFallback) return;
+    damageHero(match, enemySide, amount, events);
+    events.push({
+      type: eventType || 'musketShot', side, targetSide: enemySide, amount,
+      laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+      targetHero: true, sourceUid, resisted: false, died: false,
+    });
+    return;
+  }
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
   targetUnit.hp -= amount;
@@ -4581,6 +4600,28 @@ function applyLavaWarlockFireballs(match, events) {
         if (anyHeroDown(match)) break;
         const unit = board[l][d];
         if (unit && unit.lavaWarlockFireball) applyLavaWarlockFireball(match, side, enemySide, events, unit, l, d);
+      }
+    }
+  }
+}
+
+// Инфернальная пасть: this is the START-of-round throw of its three
+// (the other two are the pre-attack hook in resolveCombatPass and the
+// end-of-round loop in tryEndTurn) — same fully-random-enemy-unit pool
+// as every other applyRandomEnemyShot caller, but with heroFallback so
+// an empty enemy board sends the spike straight to the hero instead of
+// being a silent no-op.
+function applyInfernalMawStartOfRoundSpikes(match, events) {
+  for (const side of match.players) {
+    if (anyHeroDown(match)) break;
+    const enemySide = otherPlayer(match, side);
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      if (anyHeroDown(match)) break;
+      for (let d = 0; d < DEPTH; d++) {
+        if (anyHeroDown(match)) break;
+        const unit = board[l][d];
+        if (unit && unit.infernalMawSpike) applyRandomEnemyShot(match, side, enemySide, events, unit.uid, l, d, 3, 'hellSpike', true);
       }
     }
   }
@@ -4883,6 +4924,15 @@ function resolveCombatPass(match, events, isEligible) {
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
       }
+      // Инфернальная пасть: this is the PRE-ATTACK throw of its three
+      // (start-of-round and end-of-round are handled elsewhere) — same
+      // "no bornRound gate" timing as every other single-trigger
+      // pre-attack card above. Unlike Порождение бездны's spikeShot,
+      // this one passes heroFallback:true, so an empty enemy board
+      // redirects the throw straight to the enemy hero instead of doing
+      // nothing.
+      if (aEligible && aUnit.infernalMawSpike) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 3, 'hellSpike', true);
+      if (bEligible && bUnit.infernalMawSpike) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'hellSpike', true);
       // Подлый вредитель: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before
       // every attack of his, surrounds himself with a cloud of acid
@@ -6345,6 +6395,11 @@ export function tryEndTurn(match, username) {
   // frontmost enemy (or straight to the hero if the lane's empty),
   // every round he's alive.
   applyLavaWarlockFireballs(match, events);
+  // Инфернальная пасть also fires here — the first of its three spike
+  // throws per round (pre-attack and end-of-round are its other two),
+  // a random enemy unit for 3 damage, or the enemy hero directly if the
+  // board's empty.
+  applyInfernalMawStartOfRoundSpikes(match, events);
   // Кай Кровавый also fires here — grants every OTHER ally (never
   // himself) Кража жизни, every round he's alive.
   applyKaiBloodyLifestealGrants(match, events);
@@ -6648,6 +6703,15 @@ export function tryEndTurn(match, username) {
               type: 'succubusDrain', side: name, targetSide: enemySide,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid, discarded, amount: heroDamage,
             });
+          }
+          // Инфернальная пасть: this is the END-of-round throw of its
+          // three (start-of-round and pre-attack are its other two) —
+          // same unconditional "no roundStartHp gate" timing as Суккуб
+          // above, same fully-random-enemy-unit pool with heroFallback
+          // as its other two throws.
+          if (unit && unit.infernalMawSpike && !anyHeroDown(match)) {
+            const enemySide = otherPlayer(match, name);
+            applyRandomEnemyShot(match, name, enemySide, events, unit.uid, l, d, 3, 'hellSpike', true);
           }
           // Кровавый Омут: at the end of every round he's alive
           // (unconditional, same "no roundStartHp gate" timing as
