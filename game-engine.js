@@ -764,6 +764,8 @@ export const CARD_POOL = [
   // counter at 2 stacks instead of 1 \u2014 see the tripleStrike branch in
   // buildUnitFromCard above.
   { id: 'c191', name: '\u0422\u0440\u0435\u0445\u0433\u043e\u043b\u043e\u0432\u044b\u0439 \u0446\u0435\u0440\u0431\u0435\u0440', type: 'creature', cost: 5, atk: 2, hp: 6, tripleStrike: true, rarity: 'epic', faction: 'inferno' },
+  // \u041f\u043e\u0436\u0438\u0440\u0430\u0442\u0435\u043b\u044c: see devourerGrowOnHeroHit above.
+  { id: 'c192', name: '\u041f\u043e\u0436\u0438\u0440\u0430\u0442\u0435\u043b\u044c', type: 'creature', cost: 5, atk: 6, hp: 6, trample: true, devourerGrowOnHeroHit: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1317,6 +1319,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
     impAtkGrowOnHeroHit: card.impAtkGrowOnHeroHit || 0,
+    devourerGrowOnHeroHit: !!card.devourerGrowOnHeroHit,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
     heavenlyWarrior: !!card.heavenlyWarrior,
@@ -4989,6 +4992,47 @@ function resolveCombatPass(match, events, isEligible) {
         if (!discarded) {
           events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
         }
+      }
+
+      // Пожиратель: same "own attack lands directly on the enemy hero"
+      // trigger family as Чертенок/Яростный бес above, but combines
+      // TWO effects that ALWAYS both happen together (unlike Вороватый
+      // бес's either/or above) — the OPPONENT loses 1 random card from
+      // hand (same privacy discipline: only a boolean ever leaves the
+      // server, silent no-op if their hand's already empty) AND it
+      // permanently grows its own attack and health by 2, via a
+      // separate reused 'rallyBuff' event.
+      if (aAttacks && !aTarget && aUnit.devourerGrowOnHeroHit) {
+        const targetHand = match.hands[nameB];
+        const discarded = targetHand.length > 0;
+        if (discarded) {
+          const idx = Math.floor(Math.random() * targetHand.length);
+          targetHand.splice(idx, 1);
+        }
+        aUnit.atk += 2;
+        aUnit.hp += 2;
+        aUnit.maxHp += 2;
+        events.push({
+          type: 'devourerFeast', side: nameA, targetSide: nameB,
+          laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, discarded,
+        });
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 2, buffHp: 2, sourceUid: aUnit.uid });
+      }
+      if (bAttacks && !bTarget && bUnit.devourerGrowOnHeroHit) {
+        const targetHand = match.hands[nameA];
+        const discarded = targetHand.length > 0;
+        if (discarded) {
+          const idx = Math.floor(Math.random() * targetHand.length);
+          targetHand.splice(idx, 1);
+        }
+        bUnit.atk += 2;
+        bUnit.hp += 2;
+        bUnit.maxHp += 2;
+        events.push({
+          type: 'devourerFeast', side: nameB, targetSide: nameA,
+          laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, discarded,
+        });
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 2, buffHp: 2, sourceUid: bUnit.uid });
       }
 
       // Бес-мучитель: same "own attack lands directly on the enemy
