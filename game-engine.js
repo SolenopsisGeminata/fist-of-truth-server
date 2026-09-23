@@ -791,6 +791,14 @@ export const CARD_POOL = [
   // end-of-round loop in tryEndTurn, all sharing applyRandomEnemyShot
   // with heroFallback:true.
   { id: 'c196', name: '\u0418\u043d\u0444\u0435\u0440\u043d\u0430\u043b\u044c\u043d\u0430\u044f \u043f\u0430\u0441\u0442\u044c', type: 'creature', cost: 8, atk: 9, hp: 25, infernalMawSpike: true, rarity: 'legendary', faction: 'inferno' },
+  // Summon-only token for \u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430 below (noShop: never
+  // independently draftable) \u2014 shares the name/faction/skeletonWeaponThrowOnDeath
+  // identity of \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0418\u043d\u0444\u0435\u0440\u043d\u043e (c158), just stronger stats.
+  { id: 'c197', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 3, atk: 3, hp: 3, skeletonWeaponThrowOnDeath: true, rarity: 'common', noShop: true, faction: 'inferno' },
+  // \u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430: battlecrySummon (pure reuse, same as \u0414\u0432\u0443\u0440\u043e\u0433\u043e\u0432\u044b\u0439
+  // \u0433\u0440\u0438\u0444\u043e\u043d) summons 2x c197 on play; see barrakInfernoBuff/applyBarrakInfernoBuff
+  // above for the pre-attack \u0418\u043d\u0444\u0435\u0440\u043d\u043e-only ally buff.
+  { id: 'c198', name: '\u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430', type: 'creature', cost: 9, atk: 18, hp: 18, battlecrySummon: 'c197', battlecrySummonCount: 2, barrakInfernoBuff: true, rarity: 'legendary', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1254,6 +1262,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     wallGrow: !!card.wallGrow,
     firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
+    barrakInfernoBuff: !!card.barrakInfernoBuff,
     bishopBuff: !!card.bishopBuff,
     summonOnHeroHit: card.summonOnHeroHit || null,
     priestHeal: !!card.priestHeal,
@@ -3790,6 +3799,28 @@ function applyDawnBuff(match, side, events, sourceUid, amount, hpAmount) {
   }
 }
 
+// Баррак, Барон Ада: right before his own attack, permanently grants
+// +2 attack (no hp change) to every OTHER allied unit on his own board
+// that belongs to the Инферно faction specifically — unlike Аннабэль's
+// applyDawnBuff above (every ally, including itself, no faction check),
+// this one excludes the source AND filters by faction, read via
+// cardById(u.id) since faction isn't itself stored on the runtime unit
+// object — same lookup pattern as Дурной глаз/Воющий демон's own
+// faction-exclusion checks.
+function applyBarrakInfernoBuff(match, side, events, sourceUid) {
+  const board = match.boards[side];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (!u || u.uid === sourceUid) continue;
+      const unitCard = cardById(u.id);
+      if (!unitCard || unitCard.faction !== 'inferno') continue;
+      u.atk += 2;
+      events.push({ type: 'rallyBuff', side, laneIdx: l, targetDepth: d, buffAtk: 2, buffHp: 0, sourceUid });
+    }
+  }
+}
+
 // Епископ: at the start of every round he's alive, picks ONE random
 // OTHER allied unit anywhere on the board (never himself — same
 // self-exclusion rule as Паладин) and permanently gives it +1/+1. Runs
@@ -4834,6 +4865,11 @@ function resolveCombatPass(match, events, isEligible) {
 
       if (aEligible && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
       if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
+      // Баррак, Барон Ада: same "no bornRound gate" pre-attack timing as
+      // Аннабэль's dawnBuff right above, but +2 attack only, Инферно
+      // allies only, and never himself.
+      if (aEligible && aUnit.barrakInfernoBuff) applyBarrakInfernoBuff(match, nameA, events, aUnit.uid);
+      if (bEligible && bUnit.barrakInfernoBuff) applyBarrakInfernoBuff(match, nameB, events, bUnit.uid);
       if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.drunkenDisciple) applyDrunkenDisciple(match, nameA, events, aUnit, l, aInfo.depth);
