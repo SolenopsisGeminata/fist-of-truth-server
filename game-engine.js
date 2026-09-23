@@ -780,6 +780,9 @@ export const CARD_POOL = [
   // of the existing endOfRoundSummon mechanic (\u041b\u0430\u0433\u0435\u0440\u044c
   // \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432/\u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c), no new summon logic needed.
   { id: 'c194', name: '\u041f\u043e\u0440\u0442\u0430\u043b \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 6, atk: 0, hp: 20, defender: true, endOfRoundSummon: 'c157', endOfRoundSummonIfEmptyHand: 'c160', rarity: 'epic', faction: 'inferno' },
+  // \u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435: see the 'ignition' spell kind in
+  // castSpell/resolveSpells above.
+  { id: 's48', name: '\u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435', type: 'spell', cost: 6, ignitionDmg: 6, ignitionEmptyHandDmg: 11, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -2184,6 +2187,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.ignitionDmg) {
+    // \u0412\u043e\u0441\u043f\u043b\u0430\u043c\u0435\u043d\u0435\u043d\u0438\u0435: same "specific enemy cell, empty or occupied"
+    // targeting as \u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442 above \u2014 unit-or-hero fallback (never
+    // both), just with the actual damage amount decided later, at
+    // resolution, by whether the CASTER's own hand is empty by then
+    // (see the 'ignition' branch in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -2191,7 +2203,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : 'buff'))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.ignitionDmg ? 'ignition' : 'buff')))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -2225,6 +2237,8 @@ export function castSpell(match, username, uid, lane, depth) {
     madFireballDmg: card.madFireballDmg,
     meteorDmg: card.meteorDmg,
     soulDrainDmg: card.soulDrainDmg,
+    ignitionDmg: card.ignitionDmg,
+    ignitionEmptyHandDmg: card.ignitionEmptyHandDmg,
   });
   return { ok: true };
 }
@@ -3522,6 +3536,34 @@ function resolveSpells(match, events) {
         type: 'spell', kind: 'meteor', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
         amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'ignition') {
+      // Воспламенение: same specific-cell "unit takes the hit OR the
+      // hero does (never both)" fallback shape as Метеорит above, but
+      // the amount itself depends on whether the CASTER's own hand is
+      // empty at resolution time (after every card for the round has
+      // already been placed) — empty hand means the bigger
+      // ignitionEmptyHandDmg applies instead of the normal ignitionDmg.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && cellUnit.spellResist);
+      const emptyHand = match.hands[spell.side].length === 0;
+      const amount = emptyHand ? spell.ignitionEmptyHandDmg : spell.ignitionDmg;
+      let died = false;
+      if (resisted) {
+        // no-op: the flame burns off her harmlessly
+      } else if (cellUnit) {
+        cellUnit.hp -= amount;
+        died = cellUnit.hp <= 0;
+      } else {
+        damageHero(match, defenderName, amount, events);
+      }
+      events.push({
+        type: 'spell', kind: 'ignition', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, emptyHand,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'damage') {
