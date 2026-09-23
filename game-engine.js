@@ -806,6 +806,10 @@ export const CARD_POOL = [
   // \u0421\u043a\u0435\u043b\u0435\u0442: part of the \u0425\u043e\u043b\u043e\u0434 starter deck (see
   // frostStarterDeckCounts below) \u2014 no special fields at all.
   { id: 'c200', name: '\u0421\u043a\u0435\u043b\u0435\u0442', type: 'creature', cost: 2, atk: 2, hp: 1, rarity: 'common', faction: 'frost' },
+  // \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438: see freezeCellOnDeath in killUnit above \u2014
+  // freezes its OWN cell on death (match.frozenCells), independent of
+  // the Frozen-cell mechanic's other trigger (none yet besides this).
+  { id: 'c201', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438', type: 'creature', cost: 2, atk: 2, hp: 2, freezeCellOnDeath: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1371,6 +1375,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
+    // Ледяной зомби: see freezeCellOnDeath in killUnit above.
+    freezeCellOnDeath: !!card.freezeCellOnDeath,
     musketShot: !!card.musketShot,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
@@ -2513,6 +2519,18 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       targetHero: !cellUnit, died, resisted,
     });
     if (died) killUnit(match, targetSide, targetLane, targetDepth, events);
+  }
+  // Ледяной зомби: on death, covers its OWN cell with ice — sets
+  // match.frozenCells for its own side at the cell it just died on. The
+  // grid is tracked independently of the (now dead) unit, so it persists
+  // even though board[laneIdx][depthIdx] is already null by this point
+  // (see freshFrozenGrid/frozenCellPulse above for the Frozen-cell
+  // mechanic itself). A dedicated event lets the client play a one-off
+  // "ice forming" visual; the ongoing frozen state itself is otherwise
+  // only ever surfaced via snapshotFor's myFrozenCells/opponentFrozenCells.
+  if (unit && unit.freezeCellOnDeath) {
+    match.frozenCells[side][laneIdx][depthIdx] = true;
+    events.push({ type: 'cellFrozen', side, laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id });
   }
   // Наследие (Отшельник and anyone who inherits it): on death, if the
   // unit is currently carrying a Legacy value (its own starting value,
