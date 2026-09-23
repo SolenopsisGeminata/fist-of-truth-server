@@ -757,6 +757,9 @@ export const CARD_POOL = [
   // \u041c\u044f\u0441\u043d\u0438\u043a \u0438\u043d\u0444\u0435\u0440\u043d\u043e: see butcherKillOnPlay (pendingButcherKills) and
   // enemyDrawOnDeath (killUnit) above.
   { id: 'c189', name: '\u041c\u044f\u0441\u043d\u0438\u043a \u0438\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 5, atk: 5, hp: 5, butcherKillOnPlay: true, enemyDrawOnDeath: true, rarity: 'epic', faction: 'inferno' },
+  // \u041a\u043e\u0441\u0430 \u0434\u0443\u0448: see scytheStrikeOnPlay (pendingScytheStrikes) and
+  // scytheGrowOnEnemyHeroDamage (damageHero) above.
+  { id: 'c190', name: '\u041a\u043e\u0441\u0430 \u0434\u0443\u0448', type: 'creature', cost: 5, atk: 5, hp: 1, scytheStrikeOnPlay: true, scytheStrikeDmg: 6, scytheGrowOnEnemyHeroDamage: true, rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1124,6 +1127,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHowlingDemonDoubles: [],
     pendingSpikeWaves: [],
     pendingButcherKills: [],
+    pendingScytheStrikes: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1263,6 +1267,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     evilEyeDiscardOnDeath: !!card.evilEyeDiscardOnDeath,
     fireFlyGrowOnEnemyHeroDamage: !!card.fireFlyGrowOnEnemyHeroDamage,
     bigMouthGrowOnEnemyHeroDamage: !!card.bigMouthGrowOnEnemyHeroDamage,
+    scytheGrowOnEnemyHeroDamage: !!card.scytheGrowOnEnemyHeroDamage,
     painSentinelPulse: !!card.painSentinelPulse,
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
@@ -1814,6 +1819,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // the board as it stands once placing is fully done for the round.
   if (card.butcherKillOnPlay) {
     match.pendingButcherKills.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Коса душ: on play, deals a fixed amount of damage to a fully
+  // random enemy unit — deferred same as every other battlecry, so it
+  // picks from the board as it stands once placing is fully done for
+  // the round.
+  if (card.scytheStrikeOnPlay) {
+    match.pendingScytheStrikes.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.scytheStrikeDmg });
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -2754,6 +2767,18 @@ function damageHero(match, side, amount, events) {
           events.push({
             type: 'rallyBuff', side: attackerSide, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+          });
+        }
+      }
+      // Коса душ: same "any source of damage to the enemy hero" trigger
+      // family as Огненная муха above, but +2 attack only (no hp) each
+      // time it fires.
+      if (unit && unit.scytheGrowOnEnemyHeroDamage) {
+        unit.atk += 2;
+        if (events) {
+          events.push({
+            type: 'rallyBuff', side: attackerSide, laneIdx: l,
+            targetDepth: d, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
           });
         }
       }
@@ -6062,6 +6087,45 @@ export function tryEndTurn(match, username) {
       type: 'infernoButcherKill', side: entry.side, targetSide: enemySide,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
       targetLaneIdx, targetDepthIdx, died, empty: targets.length === 0,
+    });
+    if (died) killUnit(match, enemySide, targetLaneIdx, targetDepthIdx, events);
+  }
+
+  // Коса душ's battlecry — see scytheStrikeOnPlay above. Same
+  // "collect every non-Чаростойкость enemy unit, pick one at random"
+  // eligibility pool as Яркий свет/Высасывание души, but a fixed amount
+  // of DAMAGE (spell damage, ignores armor) rather than an outright
+  // kill — Чаростойкость excludes a unit from the pool entirely, no
+  // hero redirect if nothing's eligible.
+  const scytheStrikeQueue = match.pendingScytheStrikes;
+  match.pendingScytheStrikes = [];
+  for (const entry of scytheStrikeQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const board = match.boards[enemySide];
+    const targets = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && !u.spellResist) targets.push({ laneIdx: l, depthIdx: d });
+      }
+    }
+    let died = false;
+    let targetLaneIdx = null;
+    let targetDepthIdx = null;
+    let amount = 0;
+    if (targets.length > 0) {
+      const chosen = targets[Math.floor(Math.random() * targets.length)];
+      targetLaneIdx = chosen.laneIdx;
+      targetDepthIdx = chosen.depthIdx;
+      amount = entry.amount;
+      const targetUnit = board[targetLaneIdx][targetDepthIdx];
+      targetUnit.hp -= amount;
+      died = targetUnit.hp <= 0;
+    }
+    events.push({
+      type: 'infernoScytheStrike', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetLaneIdx, targetDepthIdx, amount, died, empty: targets.length === 0,
     });
     if (died) killUnit(match, enemySide, targetLaneIdx, targetDepthIdx, events);
   }
