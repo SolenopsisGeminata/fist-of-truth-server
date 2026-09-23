@@ -752,6 +752,8 @@ export const CARD_POOL = [
   // \u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438: see the 'soulDrain' spell kind in
   // castSpell/resolveSpells above.
   { id: 's46', name: '\u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438', type: 'spell', cost: 4, soulDrainSpell: true, soulDrainDmg: 3, rarity: 'epic', faction: 'inferno' },
+  // \u0411\u0435\u0437\u043b\u0438\u043a\u0438\u0439 \u043c\u044f\u0441\u043d\u0438\u043a: see spikeWaveOnPlay/applyButcherSpikeWave above.
+  { id: 'c188', name: '\u0411\u0435\u0437\u043b\u0438\u043a\u0438\u0439 \u043c\u044f\u0441\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 2, hp: 5, spikeWaveOnPlay: true, rarity: 'rare', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1117,6 +1119,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingFatDemonBuffs: [],
     pendingHellScarecrowDiscards: [],
     pendingHowlingDemonDoubles: [],
+    pendingSpikeWaves: [],
     pendingSkullCrusherSelfHits: [],
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
@@ -1791,6 +1794,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // (matching every other deferred battlecry's own timing).
   if (card.howlingDemonDoubleAtkOnPlay) {
     match.pendingHowlingDemonDoubles.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Безликий мясник: on play, sends a wave of spikes down its own
+  // mirrored lane on the enemy board — deferred same as every other
+  // battlecry, so it reads the board as it stands once placing is fully
+  // done for the round.
+  if (card.spikeWaveOnPlay) {
+    match.pendingSpikeWaves.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -4511,6 +4522,39 @@ function applySolarDragonWave(match, side, enemySide, laneIdx, events, sourceUid
   }
 }
 
+// Безликий мясник: same "every depth in the mirrored lane" sweep as
+// Солнечный дракон's own dragonWave above — units only, no hero hit at
+// all (unlike every wrath-family spell, there's no hero-only fallback
+// event either, the wave simply ends once it clears the lane). Fires
+// once, on play, as a deferred battlecry rather than every round.
+function applyButcherSpikeWave(match, side, enemySide, laneIdx, events, sourceUid) {
+  const board = match.boards[enemySide];
+  for (let d = 0; d < DEPTH; d++) {
+    if (anyHeroDown(match)) break;
+    const targetUnit = board[laneIdx][d];
+    if (!targetUnit) {
+      events.push({
+        type: 'spikeWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: 0, died: false, empty: true, resisted: false, sourceUid,
+      });
+    } else if (targetUnit.spellResist) {
+      events.push({
+        type: 'spikeWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: 0, died: false, empty: false, resisted: true, sourceUid,
+      });
+    } else {
+      const applied = 2;
+      targetUnit.hp -= applied;
+      const died = targetUnit.hp <= 0;
+      events.push({
+        type: 'spikeWave', side, targetSide: enemySide, laneIdx, targetDepth: d,
+        amount: applied, died, empty: false, resisted: false, sourceUid,
+      });
+      if (died) killUnit(match, enemySide, laneIdx, d, events);
+    }
+  }
+}
+
 // Пылкая охотница: fires an extra attack for the unit at (side, laneIdx,
 // depthIdx) against whatever's CURRENTLY in front of it on the enemy
 // side of laneIdx — re-run fresh rather than reusing the primary
@@ -5945,6 +5989,17 @@ export function tryEndTurn(match, username) {
       type: 'howlingDemonHowl', side: entry.side,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, applied,
     });
+  }
+
+  // Безликий мясник's battlecry — see spikeWaveOnPlay above/
+  // applyButcherSpikeWave. Sweeps every depth in its own mirrored lane
+  // on the enemy board for 2 damage, units only, no hero hit at all.
+  const spikeWaveQueue = match.pendingSpikeWaves;
+  match.pendingSpikeWaves = [];
+  for (const entry of spikeWaveQueue) {
+    if (anyHeroDown(match)) break;
+    const enemySide = otherPlayer(match, entry.side);
+    applyButcherSpikeWave(match, entry.side, enemySide, entry.laneIdx, events, entry.sourceUid);
   }
 
   // Крушитель черепов's battlecry self-hit — routed through
