@@ -799,6 +799,10 @@ export const CARD_POOL = [
   // \u0433\u0440\u0438\u0444\u043e\u043d) summons 2x c197 on play; see barrakInfernoBuff/applyBarrakInfernoBuff
   // above for the pre-attack \u0418\u043d\u0444\u0435\u0440\u043d\u043e-only ally buff.
   { id: 'c198', name: '\u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430', type: 'creature', cost: 9, atk: 18, hp: 18, battlecrySummon: 'c197', battlecrySummonCount: 2, barrakInfernoBuff: true, rarity: 'legendary', faction: 'inferno' },
+  // \u0411\u0435\u0437\u043d\u043e\u0433\u0438\u0439 \u0437\u043e\u043c\u0431\u0438: the first \u0425\u043e\u043b\u043e\u0434 (frost) card. See
+  // thawIfFrozenOnPlay in placeCard and freshFrozenGrid/frozenCellPulse
+  // above for the new Frozen-cell mechanic itself.
+  { id: 'c199', name: '\u0411\u0435\u0437\u043d\u043e\u0433\u0438\u0439 \u0437\u043e\u043c\u0431\u0438', type: 'creature', cost: 1, atk: 1, hp: 1, sleep: true, thawIfFrozenOnPlay: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1006,6 +1010,15 @@ export function freshBoard() {
   return Array.from({ length: LANES }, () => Array(DEPTH).fill(null));
 }
 
+// Заморожена (Frozen): a per-CELL boolean grid, same shape as a board but
+// independent of it — a cell keeps its frozen status even as whatever
+// unit stands there dies, gets replaced, or leaves the cell empty. No
+// card thaws a cell yet, so once frozen a cell stays frozen for the rest
+// of the match.
+export function freshFrozenGrid() {
+  return Array.from({ length: LANES }, () => Array(DEPTH).fill(false));
+}
+
 export function frontUnit(board, laneIdx) {
   for (let d = 0; d < DEPTH; d++) {
     if (board[laneIdx][d]) return { unit: board[laneIdx][d], depth: d };
@@ -1129,6 +1142,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
       [nameB]: buildDeckFromCounts(deckCountsB || defaultDeckCounts()),
     },
     boards: { [nameA]: freshBoard(), [nameB]: freshBoard() },
+    frozenCells: { [nameA]: freshFrozenGrid(), [nameB]: freshFrozenGrid() },
     hp: { [nameA]: START_HP, [nameB]: START_HP },
     mana: { [nameA]: 2, [nameB]: 2 },
     maxMana: 2,
@@ -1890,6 +1904,17 @@ export function placeCard(match, username, uid, lane, depth) {
   // the round.
   if (card.scytheStrikeOnPlay) {
     match.pendingScytheStrikes.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.scytheStrikeDmg });
+  }
+
+  // Безногий зомби: on play, if the cell it just landed on is Frozen,
+  // its own Сон (Sleep) effect disappears entirely — a plain, immediate
+  // flag flip (no deferral needed, unlike every damage/summon battlecry
+  // above): resolveCombat's own isAsleep() check reads unit.sleep
+  // directly, so clearing it here already lets it attack THIS round,
+  // and since the flag itself is gone (not just bypassed for one round)
+  // it never comes back later either.
+  if (card.thawIfFrozenOnPlay && match.frozenCells[username][lane][depth]) {
+    unit.sleep = false;
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -6551,6 +6576,27 @@ export function tryEndTurn(match, username) {
       for (let l = 0; l < LANES; l++) {
         for (let d = 0; d < DEPTH; d++) {
           const unit = board[l][d];
+          // Заморожена (Frozen cell): a property of the CELL itself
+          // (match.frozenCells), not any particular card's flag, so this
+          // checks every unit sitting on the board every round it's
+          // frozen, regardless of what put it there. Холод-faction units
+          // permanently gain +1 attack; every other faction's units
+          // permanently lose 1 (floored at 0, same "never displays below
+          // 0" convention as every other atk-reducing effect in the
+          // file). Reuses a dedicated event (not the generic rallyBuff)
+          // since the change can be negative, which rallyBuff's "+N"
+          // popup text can't represent — same reasoning as Часовой боли's
+          // own painSentinelPulse event below.
+          if (unit && match.frozenCells[name][l][d]) {
+            const unitCard = cardById(unit.id);
+            const isFrost = !!(unitCard && unitCard.faction === 'frost');
+            const before = unit.atk;
+            unit.atk = Math.max(0, unit.atk + (isFrost ? 1 : -1));
+            events.push({
+              type: 'frozenCellPulse', side: name, laneIdx: l, depthIdx: d,
+              sourceUid: unit.uid, delta: unit.atk - before, isFrost,
+            });
+          }
           if (unit && unit.cookHeal) {
             const healed = healHero(match, name, unit.atk, events);
             events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
@@ -7237,6 +7283,10 @@ export function snapshotFor(match, username) {
     opponentHp: match.hp[other],
     myBoard: displayBoard(match.boards[username]),
     opponentBoard,
+    // Заморожена (Frozen): cell status, not hand/board-placement secrecy
+    // — always sent in full for both sides, unlike opponentBoard above.
+    myFrozenCells: match.frozenCells[username],
+    opponentFrozenCells: match.frozenCells[other],
     myHand: match.hands[username],
     opponentHandCount,
     revealedOpponentCards,
