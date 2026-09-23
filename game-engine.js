@@ -776,6 +776,10 @@ export const CARD_POOL = [
   // targeting) \u2014 see enemyHealOnDeath above for the new "give it back
   // on death" half.
   { id: 'c193', name: '\u041f\u043e\u0436\u0438\u0440\u0430\u044e\u0449\u0430\u044f \u0437\u043b\u043e\u0431\u0430', type: 'creature', cost: 5, atk: 6, hp: 10, impTridentDamage: 8, enemyHealOnDeath: 8, rarity: 'legendary', faction: 'inferno' },
+  // \u041f\u043e\u0440\u0442\u0430\u043b \u0418\u043d\u0444\u0435\u0440\u043d\u043e: see endOfRoundSummonIfEmptyHand above \u2014 pure extension
+  // of the existing endOfRoundSummon mechanic (\u041b\u0430\u0433\u0435\u0440\u044c
+  // \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0446\u0435\u0432/\u0414\u0435\u0432\u0443\u0448\u043a\u0430 \u0441 \u0431\u0438\u0432\u043d\u0435\u043c), no new summon logic needed.
+  { id: 'c194', name: '\u041f\u043e\u0440\u0442\u0430\u043b \u0418\u043d\u0444\u0435\u0440\u043d\u043e', type: 'creature', cost: 6, atk: 0, hp: 20, defender: true, endOfRoundSummon: 'c157', endOfRoundSummonIfEmptyHand: 'c160', rarity: 'epic', faction: 'inferno' },
 ];
 
 export function cardById(id) {
@@ -1245,6 +1249,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     prairieWarlockBuff: !!card.prairieWarlockBuff,
     siegeShot: !!card.siegeShot,
     endOfRoundSummon: card.endOfRoundSummon || null,
+    // Портал Инферно: an optional OVERRIDE card id, used instead of the
+    // normal endOfRoundSummon above whenever the OPPONENT's hand is
+    // empty at resolution time — see the endOfRoundSummon branch in the
+    // end-of-round loop below.
+    endOfRoundSummonIfEmptyHand: card.endOfRoundSummonIfEmptyHand || null,
     defender: !!card.defender,
     // Сон (Sleep): can't attack during its own bornRound, a normal
     // attacker from the next round on — see isAsleep in resolveCombat
@@ -6731,7 +6740,17 @@ export function tryEndTurn(match, username) {
           // of every round she survives instead of firing once. Silent
           // no-op if the board is full, same as every other summon here.
           if (unit && unit.endOfRoundSummon) {
-            summonUnitToRandomFreeCell(match, name, unit.endOfRoundSummon, events);
+            // Портал Инферно: summons Чертенок as usual, EXCEPT when the
+            // opponent's hand is currently empty, in which case it
+            // summons Горящий черт instead (endOfRoundSummonIfEmptyHand
+            // overrides the normal card id for that round only — every
+            // other endOfRoundSummon card leaves this unset, so they're
+            // completely unaffected by this check).
+            const enemySide = otherPlayer(match, name);
+            const summonId = (unit.endOfRoundSummonIfEmptyHand && match.hands[enemySide].length === 0)
+              ? unit.endOfRoundSummonIfEmptyHand
+              : unit.endOfRoundSummon;
+            summonUnitToRandomFreeCell(match, name, summonId, events);
           }
           // Имперская пушка: at the end of every round she survives,
           // strikes a random cell within the OPPOSING side's version of
