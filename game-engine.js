@@ -880,6 +880,10 @@ export const CARD_POOL = [
   // same trigger/scan as \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437 (any \u0418\u043d\u0444\u0435\u0440\u043d\u043e or \u0425\u043e\u043b\u043e\u0434 unit dying,
   // either side), +2 attack per death instead of \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437's own +1.
   { id: 'c213', name: '\u0412\u043e\u043f\u043b\u043e\u0449\u0435\u043d\u0438\u0435 \u0437\u043b\u0430', type: 'creature', cost: 4, atk: 2, hp: 3, evilEmbodimentGrowOnFactionDeath: 2, rarity: 'epic', faction: 'frost' },
+  // \u041d\u0435\u043a\u0440\u043e\u043c\u0430\u043d\u0442: see necromancerSummonOnEnemyDeath in killUnit above \u2014 every
+  // time an enemy unit dies, summons a \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438 (c201) onto a
+  // random free cell of its owner's own board.
+  { id: 'c214', name: '\u041d\u0435\u043a\u0440\u043e\u043c\u0430\u043d\u0442', type: 'creature', cost: 4, atk: 2, hp: 3, necromancerSummonOnEnemyDeath: true, rarity: 'epic', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1455,6 +1459,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // same "amount lives on the flag itself" convention as
     // explodeOnDeathAmount/demonicBatGrowChance elsewhere.
     evilEmbodimentGrowOnFactionDeath: card.evilEmbodimentGrowOnFactionDeath || 0,
+    // Некромант: see the killUnit block right after Смерть с косой's
+    // own deathScytheGrowOnEnemyDeath reaction above.
+    necromancerSummonOnEnemyDeath: !!card.necromancerSummonOnEnemyDeath,
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
@@ -2953,6 +2960,15 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
             type: 'rallyBuff', side: enemySide, laneIdx: l2,
             targetDepth: d2, buffAtk: 1, buffHp: 1, sourceUid: reactUnit.uid,
           });
+        }
+        // Некромант: same "only the board on the OPPOSITE side of
+        // whoever just died" scan as Смерть с косой right above (enemySide is
+        // already computed there) — instead of buffing itself, summons a
+        // Ледяной зомби (c201) onto a random free cell of its OWNER's own
+        // board, reusing summonUnitToRandomFreeCell (silent no-op if the
+        // board is already full, same as every other user of that helper).
+        if (reactUnit && reactUnit.necromancerSummonOnEnemyDeath) {
+          summonUnitToRandomFreeCell(match, enemySide, 'c201', events);
         }
       }
     }
