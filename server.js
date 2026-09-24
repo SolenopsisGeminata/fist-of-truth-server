@@ -2008,10 +2008,23 @@ wss.on('connection', (ws) => {
       const mm = liveMatches.get(msg.matchId);
       if (mm) {
         const otherName = engine.otherPlayer(mm.match, msg.username);
-        safeSend(mm.sockets[otherName], { type: 'opponent_left' });
         endMatch(mm, 'abandoned', otherName);
         if (mm.match.isTournament) applyTournamentResult(mm.match);
         if (mm.match.isTreasureRace) applyTreasureRaceResult(mm.match);
+        // A forfeit (surrender or leaving the match) is a real match
+        // result for the OTHER player — same match-completion reward as
+        // a normally resolved win, just triggered by abandonment instead
+        // of tryEndTurn's own gameOver branch. Same rewardMode gating as
+        // that branch above, so this never doubles up with tournament/
+        // treasure-race's own separate progress (already applied above).
+        let pvpReward = null;
+        let pveReward = null;
+        if (mm.match.rewardMode === 'pve') pveReward = applyPveProgress(mm.match);
+        if (mm.match.rewardMode === 'pvp') pvpReward = applyPvpRewards(mm.match);
+        const payload = { type: 'opponent_left' };
+        if (pvpReward && pvpReward[otherName]) payload.reward = pvpReward[otherName];
+        if (pveReward && pveReward[otherName]) payload.reward = pveReward[otherName];
+        safeSend(mm.sockets[otherName], payload);
       }
       return;
     }
