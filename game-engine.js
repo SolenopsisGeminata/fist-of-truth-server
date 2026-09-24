@@ -887,6 +887,10 @@ export const CARD_POOL = [
   // \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u043a\u0430\u0442\u0430\u043f\u0443\u043b\u044c\u0442\u0430: see iceCatapultShot in the end-of-round block
   // (right after \u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430's own cannonShot) above.
   { id: 'c215', name: '\u041b\u0435\u0434\u044f\u043d\u0430\u044f \u043a\u0430\u0442\u0430\u043f\u0443\u043b\u044c\u0442\u0430', type: 'creature', cost: 4, atk: 3, hp: 7, defender: true, iceCatapultShot: true, rarity: 'epic', faction: 'frost' },
+  // \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0432\u043e\u0438\u043d: see frostWarriorFreezeCountOnPlay in placeCard/the
+  // pendingFrostWarriorBuff queue in tryEndTurn above (battlecry), and
+  // returnToHandOnFrozenDeath in killUnit above (on-death).
+  { id: 'c216', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 2, hp: 1, frostWarriorFreezeCountOnPlay: true, returnToHandOnFrozenDeath: true, rarity: 'epic', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1265,6 +1269,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingSpearmanBuff: [],
     pendingArcticScarecrow: [],
     pendingFrostSpiderWeb: [],
+    pendingFrostWarriorBuff: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -1471,6 +1476,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Некромант: see the killUnit block right after Смерть с косой's
     // own deathScytheGrowOnEnemyDeath reaction above.
     necromancerSummonOnEnemyDeath: !!card.necromancerSummonOnEnemyDeath,
+    // Ледяной воин: see the killUnit block right after Некромант's own
+    // necromancerSummonOnEnemyDeath reaction above — on death, if its
+    // OWN cell is still covered in ice, its card returns to hand instead
+    // of being lost.
+    returnToHandOnFrozenDeath: !!card.returnToHandOnFrozenDeath,
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
@@ -1772,6 +1782,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // pendingFrostSpiderWeb below).
   if (card.frostSpiderWebOnPlay) {
     match.pendingFrostSpiderWeb.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Ледяной воин: battlecry — gains +1 attack for every cell currently
+  // covered in ice, counting BOTH boards. Same deferred reasoning as
+  // every other battlecry above (resolved at the start of the next
+  // resolution — see pendingFrostWarriorBuff below).
+  if (card.frostWarriorFreezeCountOnPlay) {
+    match.pendingFrostWarriorBuff.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Смелый учитель: battlecry — increases a random ADJACENT ally's
@@ -2713,6 +2731,15 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   if (unit && unit.freezeCellOnDeath) {
     match.frozenCells[side][laneIdx][depthIdx] = true;
     events.push({ type: 'cellFrozen', side, laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id });
+  }
+  // Ледяной воин: on death, if its OWN cell is (still) covered in ice,
+  // a fresh copy of its own card returns to its owner's hand instead of
+  // being lost for good — checked against match.frozenCells directly
+  // (independent of the board cell itself, already nulled above, same
+  // as Ледяной зомби's own freezeCellOnDeath check right above).
+  if (unit && unit.returnToHandOnFrozenDeath && match.frozenCells[side][laneIdx][depthIdx]) {
+    match.hands[side].push({ id: unit.id, uid: nextUid('card') });
+    events.push({ type: 'frostWarriorReturn', side, cardId: unit.id, laneIdx, depthIdx, sourceUid: unit.uid });
   }
   // Скелет-лучник: on death, shoots one more arrow at a random enemy
   // unit for the same fixed 1 damage as his own pre-attack shot (see
@@ -6584,6 +6611,32 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'cellFrozen', side: enemySide, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
       sourceUid: entry.sourceUid, cardId: sourceUnit ? sourceUnit.id : null, cause: 'frostSpiderWeb',
+    });
+  }
+
+  // Ледяной воин: gains +1 attack for every cell currently covered in
+  // ice, counting BOTH boards (own and enemy) at the moment its
+  // battlecry resolves — reuses the existing 'rallyBuff' event/animation,
+  // same as every other permanent self-buff battlecry.
+  const frostWarriorBuffQueue = match.pendingFrostWarriorBuff;
+  match.pendingFrostWarriorBuff = [];
+  for (const entry of frostWarriorBuffQueue) {
+    const sourceBoard = match.boards[entry.side];
+    const sourceUnit = sourceBoard[entry.laneIdx][entry.depthIdx];
+    if (!sourceUnit) continue;
+    let frozenCount = 0;
+    for (const gridSide of match.players) {
+      const grid = match.frozenCells[gridSide];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          if (grid[l][d]) frozenCount++;
+        }
+      }
+    }
+    sourceUnit.atk += frozenCount;
+    events.push({
+      type: 'rallyBuff', side: entry.side, laneIdx: entry.laneIdx,
+      targetDepth: entry.depthIdx, buffAtk: frozenCount, buffHp: 0, sourceUid: entry.sourceUid,
     });
   }
 
