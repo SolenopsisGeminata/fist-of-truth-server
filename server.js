@@ -1292,18 +1292,21 @@ app.post('/api/mail/read', (req, res) => {
 });
 
 // TEMPORARY — dev/test helper only, remove after use. Only ever acts on
-// the account literally named "admin" (checked against its own session
-// token, not settable for any other account), setting its resources to
-// a large fixed amount so it can be used for testing without running
-// into resource limits. Not a general "give myself resources" endpoint.
+// one of the accounts literally named in ADMIN_TEST_RESOURCE_GRANTS
+// below (checked against its own session token, not settable for any
+// other account), setting its resources to that account's own
+// configured amount so it can be used for testing without running into
+// resource limits. Not a general "give myself resources" endpoint.
+const ADMIN_TEST_RESOURCE_GRANTS = { admin: 999999, admin2: 9999999 };
 app.post('/api/admin/grant-test-resources', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  if (username !== 'admin') return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
+  const amount = ADMIN_TEST_RESOURCE_GRANTS[username];
+  if (!amount) return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
   const resources = getResources(username);
-  resources.gold = 999999;
-  resources.dust = 999999;
-  resources.crystals = 999999;
+  resources.gold = amount;
+  resources.dust = amount;
+  resources.crystals = amount;
   db.write();
   res.json({ ok: true, resources });
 });
@@ -1318,7 +1321,7 @@ app.post('/api/admin/grant-test-resources', (req, res) => {
 app.post('/api/admin/unlock-faction', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
-  if (username !== 'admin') return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
+  if (!(username in ADMIN_TEST_RESOURCE_GRANTS)) return res.status(403).json({ error: '\u0417\u0430\u043f\u0440\u0435\u0449\u0435\u043d\u043e.' });
   const factionId = req.body && req.body.faction;
   if (!engine.FACTION_IDS.includes(factionId)) {
     return res.status(400).json({ error: '\u041d\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043d\u0430\u044f \u0444\u0440\u0430\u043a\u0446\u0438\u044f.' });
