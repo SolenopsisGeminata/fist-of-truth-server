@@ -924,6 +924,9 @@ export const CARD_POOL = [
   // pendingAddCardToHand queue in tryEndTurn above \u2014 battlecry adds a
   // fresh \u041f\u0440\u0438\u0437\u0440\u0430\u0447\u043d\u044b\u0439 \u043f\u0438\u0442\u043e\u043d (c223) straight to hand.
   { id: 'c222', name: '\u0423\u0447\u0435\u043d\u0438\u043a \u0438\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, addCardToHandOnPlay: 'c223', rarity: 'rare', faction: 'mystery' },
+  // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043f\u0440\u043e\u0440\u0438\u0446\u0430\u043d\u0438\u044f: pure reuse of the existing insightEffect keyword
+  // (see \u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439/\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c) \u2014 no new mechanics needed.
+  { id: 'c224', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043f\u0440\u043e\u0440\u0438\u0446\u0430\u043d\u0438\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, insightEffect: 1, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1034,7 +1037,7 @@ export function frostStarterDeckCounts() {
 // card, same "starter decks are Common-only" convention as every other
 // faction.
 export function mysteryStarterDeckCounts() {
-  return { c219: 3, s52: 3, c221: 3 };
+  return { c219: 3, s52: 3, c221: 3, c223: 3 };
 }
 
 // ---------- Factions ----------
