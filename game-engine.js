@@ -876,6 +876,10 @@ export const CARD_POOL = [
   // \u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442's randomBlind) and freezing its cell (reuses the Frozen-cell
   // mechanic).
   { id: 'c212', name: '\u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u043f\u0430\u0443\u043a', type: 'creature', cost: 4, atk: 1, hp: 8, frostSpiderWebOnPlay: true, rarity: 'rare', faction: 'frost' },
+  // \u0412\u043e\u043f\u043b\u043e\u0449\u0435\u043d\u0438\u0435 \u0437\u043b\u0430: see evilEmbodimentGrowOnFactionDeath in killUnit above \u2014
+  // same trigger/scan as \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437 (any \u0418\u043d\u0444\u0435\u0440\u043d\u043e or \u0425\u043e\u043b\u043e\u0434 unit dying,
+  // either side), +2 attack per death instead of \u0414\u0443\u0440\u043d\u043e\u0439 \u0433\u043b\u0430\u0437's own +1.
+  { id: 'c213', name: '\u0412\u043e\u043f\u043b\u043e\u0449\u0435\u043d\u0438\u0435 \u0437\u043b\u0430', type: 'creature', cost: 4, atk: 2, hp: 3, evilEmbodimentGrowOnFactionDeath: 2, rarity: 'epic', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1444,6 +1448,13 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
     badEyeGrowOnFactionDeath: !!card.badEyeGrowOnFactionDeath,
+    // Воплощение зла: see the killUnit block right after Дурной глаз's
+    // own badEyeGrowOnFactionDeath reaction above — same trigger
+    // condition (Инферно or Холод faction death, either side), but the
+    // grown amount is card-configurable (here 2) rather than a fixed 1,
+    // same "amount lives on the flag itself" convention as
+    // explodeOnDeathAmount/demonicBatGrowChance elsewhere.
+    evilEmbodimentGrowOnFactionDeath: card.evilEmbodimentGrowOnFactionDeath || 0,
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
@@ -2904,6 +2915,18 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
               events.push({
                 type: 'rallyBuff', side: reactSide, laneIdx: l2,
                 targetDepth: d2, buffAtk: 1, buffHp: 0, sourceUid: reactUnit.uid,
+              });
+            }
+            // Воплощение зла: same trigger/scan as Дурной глаз right
+            // above (already gated on the same diedFaction check), just
+            // its own card-configurable growth amount (2) instead of a
+            // fixed 1.
+            if (reactUnit && reactUnit.evilEmbodimentGrowOnFactionDeath) {
+              const amount = reactUnit.evilEmbodimentGrowOnFactionDeath;
+              reactUnit.atk += amount;
+              events.push({
+                type: 'rallyBuff', side: reactSide, laneIdx: l2,
+                targetDepth: d2, buffAtk: amount, buffHp: 0, sourceUid: reactUnit.uid,
               });
             }
           }
