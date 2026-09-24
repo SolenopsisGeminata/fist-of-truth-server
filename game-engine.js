@@ -934,6 +934,9 @@ export const CARD_POOL = [
   // \u0421\u0432\u0435\u0442\u043e\u0432\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430: see lightPrismShot in the resolveCombatPass pre-attack
   // hook / applyLightPrismShot above.
   { id: 'c226', name: '\u0421\u0432\u0435\u0442\u043e\u0432\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 2, atk: 1, hp: 4, lightPrismShot: true, rarity: 'rare', faction: 'mystery' },
+  // \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442: see moonCatGrowOnSpellCount in the resolveCombatPass
+  // pre-attack hook above (match.spellsCastThisRound).
+  { id: 'c227', name: '\u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442', type: 'creature', cost: 2, atk: 4, hp: 2, moonCatGrowOnSpellCount: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1581,6 +1584,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     iceMageFreezeShot: !!card.iceMageFreezeShot,
     // Световая призма: see applyLightPrismShot above.
     lightPrismShot: !!card.lightPrismShot,
+    // Злолунный кот: see the resolveCombatPass pre-attack hook above
+    // (match.spellsCastThisRound).
+    moonCatGrowOnSpellCount: !!card.moonCatGrowOnSpellCount,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -3608,6 +3614,13 @@ function applyPrairieDragonHealTrigger(match, side, events) {
 function resolveSpells(match, events) {
   const queue = match.pendingSpells;
   match.pendingSpells = [];
+  // Злолунный кот: snapshot of how many spells landed THIS round — both
+  // sides combined, cast order doesn't matter — read later by his own
+  // pre-attack hook in resolveCombatPass (which runs after this
+  // function, in the same tryEndTurn call, every round). Overwritten
+  // fresh at the top of every round's own resolveSpells call, so no
+  // separate reset is needed elsewhere.
+  match.spellsCastThisRound = queue.length;
   for (const spell of queue) {
     if (anyHeroDown(match)) break; // match already decided — stop applying further spells
     // Злолунная летучая мышь: whenever ITS OWNER casts ANY spell (this
@@ -5658,6 +5671,21 @@ function resolveCombatPass(match, events, isEligible) {
       // applyLightPrismShot above). A silent no-op with 0 mana.
       if (aEligible && aUnit.lightPrismShot) applyLightPrismShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth);
       if (bEligible && bUnit.lightPrismShot) applyLightPrismShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth);
+      // Злолунный кот: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every
+      // attack of his, permanently gains +1 attack for every spell cast
+      // THIS round by either side (match.spellsCastThisRound, snapshot
+      // taken once at the top of resolveSpells earlier in this same
+      // tryEndTurn call). A silent no-op if nothing was cast (0 growth
+      // is harmless but skipped to avoid a zero-delta rallyBuff event).
+      if (aEligible && aUnit.moonCatGrowOnSpellCount && match.spellsCastThisRound) {
+        aUnit.atk += match.spellsCastThisRound;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: match.spellsCastThisRound, buffHp: 0, sourceUid: aUnit.uid });
+      }
+      if (bEligible && bUnit.moonCatGrowOnSpellCount && match.spellsCastThisRound) {
+        bUnit.atk += match.spellsCastThisRound;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: match.spellsCastThisRound, buffHp: 0, sourceUid: bUnit.uid });
+      }
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
       // attack of its, fires TWO spike shots in a row, each at a random
