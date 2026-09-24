@@ -931,6 +931,9 @@ export const CARD_POOL = [
   // tryEndTurn above \u2014 the OPPONENT's mana refill is reduced by 1 for as
   // long as this stays alive and on the battlefield.
   { id: 'c225', name: '\u041c\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a', type: 'creature', cost: 2, atk: 0, hp: 5, defender: true, manaDrainAura: 1, rarity: 'rare', faction: 'mystery' },
+  // \u0421\u0432\u0435\u0442\u043e\u0432\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430: see lightPrismShot in the resolveCombatPass pre-attack
+  // hook / applyLightPrismShot above.
+  { id: 'c226', name: '\u0421\u0432\u0435\u0442\u043e\u0432\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 2, atk: 1, hp: 4, lightPrismShot: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1576,6 +1579,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     skeletonArcherShot: !!card.skeletonArcherShot,
     // Ледяной маг: see iceMageFreezeShot in resolveCombatPass above.
     iceMageFreezeShot: !!card.iceMageFreezeShot,
+    // Световая призма: see applyLightPrismShot above.
+    lightPrismShot: !!card.lightPrismShot,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -5081,6 +5086,41 @@ function applyIceMageFreeze(match, side, enemySide, events, sourceUid, sourceLan
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
+// Световая призма: right before its own attack, fires a beam at a FULLY
+// random cell anywhere on the enemy board (any lane, any depth — same
+// unrestricted targeting as Ледяная катапульта's own end-of-round shot,
+// just checked pre-attack instead) for damage equal to the CASTER's own
+// CURRENT unspent mana at this exact instant — read fresh, never
+// stored or spent by this effect itself. A silent no-op if the caster
+// currently has 0 mana (nothing to fire with). Чаростойкость still blocks
+// the damage (same resisted-no-redirect precedent as every other
+// cross-side damage mechanic), but the beam always visually lands.
+function applyLightPrismShot(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx) {
+  const amount = match.mana[side];
+  if (amount <= 0) return;
+  const targetBoard = match.boards[enemySide];
+  const targetLane = Math.floor(Math.random() * LANES);
+  const targetDepth = Math.floor(Math.random() * DEPTH);
+  const cellUnit = targetBoard[targetLane][targetDepth];
+  const resisted = !!(cellUnit && cellUnit.spellResist);
+  const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+  let died = false;
+  if (resisted) {
+    // no-op: the beam disperses on her harmlessly
+  } else if (targetUnit) {
+    targetUnit.hp -= amount;
+    died = targetUnit.hp <= 0;
+  } else {
+    damageHero(match, enemySide, amount, events);
+  }
+  events.push({
+    type: 'lightPrismShot', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
+    targetLaneIdx: targetLane, targetDepthIdx: targetDepth, targetHero: !cellUnit, died, resisted,
+  });
+  if (died) killUnit(match, enemySide, targetLane, targetDepth, events);
+}
+
 // (randomShotRecurring, checked in resolveCombatPass below, gated by
 // match.round > bornRound same as Бамбуковый стрелок's own recurring
 // shot) — picks a random ENEMY UNIT (never the hero, and never a
@@ -5611,6 +5651,13 @@ function resolveCombatPass(match, events, isEligible) {
       // applies -1 atk / -1 hp to it (see applyIceMageFreeze above).
       if (aEligible && aUnit.iceMageFreezeShot) applyIceMageFreeze(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth);
       if (bEligible && bUnit.iceMageFreezeShot) applyIceMageFreeze(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth);
+      // Световая призма: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every
+      // attack of hers, fires a beam at a fully random enemy cell for
+      // damage equal to her owner's own CURRENT mana (see
+      // applyLightPrismShot above). A silent no-op with 0 mana.
+      if (aEligible && aUnit.lightPrismShot) applyLightPrismShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth);
+      if (bEligible && bUnit.lightPrismShot) applyLightPrismShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth);
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
       // attack of its, fires TWO spike shots in a row, each at a random
