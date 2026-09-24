@@ -895,6 +895,9 @@ export const CARD_POOL = [
   // (see \u041c\u043e\u0433\u0438\u043b\u044c\u043d\u043e\u0435 \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435/\u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f above) \u2014 summons \u0421\u043a\u0435\u043b\u0435\u0442 (c200)
   // onto its own cell on death.
   { id: 'c217', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 1, deathSummonCardId: 'c200', rarity: 'common', faction: 'frost' },
+  // \u0411\u043e\u0440\u0435\u0439, \u041f\u043e\u0432\u0435\u043b\u0438\u0442\u0435\u043b\u044c \u0425\u043e\u043b\u043e\u0434\u0430: pure reuse of three existing keywords \u2014
+  // firstStrike, trample, and armor \u2014 no new mechanics needed.
+  { id: 'c218', name: '\u0411\u043e\u0440\u0435\u0439, \u041f\u043e\u0432\u0435\u043b\u0438\u0442\u0435\u043b\u044c \u0425\u043e\u043b\u043e\u0434\u0430', type: 'creature', cost: 5, atk: 5, hp: 4, firstStrike: true, trample: true, armor: 2, rarity: 'legendary', faction: 'frost' },
 ];
 
 export function cardById(id) {
