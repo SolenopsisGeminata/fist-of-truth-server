@@ -916,6 +916,14 @@ export const CARD_POOL = [
   // "random ally anywhere on own side" pool as \u041a\u043e\u0441\u0442\u044f\u043d\u0430\u044f \u0433\u043e\u043d\u0447\u0430\u044f.
   // Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see mysteryStarterDeckCounts above).
   { id: 'c221', name: '\u0420\u0435\u043c\u043e\u043d\u0442\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 2, atk: 1, hp: 1, repairRobotBuffAllyOnDeath: true, rarity: 'common', faction: 'mystery' },
+  // \u041f\u0440\u0438\u0437\u0440\u0430\u0447\u043d\u044b\u0439 \u043f\u0438\u0442\u043e\u043d: see ghostEffect in the resolveCombatPass pre-attack
+  // hook above \u2014 vanishes without a trace before its own attack if the
+  // opposite lane has no enemy unit at all.
+  { id: 'c223', name: '\u041f\u0440\u0438\u0437\u0440\u0430\u0447\u043d\u044b\u0439 \u043f\u0438\u0442\u043e\u043d', type: 'creature', cost: 1, atk: 3, hp: 3, ghostEffect: true, rarity: 'common', faction: 'mystery' },
+  // \u0423\u0447\u0435\u043d\u0438\u043a \u0438\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442\u0430: see addCardToHandOnPlay in placeCard/the
+  // pendingAddCardToHand queue in tryEndTurn above \u2014 battlecry adds a
+  // fresh \u041f\u0440\u0438\u0437\u0440\u0430\u0447\u043d\u044b\u0439 \u043f\u0438\u0442\u043e\u043d (c223) straight to hand.
+  { id: 'c222', name: '\u0423\u0447\u0435\u043d\u0438\u043a \u0438\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442\u0430', type: 'creature', cost: 2, atk: 2, hp: 2, addCardToHandOnPlay: 'c223', rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1305,6 +1313,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingArcticScarecrow: [],
     pendingFrostSpiderWeb: [],
     pendingFrostWarriorBuff: [],
+    pendingAddCardToHand: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -1519,6 +1528,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Злолунная летучая мышь: see the resolveSpells loop preamble above
     // (checked unconditionally for every spell that resolves).
     moonBatGrowOnSpellCast: !!card.moonBatGrowOnSpellCast,
+    // Призрак (Ghost): see the resolveCombatPass pre-attack hook above
+    // (the very first one checked, before every other pre-attack effect).
+    ghostEffect: !!card.ghostEffect,
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
@@ -1831,6 +1843,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution — see pendingFrostWarriorBuff below).
   if (card.frostWarriorFreezeCountOnPlay) {
     match.pendingFrostWarriorBuff.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Ученик иллюзиониста: battlecry — adds a specific card straight to its
+  // owner's hand (addCardToHandOnPlay carries the card id, same "amount
+  // lives on the flag itself" convention as deathSummonCardId). Same
+  // deferred reasoning as every other battlecry above (resolved at the
+  // start of the next resolution — see pendingAddCardToHand below).
+  if (card.addCardToHandOnPlay) {
+    match.pendingAddCardToHand.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, cardId: card.addCardToHandOnPlay });
   }
 
   // Смелый учитель: battlecry — increases a random ADJACENT ally's
@@ -5444,6 +5465,24 @@ function resolveCombatPass(match, events, isEligible) {
       const aEligible = !!(aUnit && isEligible(aUnit));
       const bEligible = !!(bUnit && isEligible(bUnit));
 
+      // Призрак (Ghost): checked FIRST, before every other pre-attack
+      // effect below — right before its own attack, looks at the entire
+      // OPPOSITE lane (same lane index l, all depths, on the enemy side).
+      // If it finds no enemy unit anywhere in that lane, the carrier
+      // vanishes without a trace RIGHT NOW: removed directly from the
+      // board (not via killUnit, so no on-death effect of any kind ever
+      // fires — it just disappears). Being first in this chain means no
+      // later pre-attack hook below can act for/through a unit that has
+      // already vanished this instant.
+      if (aEligible && aUnit.ghostEffect && !match.boards[nameB][l].some((u) => !!u)) {
+        match.boards[nameA][l][aInfo.depth] = null;
+        events.push({ type: 'ghostVanish', side: nameA, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, cardId: aUnit.id });
+      }
+      if (bEligible && bUnit.ghostEffect && !match.boards[nameA][l].some((u) => !!u)) {
+        match.boards[nameB][l][bInfo.depth] = null;
+        events.push({ type: 'ghostVanish', side: nameB, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, cardId: bUnit.id });
+      }
+
       if (aEligible && aUnit.dawnBuff) applyDawnBuff(match, nameA, events, aUnit.uid);
       if (bEligible && bUnit.dawnBuff) applyDawnBuff(match, nameB, events, bUnit.uid);
       // Баррак, Барон Ада: same "no bornRound gate" pre-attack timing as
@@ -6760,6 +6799,20 @@ export function tryEndTurn(match, username) {
     events.push({
       type: 'rallyBuff', side: entry.side, laneIdx: entry.laneIdx,
       targetDepth: entry.depthIdx, buffAtk: frozenCount, buffHp: 0, sourceUid: entry.sourceUid,
+    });
+  }
+
+  // Ученик иллюзиониста: battlecry — a fresh copy of the specified card
+  // (entry.cardId) lands straight in its owner's hand. No board check
+  // needed (unlike frostWarriorBuffQueue above) since this doesn't touch
+  // the source unit itself at all.
+  const addCardToHandQueue = match.pendingAddCardToHand;
+  match.pendingAddCardToHand = [];
+  for (const entry of addCardToHandQueue) {
+    match.hands[entry.side].push({ id: entry.cardId, uid: nextUid('card') });
+    events.push({
+      type: 'addCardToHand', side: entry.side, cardId: entry.cardId,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
     });
   }
 
