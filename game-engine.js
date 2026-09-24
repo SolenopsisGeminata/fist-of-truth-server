@@ -898,6 +898,10 @@ export const CARD_POOL = [
   // \u0411\u043e\u0440\u0435\u0439, \u041f\u043e\u0432\u0435\u043b\u0438\u0442\u0435\u043b\u044c \u0425\u043e\u043b\u043e\u0434\u0430: pure reuse of three existing keywords \u2014
   // firstStrike, trample, and armor \u2014 no new mechanics needed.
   { id: 'c218', name: '\u0411\u043e\u0440\u0435\u0439, \u041f\u043e\u0432\u0435\u043b\u0438\u0442\u0435\u043b\u044c \u0425\u043e\u043b\u043e\u0434\u0430', type: 'creature', cost: 5, atk: 5, hp: 4, firstStrike: true, trample: true, armor: 2, rarity: 'legendary', faction: 'frost' },
+  // \u0420\u043e\u0431\u043e\u0442-\u0440\u0430\u0437\u0432\u0435\u0434\u0447\u0438\u043a: the first \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f (mystery) card. No special
+  // fields at all \u2014 part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see
+  // mysteryStarterDeckCounts above).
+  { id: 'c219', name: '\u0420\u043e\u0431\u043e\u0442-\u0440\u0430\u0437\u0432\u0435\u0434\u0447\u0438\u043a', type: 'creature', cost: 0, atk: 0, hp: 1, rarity: 'common', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1002,6 +1006,15 @@ export function frostStarterDeckCounts() {
   return { c200: 3, c201: 3, c208: 3, c209: 3, c211: 3 };
 }
 
+// The Мистерия starter deck — same "granted once the faction unlocks"
+// placeholder reasoning as the other faction starter decks above.
+// Робот-разведчик is the first (and so far only) confirmed starter-deck
+// card, same "starter decks are Common-only" convention as every other
+// faction.
+export function mysteryStarterDeckCounts() {
+  return { c219: 3 };
+}
+
 // ---------- Factions ----------
 // The full canonical set of faction ids that exist in the client's own
 // UI (tabs), whether or not they have any cards yet. Server-authoritative
@@ -1030,6 +1043,7 @@ export function starterDeckCountsForFaction(factionId) {
   if (factionId === 'savages') return savagesStarterDeckCounts();
   if (factionId === 'inferno') return infernoStarterDeckCounts();
   if (factionId === 'frost') return frostStarterDeckCounts();
+  if (factionId === 'mystery') return mysteryStarterDeckCounts();
   return {};
 }
 
