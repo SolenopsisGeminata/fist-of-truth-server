@@ -869,6 +869,13 @@ export const CARD_POOL = [
   // by buildUnitFromCard \u2014 no new server code needed. Part of the \u0425\u043e\u043b\u043e\u0434
   // starter deck (see frostStarterDeckCounts below).
   { id: 'c211', name: '\u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u0441\u043a\u0430\u0430\u0431', type: 'creature', cost: 4, atk: 4, hp: 4, healOnDeath: 4, freezeCellOnDeath: true, rarity: 'common', faction: 'frost' },
+  // \u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u043f\u0430\u0443\u043a: see frostSpiderWebOnPlay in placeCard/the
+  // pendingFrostSpiderWeb queue in tryEndTurn above \u2014 battlecry throws a
+  // web at a random enemy unit, granting it the same one-round "can't
+  // attack" restriction as \u0417\u0430\u0449\u0438\u0442\u043d\u0438\u043a (reuses match.blindedUids, exactly like
+  // \u042f\u0440\u043a\u0438\u0439 \u0441\u0432\u0435\u0442's randomBlind) and freezing its cell (reuses the Frozen-cell
+  // mechanic).
+  { id: 'c212', name: '\u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u043f\u0430\u0443\u043a', type: 'creature', cost: 4, atk: 1, hp: 8, frostSpiderWebOnPlay: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1246,6 +1253,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingWiseDeerBuff: [],
     pendingSpearmanBuff: [],
     pendingArcticScarecrow: [],
+    pendingFrostSpiderWeb: [],
     // Понимание (Insight): revealedTo[username] is the list of the
     // OPPONENT's hand-card uids that `username` has been shown face-up
     // — persists until that card leaves the opponent's hand (played,
@@ -1729,6 +1737,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // resolution — see pendingArcticScarecrow below).
   if (card.arcticScarecrowOnPlay) {
     match.pendingArcticScarecrow.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Морозный паук: battlecry — throws a web at a random enemy
+  // unit; same deferred reasoning as every other battlecry above
+  // (resolved at the start of the next resolution — see
+  // pendingFrostSpiderWeb below).
+  if (card.frostSpiderWebOnPlay) {
+    match.pendingFrostSpiderWeb.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Смелый учитель: battlecry — increases a random ADJACENT ally's
@@ -6476,6 +6492,51 @@ export function tryEndTurn(match, username) {
         sourceUid: entry.sourceUid,
       });
     }
+  }
+
+  // Морозный паук: battlecry — throws a web at ONE random enemy
+  // unit anywhere on the board (same "collect every non-Чаростойкость
+  // unit, pick one at random" pool as Яркий свет's own randomBlind spell
+  // kind above). On a hit, the target gets the exact same one-round
+  // "can't attack" restriction as Защитник (match.blindedUids, cleared right
+  // after this round's combat resolves — see tryEndTurn) AND its cell
+  // gets frozen (reuses the existing 'cellFrozen' event, cause:'battlecry',
+  // same as Арктическое пугало above). A silent no-op (empty:true event only)
+  // if nothing on the enemy board is eligible.
+  const frostSpiderWebQueue = match.pendingFrostSpiderWeb;
+  match.pendingFrostSpiderWeb = [];
+  if (!match.blindedUids) match.blindedUids = new Set();
+  for (const entry of frostSpiderWebQueue) {
+    const board = match.boards[entry.side];
+    const sourceUnit = board[entry.laneIdx][entry.depthIdx];
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    const targets = [];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = enemyBoard[l][d];
+        if (u && !u.spellResist) targets.push({ laneIdx: l, depthIdx: d, unit: u });
+      }
+    }
+    if (targets.length === 0) {
+      events.push({
+        type: 'frostSpiderWeb', side: entry.side, targetSide: enemySide,
+        laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, empty: true,
+      });
+      continue;
+    }
+    const chosen = targets[Math.floor(Math.random() * targets.length)];
+    match.blindedUids.add(chosen.unit.uid);
+    match.frozenCells[enemySide][chosen.laneIdx][chosen.depthIdx] = true;
+    events.push({
+      type: 'frostSpiderWeb', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid,
+      targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx, empty: false,
+    });
+    events.push({
+      type: 'cellFrozen', side: enemySide, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx,
+      sourceUid: entry.sourceUid, cardId: sourceUnit ? sourceUnit.id : null, cause: 'frostSpiderWeb',
+    });
   }
 
   // Мудрый олень (last cell): +2 attack and +2 health to EVERY ally
