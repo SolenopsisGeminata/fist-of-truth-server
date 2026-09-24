@@ -862,6 +862,13 @@ export const CARD_POOL = [
   // \u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434: see the 'deathChill' spell kind in
   // resolveSpells/applySilence above.
   { id: 's51', name: '\u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434', type: 'spell', cost: 3, deathChill: true, rarity: 'rare', faction: 'frost' },
+  // \u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u0441\u043a\u0430\u0430\u0431: pure reuse of two existing mechanics \u2014
+  // healOnDeath (\u0414\u0435\u0442\u0435\u043d\u044b\u0448 \u043a\u0430\u0431\u0430\u043d\u0430, c119) heals its OWN hero on death,
+  // and freezeCellOnDeath (\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438, c201) covers its own cell with
+  // ice. Both are already handled in killUnit above and already copied
+  // by buildUnitFromCard \u2014 no new server code needed. Part of the \u0425\u043e\u043b\u043e\u0434
+  // starter deck (see frostStarterDeckCounts below).
+  { id: 'c211', name: '\u041c\u043e\u0440\u043e\u0437\u043d\u044b\u0439 \u0441\u043a\u0430\u0430\u0431', type: 'creature', cost: 4, atk: 4, hp: 4, healOnDeath: 4, freezeCellOnDeath: true, rarity: 'common', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -963,7 +970,7 @@ export function infernoStarterDeckCounts() {
 // other Холод card so far is Rare, so none of them join, same "starter
 // decks are Common-only" convention as every other faction).
 export function frostStarterDeckCounts() {
-  return { c200: 3, c201: 3, c208: 3, c209: 3 };
+  return { c200: 3, c201: 3, c208: 3, c209: 3, c211: 3 };
 }
 
 // ---------- Factions ----------
