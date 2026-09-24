@@ -927,6 +927,10 @@ export const CARD_POOL = [
   // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043f\u0440\u043e\u0440\u0438\u0446\u0430\u043d\u0438\u044f: pure reuse of the existing insightEffect keyword
   // (see \u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439/\u0422\u0430\u0438\u043d\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0441\u043b\u0443\u0436\u0430\u043d\u043a\u0430 \u0421\u044e\u0430\u043d\u044c) \u2014 no new mechanics needed.
   { id: 'c224', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043f\u0440\u043e\u0440\u0438\u0446\u0430\u043d\u0438\u044f', type: 'creature', cost: 2, atk: 1, hp: 2, insightEffect: 1, rarity: 'rare', faction: 'mystery' },
+  // \u041c\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a: see manaDrainAuraTotal/the round-refill formula in
+  // tryEndTurn above \u2014 the OPPONENT's mana refill is reduced by 1 for as
+  // long as this stays alive and on the battlefield.
+  { id: 'c225', name: '\u041c\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a', type: 'creature', cost: 2, atk: 0, hp: 5, defender: true, manaDrainAura: 1, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1414,6 +1418,24 @@ function manaAuraTotal(match, side) {
   return total;
 }
 
+// Мистический обелиск: same "sum across every unit currently alive on a
+// side's board" shape as manaAuraTotal above, but this is the OPPONENT's
+// mana that gets reduced by it every round, not its own owner's that
+// gets boosted — see the round-refill formula in tryEndTurn, which
+// subtracts this (computed from the OWNER's own board) from the
+// OPPONENT's refill.
+function manaDrainAuraTotal(match, side) {
+  const board = match.boards[side];
+  let total = 0;
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = board[l][d];
+      if (u && u.manaDrainAura) total += u.manaDrainAura;
+    }
+  }
+  return total;
+}
+
 function buildUnitFromCard(card, placedThisRound, bornRound) {
   return {
     id: card.id,
@@ -1622,6 +1644,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     bigCactusHeal: !!card.bigCactusHeal,
     prairieEagleReact: !!card.prairieEagleReact,
     manaAura: card.manaAura || 0,
+    // Мистический обелиск: see manaDrainAuraTotal above and the round-refill
+    // formula in tryEndTurn.
+    manaDrainAura: card.manaDrainAura || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -2625,6 +2650,13 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   // negative even if the bonus mana was already spent this round.
   if (unit && unit.manaAura) {
     match.mana[side] = Math.max(0, match.mana[side] - unit.manaAura);
+  }
+  // Мистический обелиск: same "only lasts while alive and on the
+  // battlefield" timing as Шаман прерий's manaAura right above, but restores
+  // the OPPONENT's CURRENT mana instead of reducing its own owner's.
+  if (unit && unit.manaDrainAura) {
+    const enemySide = otherPlayer(match, side);
+    match.mana[enemySide] += unit.manaDrainAura;
   }
   if (unit && unit.explodeOnDeath && !anyHeroDown(match)) {
     const amount = unit.explodeOnDeathAmount;
@@ -8041,8 +8073,11 @@ export function tryEndTurn(match, username) {
       // Шаман прерий (Мана 1): each side's actual refill is the shared
       // maxMana PLUS whatever manaAura bonus THEIR OWN board currently
       // has — asymmetric on purpose, since this is a per-owner effect.
-      match.mana[nameA] = match.maxMana + manaAuraTotal(match, nameA);
-      match.mana[nameB] = match.maxMana + manaAuraTotal(match, nameB);
+      // Мистический обелиск: subtracts whatever manaDrainAura the
+      // OPPONENT's board currently carries — floored at 0, same as
+      // every other mana-affecting adjustment in the game.
+      match.mana[nameA] = Math.max(0, match.maxMana + manaAuraTotal(match, nameA) - manaDrainAuraTotal(match, nameB));
+      match.mana[nameB] = Math.max(0, match.maxMana + manaAuraTotal(match, nameB) - manaDrainAuraTotal(match, nameA));
       match.sacrifices[nameA] = 0;
       match.sacrifices[nameB] = 0;
       match.readyToEnd[nameA] = false;
