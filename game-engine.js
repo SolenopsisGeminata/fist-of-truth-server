@@ -891,6 +891,10 @@ export const CARD_POOL = [
   // pendingFrostWarriorBuff queue in tryEndTurn above (battlecry), and
   // returnToHandOnFrozenDeath in killUnit above (on-death).
   { id: 'c216', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 2, hp: 1, frostWarriorFreezeCountOnPlay: true, returnToHandOnFrozenDeath: true, rarity: 'epic', faction: 'frost' },
+  // \u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d: pure reuse of the existing deathSummonCardId mechanic
+  // (see \u041c\u043e\u0433\u0438\u043b\u044c\u043d\u043e\u0435 \u043d\u0430\u0434\u0433\u0440\u043e\u0431\u0438\u0435/\u041e\u0436\u0438\u0432\u0448\u0438\u0439 \u0442\u0440\u0443\u043f above) \u2014 summons \u0421\u043a\u0435\u043b\u0435\u0442 (c200)
+  // onto its own cell on death.
+  { id: 'c217', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u0432\u043e\u0438\u043d', type: 'creature', cost: 4, atk: 4, hp: 1, deathSummonCardId: 'c200', rarity: 'common', faction: 'frost' },
 ];
 
 export function cardById(id) {
