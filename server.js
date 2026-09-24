@@ -720,9 +720,9 @@ function getPveProgress(username) {
 // `match.players` always has exactly one real account plus `match.aiName`.
 // Counts one completed PVE match toward the human player's progress
 // (only WINS advance the bar — losses don't), and pays a per-match
-// reward regardless of outcome:
+// reward only on a WIN — a loss earns no gold/dust at all:
 //   win  -> 20 gold + 20 dust
-//   lose -> 10 gold (no dust)
+//   lose -> nothing
 // On top of that, a win that fills the bar also grants the ladder tier's
 // gold reward (same schedule as before — gold only, no dust, unlike
 // PVP's tier reward). Returns a { [username]: {...} } summary matching
@@ -736,7 +736,7 @@ function applyPveProgress(match) {
   stats.played += 1;
   if (won) stats.won += 1;
   const resources = getResources(username);
-  const matchGold = won ? 20 : 10;
+  const matchGold = won ? 20 : 0;
   const matchDust = won ? 20 : 0;
   resources.gold = (resources.gold || 0) + matchGold;
   resources.dust = (resources.dust || 0) + matchDust;
@@ -762,9 +762,9 @@ function applyPveProgress(match) {
 // ---------- PVP progress ladder ----------
 // Same shape as the PVE screen, tracked completely separately
 // (db.data.pvpProgress) — but PVP has its own reward rules on top:
-//  - every PLAYED match pays out immediately, win or lose:
+//  - only a WIN pays out a per-match reward; a loss earns nothing:
 //      win  -> 30 gold + 30 dust
-//      lose -> 20 gold (no dust)
+//      lose -> nothing
 //  - the progress bar itself only advances on wins (same rule as PVE),
 //    using the exact same required-matches/gold schedule as PVE
 //    (pveIterationInfo) — except the tier reward pays that amount in
@@ -795,7 +795,7 @@ function applyPvpRewards(match) {
     stats.played += 1;
     if (won) stats.won += 1;
     const resources = getResources(username);
-    const matchGold = won ? 30 : 20;
+    const matchGold = won ? 30 : 0;
     const matchDust = won ? 30 : 0;
     resources.gold = (resources.gold || 0) + matchGold;
     resources.dust = (resources.dust || 0) + matchDust;
