@@ -853,6 +853,12 @@ export const CARD_POOL = [
   { id: 'c209', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 1, skeletonArcherShot: true, rarity: 'common', faction: 'frost' },
   // \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u043c\u0430\u0433: see iceMageFreezeShot/applyIceMageFreeze above.
   { id: 'c210', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u043c\u0430\u0433', type: 'creature', cost: 3, atk: 1, hp: 4, iceMageFreezeShot: true, rarity: 'rare', faction: 'frost' },
+  // \u041f\u0440\u0438\u0437\u044b\u0432 \u043b\u0435\u0434\u044f\u043d\u044b\u0445 \u0437\u043e\u043c\u0431\u0438: pure reuse of the existing
+  // endOfRoundSpell mechanic (\u041a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0441\u043a\u043e\u0435 \u043e\u043f\u043e\u043b\u0447\u0435\u043d\u0438\u0435/\u0420\u0430\u0441\u0441\u0432\u0435\u0442) \u2014
+  // summons 2 \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438 (c201) to random free cells on the
+  // caster's own board at the end of the round. No healAmount set, so
+  // that part of the shared mechanic is simply never triggered.
+  { id: 's50', name: '\u041f\u0440\u0438\u0437\u044b\u0432 \u043b\u0435\u0434\u044f\u043d\u044b\u0445 \u0437\u043e\u043c\u0431\u0438', type: 'spell', cost: 3, endOfRoundSpell: true, summonCardId: 'c201', summonCount: 2, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
