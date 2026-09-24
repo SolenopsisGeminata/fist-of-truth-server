@@ -851,6 +851,8 @@ export const CARD_POOL = [
   // above. Part of the \u0425\u043e\u043b\u043e\u0434 starter deck (see
   // frostStarterDeckCounts below).
   { id: 'c209', name: '\u0421\u043a\u0435\u043b\u0435\u0442-\u043b\u0443\u0447\u043d\u0438\u043a', type: 'creature', cost: 3, atk: 3, hp: 1, skeletonArcherShot: true, rarity: 'common', faction: 'frost' },
+  // \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u043c\u0430\u0433: see iceMageFreezeShot/applyIceMageFreeze above.
+  { id: 'c210', name: '\u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u043c\u0430\u0433', type: 'creature', cost: 3, atk: 1, hp: 4, iceMageFreezeShot: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1433,6 +1435,8 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Скелет-лучник: see skeletonArcherShot in resolveCombatPass
     // (pre-attack) and killUnit (on-death) above — same flag gates both.
     skeletonArcherShot: !!card.skeletonArcherShot,
+    // Ледяной маг: see iceMageFreezeShot in resolveCombatPass above.
+    iceMageFreezeShot: !!card.iceMageFreezeShot,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -4683,6 +4687,41 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
 
 // Дикарь-стрелок: shared by both his battlecry (randomShotOnPlay, via
 // pendingMarksmanShots below) and his pre-attack recurring shot
+// Ледяной маг: picks a random ENEMY unit (same Чаростойкость-excluded
+// pool as applyRandomEnemyShot below) and FREEZES the specific cell it
+// stands on (match.frozenCells on the ENEMY's own side — unlike every
+// other Frost freeze source so far, which only ever freezes the
+// caster's OWN side), then applies a flat -1 atk / -1 hp to that same
+// unit regardless. If the cell was ALREADY frozen, the freeze half is a
+// pure no-op (re-setting an already-true flag), surfaced to the client
+// via alreadyFrozen so it skips the redundant ice-forming visual — the
+// debuff always applies either way, matching "если клетка уже
+// заморожена, срабатывает только уменьшение атаки и здоровья".
+function applyIceMageFreeze(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx) {
+  const targetBoard = match.boards[enemySide];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      if (targetBoard[l][d] && !targetBoard[l][d].spellResist) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+  const alreadyFrozen = match.frozenCells[enemySide][chosen.laneIdx][chosen.depthIdx];
+  match.frozenCells[enemySide][chosen.laneIdx][chosen.depthIdx] = true;
+  targetUnit.atk = Math.max(0, targetUnit.atk - 1);
+  targetUnit.hp -= 1;
+  const died = targetUnit.hp <= 0;
+  events.push({
+    type: 'iceMageFreeze', side, targetSide: enemySide,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+    sourceUid, alreadyFrozen, died,
+  });
+  if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+}
+
 // (randomShotRecurring, checked in resolveCombatPass below, gated by
 // match.round > bornRound same as Бамбуковый стрелок's own recurring
 // shot) — picks a random ENEMY UNIT (never the hero, and never a
@@ -5189,6 +5228,12 @@ function resolveCombatPass(match, events, isEligible) {
       // flag also gates his own on-death shot (see killUnit).
       if (aEligible && aUnit.skeletonArcherShot) applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 1, 'skeletonArrowShot');
       if (bEligible && bUnit.skeletonArcherShot) applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 1, 'skeletonArrowShot');
+      // Ледяной маг: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every
+      // attack of his, freezes a random enemy unit's own cell and
+      // applies -1 atk / -1 hp to it (see applyIceMageFreeze above).
+      if (aEligible && aUnit.iceMageFreezeShot) applyIceMageFreeze(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth);
+      if (bEligible && bUnit.iceMageFreezeShot) applyIceMageFreeze(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth);
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
       // attack of its, fires TWO spike shots in a row, each at a random
