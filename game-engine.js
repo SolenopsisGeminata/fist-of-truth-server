@@ -912,6 +912,10 @@ export const CARD_POOL = [
   // loop preamble above \u2014 grows +1 attack every time its OWNER casts
   // ANY spell (checked unconditionally for every spell kind).
   { id: 'c220', name: '\u0417\u043b\u043e\u043b\u0443\u043d\u043d\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c', type: 'creature', cost: 1, atk: 1, hp: 1, moonBatGrowOnSpellCast: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u0435\u043c\u043e\u043d\u0442\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442: see repairRobotBuffAllyOnDeath in killUnit above \u2014 same
+  // "random ally anywhere on own side" pool as \u041a\u043e\u0441\u0442\u044f\u043d\u0430\u044f \u0433\u043e\u043d\u0447\u0430\u044f.
+  // Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see mysteryStarterDeckCounts above).
+  { id: 'c221', name: '\u0420\u0435\u043c\u043e\u043d\u0442\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 2, atk: 1, hp: 1, repairRobotBuffAllyOnDeath: true, rarity: 'common', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1022,7 +1026,7 @@ export function frostStarterDeckCounts() {
 // card, same "starter decks are Common-only" convention as every other
 // faction.
 export function mysteryStarterDeckCounts() {
-  return { c219: 3, s52: 3 };
+  return { c219: 3, s52: 3, c221: 3 };
 }
 
 // ---------- Factions ----------
@@ -1527,6 +1531,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Костяная гончая: see the killUnit block right after Стена костей's
     // own boneWallHealOnAnyDeath reaction above.
     boneHoundGrowAllyOnDeath: !!card.boneHoundGrowAllyOnDeath,
+    // Ремонтный робот: see the killUnit block right after Костяная гончая's
+    // own boneHoundGrowAllyOnDeath reaction above.
+    repairRobotBuffAllyOnDeath: !!card.repairRobotBuffAllyOnDeath,
     // Скелет-лучник: see skeletonArcherShot in resolveCombatPass
     // (pre-attack) and killUnit (on-death) above — same flag gates both.
     skeletonArcherShot: !!card.skeletonArcherShot,
@@ -3093,6 +3100,28 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
       events.push({
         type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
         targetDepth: chosen.depthIdx, buffAtk: 2, buffHp: 0, sourceUid: unit.uid,
+      });
+    }
+  }
+  // Ремонтный робот: same "random ally anywhere on its OWN side" pool
+  // as Костяная гончая right above, but +1 atk AND +1 hp instead of a pure
+  // +2 atk. A safe no-op if it has no ally left at all.
+  if (unit && unit.repairRobotBuffAllyOnDeath) {
+    const allies = [];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        if (board[l2][d2]) allies.push({ laneIdx: l2, depthIdx: d2 });
+      }
+    }
+    if (allies.length > 0) {
+      const chosen = allies[Math.floor(Math.random() * allies.length)];
+      const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+      targetUnit.atk += 1;
+      targetUnit.hp += 1;
+      targetUnit.maxHp += 1;
+      events.push({
+        type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+        targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
       });
     }
   }
