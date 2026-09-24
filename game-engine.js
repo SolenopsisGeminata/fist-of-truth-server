@@ -902,6 +902,12 @@ export const CARD_POOL = [
   // fields at all \u2014 part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see
   // mysteryStarterDeckCounts above).
   { id: 'c219', name: '\u0420\u043e\u0431\u043e\u0442-\u0440\u0430\u0437\u0432\u0435\u0434\u0447\u0438\u043a', type: 'creature', cost: 0, atk: 0, hp: 1, rarity: 'common', faction: 'mystery' },
+  // \u041d\u0435\u043c\u043e\u0442\u0430 (\u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f \u0432\u0435\u0440\u0441\u0438\u044f): see the 'muteStrike' spell kind in
+  // resolveSpells above \u2014 applies the SAME \u041d\u0435\u043c\u043e\u0442\u0430 effect (applySilence)
+  // as \u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434, but a directly targeted cell instead of a
+  // random pick, plus 1 fixed damage. Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter
+  // deck (see mysteryStarterDeckCounts above).
+  { id: 's52', name: '\u041d\u0435\u043c\u043e\u0442\u0430', type: 'spell', cost: 1, muteStrike: true, rarity: 'common', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1012,7 +1018,7 @@ export function frostStarterDeckCounts() {
 // card, same "starter decks are Common-only" convention as every other
 // faction.
 export function mysteryStarterDeckCounts() {
-  return { c219: 3 };
+  return { c219: 3, s52: 3 };
 }
 
 // ---------- Factions ----------
@@ -2486,6 +2492,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.muteStrike) {
+    // \u041d\u0435\u043c\u043e\u0442\u0430: same "specific enemy cell, empty or occupied" targeting
+    // as \u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442 above \u2014 unit-or-hero fallback (never both), plus
+    // applies the same \u041d\u0435\u043c\u043e\u0442\u0430 effect as \u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434 (see the
+    // 'muteStrike' branch in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -2493,7 +2507,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : 'buff')))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : 'buff'))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -3997,6 +4011,38 @@ function resolveSpells(match, events) {
       }
       events.push({
         type: 'spell', kind: 'meteor', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'muteStrike') {
+      // Немота: same specific-cell "unit takes the hit OR the hero
+      // does (never both)" fallback shape as Метеорит above, fixed 1
+      // damage. Щит blocks it too (unlike a plain damage spell), same
+      // as Смертный холод's own target pool — Немота can never land on
+      // a Щит or Чаростойкость unit, so the whole strike (damage
+      // included) is blocked on either, rather than letting the damage
+      // through while only the status half fails. A hit unit gets
+      // silenced via applySilence (same helper Смертный холод uses),
+      // which happens BEFORE the hp subtraction so the fresh hp isn't
+      // clobbered by the rebuild.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      const amount = 1;
+      let died = false;
+      if (resisted) {
+        // no-op: the lightning bolt crackles off her harmlessly
+      } else if (cellUnit) {
+        applySilence(cellUnit);
+        cellUnit.hp -= amount;
+        died = cellUnit.hp <= 0;
+      } else {
+        damageHero(match, defenderName, amount, events);
+      }
+      events.push({
+        type: 'spell', kind: 'muteStrike', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
         amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
       });
