@@ -859,6 +859,9 @@ export const CARD_POOL = [
   // caster's own board at the end of the round. No healAmount set, so
   // that part of the shared mechanic is simply never triggered.
   { id: 's50', name: '\u041f\u0440\u0438\u0437\u044b\u0432 \u043b\u0435\u0434\u044f\u043d\u044b\u0445 \u0437\u043e\u043c\u0431\u0438', type: 'spell', cost: 3, endOfRoundSpell: true, summonCardId: 'c201', summonCount: 2, rarity: 'rare', faction: 'frost' },
+  // \u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434: see the 'deathChill' spell kind in
+  // resolveSpells/applySilence above.
+  { id: 's51', name: '\u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434', type: 'spell', cost: 3, deathChill: true, rarity: 'rare', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1516,9 +1519,41 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     styxGuardSelfHit: !!card.styxGuardSelfHit,
+    // Немота (Смертный холод): not a card-derived field at all — never
+    // set here from `card`, only ever flipped true by applySilence below.
+    silenced: false,
     placedThisRound,
     bornRound,
   };
+}
+
+// Немота: strips EVERY ability/keyword field a unit currently carries —
+// inherent to its own card OR granted later by any buff — back down to
+// this file's own "no abilities at all" baseline, by rebuilding the unit
+// from buildUnitFromCard with a blank ({}) card (every field there is
+// `card.X || <falsy default>`, so an empty card yields every single one
+// at its default). Only atk/hp/maxHp (explicitly exempted — "не снимает
+// баффы здоровья и атаки"), identity (id/uid), and round-tracking state
+// (bornRound/placedThisRound/cantAttackThisRound) survive the rebuild;
+// everything else — Кража жизни, Наследие, Двойной/Тройной удар, Первый
+// удар, Топот, Защитник, Броня, Мана, Пробитие, Сон, and every other
+// ability field that exists or will ever be added to buildUnitFromCard's
+// shape — resets to nothing. Щит (shieldEffect) and Чаростойкость
+// (spellResist) are never actually silenceable in the first place (see
+// the 'deathChill' spell's own target pool below), so they're never a
+// factor here, but would reset to false like everything else if they
+// somehow were already off (they always are).
+function applySilence(unit) {
+  const blank = buildUnitFromCard({}, unit.placedThisRound, unit.bornRound);
+  Object.assign(unit, blank, {
+    id: unit.id,
+    uid: unit.uid,
+    atk: unit.atk,
+    hp: unit.hp,
+    maxHp: unit.maxHp,
+    cantAttackThisRound: unit.cantAttackThisRound,
+    silenced: true,
+  });
 }
 
 // Храмовый боец (and any future card with this flag): the instant its
@@ -2328,6 +2363,14 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.deathChill) {
+    // \u0421\u043c\u0435\u0440\u0442\u043d\u044b\u0439 \u0445\u043e\u043b\u043e\u0434: same "any enemy cell" bounds-only targeting
+    // formality as \u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438 above \u2014 the actual target is a
+    // fully random enemy unit picked at resolution (see the 'deathChill'
+    // spell kind in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.madFireballDmg) {
     // \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 (the new one): same "specific enemy
     // cell, empty or occupied" bounds-only validation as \u041a\u0430\u043f\u043a\u0430\u043d above \u2014
@@ -2361,7 +2404,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.ignitionDmg ? 'ignition' : 'buff'))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : 'buff')))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -3541,6 +3584,39 @@ function resolveSpells(match, events) {
         empty: targets.length === 0,
       });
       if (died) killUnit(match, defenderName, targetLaneIdx, targetDepthIdx, events);
+    } else if (spell.kind === 'deathChill') {
+      // Смертный холод: same "collect every non-Чаростойкость enemy
+      // unit, pick one at random" eligibility pool as Высасывание души
+      // above, but ALSO excluding Щит (shieldEffect) — Немота can't be
+      // applied to a Щит unit either, unlike a plain damage spell. The
+      // picked unit gets fully silenced (see applySilence above, which
+      // preserves its current atk/hp exactly), then loses 1 more atk on
+      // top of that (floored at 0) — the atk debuff isn't part of Немота
+      // itself, it's this spell's own separate effect.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targets = [];
+      for (let l = 0; l < LANES; l++) {
+        for (let d = 0; d < DEPTH; d++) {
+          const u = board[l][d];
+          if (u && !u.spellResist && !u.shieldEffect) targets.push({ laneIdx: l, depthIdx: d, unit: u });
+        }
+      }
+      let targetLaneIdx = null;
+      let targetDepthIdx = null;
+      const empty = targets.length === 0;
+      if (!empty) {
+        const chosen = targets[Math.floor(Math.random() * targets.length)];
+        applySilence(chosen.unit);
+        chosen.unit.atk = Math.max(0, chosen.unit.atk - 1);
+        targetLaneIdx = chosen.laneIdx;
+        targetDepthIdx = chosen.depthIdx;
+      }
+      events.push({
+        type: 'spell', kind: 'deathChill', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName,
+        targetLaneIdx, targetDepthIdx, empty,
+      });
     } else if (spell.kind === 'lifeLight') {
       // Свет жизни: heals own hero for a fixed amount first (via the
       // shared healHero choke point, so Двойное омоложение/Имперский
