@@ -908,6 +908,10 @@ export const CARD_POOL = [
   // random pick, plus 1 fixed damage. Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter
   // deck (see mysteryStarterDeckCounts above).
   { id: 's52', name: '\u041d\u0435\u043c\u043e\u0442\u0430', type: 'spell', cost: 1, muteStrike: true, rarity: 'common', faction: 'mystery' },
+  // \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c: see moonBatGrowOnSpellCast in the resolveSpells
+  // loop preamble above \u2014 grows +1 attack every time its OWNER casts
+  // ANY spell (checked unconditionally for every spell kind).
+  { id: 'c220', name: '\u0417\u043b\u043e\u043b\u0443\u043d\u043d\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c', type: 'creature', cost: 1, atk: 1, hp: 1, moonBatGrowOnSpellCast: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1508,6 +1512,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // OWN cell is still covered in ice, its card returns to hand instead
     // of being lost.
     returnToHandOnFrozenDeath: !!card.returnToHandOnFrozenDeath,
+    // Злолунная летучая мышь: see the resolveSpells loop preamble above
+    // (checked unconditionally for every spell that resolves).
+    moonBatGrowOnSpellCast: !!card.moonBatGrowOnSpellCast,
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
@@ -3513,6 +3520,26 @@ function resolveSpells(match, events) {
   match.pendingSpells = [];
   for (const spell of queue) {
     if (anyHeroDown(match)) break; // match already decided — stop applying further spells
+    // Злолунная летучая мышь: whenever ITS OWNER casts ANY spell (this
+    // loop resolves every spell about to land this round, in cast
+    // order), every copy currently on the CASTER's own board
+    // permanently gains +1 attack — checked before the spell's own
+    // kind-specific effect below, unconditional on spell kind, so it
+    // fires for literally every spell in the game, present or future.
+    // Reuses the existing 'rallyBuff' event/animation.
+    const moonBatBoard = match.boards[spell.side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = moonBatBoard[l][d];
+        if (u && u.moonBatGrowOnSpellCast) {
+          u.atk += 1;
+          events.push({
+            type: 'rallyBuff', side: spell.side, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: u.uid,
+          });
+        }
+      }
+    }
     if (spell.kind === 'wrath') {
       // Гнев небес: unlike 'damage' (front unit only), this hits EVERY
       // depth position in the chosen enemy lane — one damage event per
