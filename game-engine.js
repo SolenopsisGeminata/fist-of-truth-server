@@ -884,6 +884,9 @@ export const CARD_POOL = [
   // time an enemy unit dies, summons a \u041b\u0435\u0434\u044f\u043d\u043e\u0439 \u0437\u043e\u043c\u0431\u0438 (c201) onto a
   // random free cell of its owner's own board.
   { id: 'c214', name: '\u041d\u0435\u043a\u0440\u043e\u043c\u0430\u043d\u0442', type: 'creature', cost: 4, atk: 2, hp: 3, necromancerSummonOnEnemyDeath: true, rarity: 'epic', faction: 'frost' },
+  // \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u043a\u0430\u0442\u0430\u043f\u0443\u043b\u044c\u0442\u0430: see iceCatapultShot in the end-of-round block
+  // (right after \u0418\u043c\u043f\u0435\u0440\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430's own cannonShot) above.
+  { id: 'c215', name: '\u041b\u0435\u0434\u044f\u043d\u0430\u044f \u043a\u0430\u0442\u0430\u043f\u0443\u043b\u044c\u0442\u0430', type: 'creature', cost: 4, atk: 3, hp: 7, defender: true, iceCatapultShot: true, rarity: 'epic', faction: 'frost' },
 ];
 
 export function cardById(id) {
@@ -1400,6 +1403,12 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cannonShot: !!card.cannonShot,
     cannonShotFixed: card.cannonShotFixed || 0,
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
+    // Ледяная катапульта: see the end-of-round block right after
+    // Имперская пушка's own cannonShot above — same end-of-round cell
+    // strike shape, but a FULLY random cell anywhere on the enemy board
+    // (not restricted to her own mirrored lane) and always freezes the
+    // cell it lands on, hit or empty.
+    iceCatapultShot: !!card.iceCatapultShot,
     fixedHeal: card.fixedHeal || 0,
     healOnDeath: card.healOnDeath || 0,
     enemyHealOnDeath: card.enemyHealOnDeath || 0,
@@ -7543,6 +7552,41 @@ export function tryEndTurn(match, username) {
               });
               if (died) killUnit(match, targetSide, l, targetDepth, events);
             }
+          }
+          // Ледяная катапульта: at the end of every round she survives,
+          // hurls an ice ball at a FULLY random cell anywhere on the
+          // enemy board (unlike Имперская пушка right above, not restricted
+          // to her own mirrored lane) for a fixed 3 damage. Чаростойкость
+          // still blocks the damage (same resisted-no-redirect precedent
+          // as every other cross-side damage mechanic), but the ice ball
+          // always physically lands and freezes the cell regardless —
+          // hit, resisted, or empty.
+          if (unit && unit.iceCatapultShot) {
+            const targetSide = match.players.find((p) => p !== name);
+            const targetBoard = match.boards[targetSide];
+            const targetLane = Math.floor(Math.random() * LANES);
+            const targetDepth = Math.floor(Math.random() * DEPTH);
+            const cellUnit = targetBoard[targetLane][targetDepth];
+            const resisted = !!(cellUnit && cellUnit.spellResist);
+            const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+            const amount = 3;
+            let died = false;
+            if (resisted) {
+              // no-op: the ice ball shatters on her harmlessly
+            } else if (targetUnit) {
+              targetUnit.hp -= amount;
+              died = targetUnit.hp <= 0;
+            } else {
+              damageHero(match, targetSide, amount, events);
+            }
+            match.frozenCells[targetSide][targetLane][targetDepth] = true;
+            events.push({
+              type: 'iceCatapultShot', side: name, targetSide, amount: resisted ? 0 : amount,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+              targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
+              targetHero: !cellUnit, died, resisted,
+            });
+            if (died) killUnit(match, targetSide, targetLane, targetDepth, events);
           }
           // Каменная Стена: grows sturdier at the end of every round she
           // survives — permanently +2 to her OWN hp (and maxHp). Reuses
