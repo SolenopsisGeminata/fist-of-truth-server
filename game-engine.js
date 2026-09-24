@@ -937,6 +937,9 @@ export const CARD_POOL = [
   // \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442: see moonCatGrowOnSpellCount in the resolveCombatPass
   // pre-attack hook above (match.spellsCastThisRound).
   { id: 'c227', name: '\u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442', type: 'creature', cost: 2, atk: 4, hp: 2, moonCatGrowOnSpellCount: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c: see observerRobotGrowOnInsight in applyInsight above and
+  // healHeroByAtkOnDeath in killUnit above.
+  { id: 'c228', name: '\u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 2, hp: 2, observerRobotGrowOnInsight: true, healHeroByAtkOnDeath: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1587,6 +1590,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Злолунный кот: see the resolveCombatPass pre-attack hook above
     // (match.spellsCastThisRound).
     moonCatGrowOnSpellCount: !!card.moonCatGrowOnSpellCount,
+    // Робот-наблюдатель: see applyInsight above (growth) and the killUnit
+    // block right after Детеныш кабана's own healOnDeath (on-death heal).
+    observerRobotGrowOnInsight: !!card.observerRobotGrowOnInsight,
+    healHeroByAtkOnDeath: !!card.healHeroByAtkOnDeath,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -2682,6 +2689,15 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
   // unit is already gone from the board by this point.
   if (unit && unit.healOnDeath && !anyHeroDown(match)) {
     const healed = healHero(match, side, unit.healOnDeath, events);
+    events.push({ type: 'endOfRound', side, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx, depthIdx });
+  }
+  // Робот-наблюдатель: same on-death heal shape as Детеныш кабана right
+  // above, but the healed amount is its own CURRENT attack (read off the
+  // already-detached unit object, so it reflects every buff it picked up
+  // while alive, e.g. from its own observerRobotGrowOnInsight) rather
+  // than a fixed number.
+  if (unit && unit.healHeroByAtkOnDeath && unit.atk > 0 && !anyHeroDown(match)) {
+    const healed = healHero(match, side, unit.atk, events);
     events.push({ type: 'endOfRound', side, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx, depthIdx });
   }
   // Пожирающая злоба: on death (from anything), heals the ENEMY hero
@@ -4589,6 +4605,28 @@ function applyInsight(match, casterSide, amount, events) {
     revealedUids.push(chosen.uid);
   }
   events.push({ type: 'insightReveal', side: casterSide, targetSide: enemySide, count, revealedUids });
+  // Робот-наблюдатель: every time Понимание ACTUALLY reveals at least one
+  // new card (count > 0 — an already-fully-revealed or empty enemy
+  // hand doesn't count, since nothing new became visible), every copy
+  // on the CASTER's own board permanently gains +1 attack AND +1 health.
+  // Reuses the existing 'rallyBuff' event/animation.
+  if (count > 0) {
+    const board = match.boards[casterSide];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.observerRobotGrowOnInsight) {
+          u.atk += 1;
+          u.hp += 1;
+          u.maxHp += 1;
+          events.push({
+            type: 'rallyBuff', side: casterSide, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: u.uid,
+          });
+        }
+      }
+    }
+  }
 }
 
 // Таинственная служанка Сюань: +1 attack to every ally, -1 attack
