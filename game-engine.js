@@ -971,6 +971,18 @@ export const CARD_POOL = [
   // \u0420\u043e\u0431\u043e\u0442 \u0441\u043d\u0430\u0431\u0436\u0435\u043d\u0438\u044f: see supplyRobotGrowOnMana in the end-of-round loop
   // in tryEndTurn above (match.mana[side]).
   { id: 'c232', name: '\u0420\u043e\u0431\u043e\u0442 \u0441\u043d\u0430\u0431\u0436\u0435\u043d\u0438\u044f', type: 'creature', cost: 3, atk: 2, hp: 5, supplyRobotGrowOnMana: true, rarity: 'rare', faction: 'mystery' },
+  // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043c\u0435\u0434\u0438\u0446\u0438\u043d\u044b: pure reuse of \u0423\u0447\u0435\u043d\u0438\u043a \u0438\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442\u0430's own
+  // addCardToHandOnPlay battlecry \u2014 hands out a fresh \u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f
+  // \u0441\u0438\u043b\u0430 (s56, right below) straight to hand.
+  { id: 'c233', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043c\u0435\u0434\u0438\u0446\u0438\u043d\u044b', type: 'creature', cost: 3, atk: 1, hp: 5, addCardToHandOnPlay: 's56', rarity: 'rare', faction: 'mystery' },
+  // \u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430: see the 'corruptedPower' spell kind in resolveSpells
+  // above \u2014 same "either side's board, via targetMine" targeting as
+  // \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435. A token spell, never part of any deck build on its
+  // own \u2014 the ONLY way to get one is \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u043c\u0435\u0434\u0438\u0446\u0438\u043d\u044b's own battlecry
+  // above, so it's excluded from both the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck and the
+  // shop (noShop; commons are already shop-excluded by rarity alone, but
+  // every other token spell in the file sets this explicitly too).
+  { id: 's56', name: '\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430', type: 'spell', cost: 0, corruptedPowerBuff: true, rarity: 'common', noShop: true, faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2647,6 +2659,13 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.corruptedPowerBuff) {
+    // \u0418\u0437\u0432\u0440\u0430\u0449\u0451\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430: same "either side's board, via targetMine"
+    // targeting as \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 above \u2014 bounds-only, both boards are
+    // always legal targets.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -2654,14 +2673,15 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : 'buff'))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : 'buff')))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
-    // Клонирование: resolved once, right here at cast time, from the
-    // client's own targetMine flag — every other spell kind leaves this
-    // undefined and reads match.boards[username]/otherPlayer(...) directly
-    // instead, since they only ever target one fixed side.
-    targetSide: card.cloneCardToHand ? (targetMine ? username : otherPlayer(match, username)) : undefined,
+    // Клонирование/Извращенная сила: resolved once, right here at cast
+    // time, from the client's own targetMine flag — every other spell
+    // kind leaves this undefined and reads
+    // match.boards[username]/otherPlayer(...) directly instead, since
+    // they only ever target one fixed side.
+    targetSide: (card.cloneCardToHand || card.corruptedPowerBuff) ? (targetMine ? username : otherPlayer(match, username)) : undefined,
     dmg: card.dmg,
     wrathDmg: card.wrathDmg,
     heal: card.heal,
@@ -4360,6 +4380,31 @@ function resolveSpells(match, events) {
         laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
         clonedCardId, empty: !cellUnit, resisted,
       });
+    } else if (spell.kind === 'corruptedPower') {
+      // Извращенная сила: same "either side's board, via targetMine"
+      // targeting/resisted shape as Клонирование above. +3 atk (never
+      // floored, no upper bound) and -1 hp, the hp loss routed through
+      // applyWardedDamage same as every other cross-side spell-inflicted
+      // hp loss (Ледяной маг's own -1atk/-1hp freeze shot is the closest
+      // precedent for combining an atk change with a warded hp change);
+      // can kill the target if it was already at 1 hp.
+      const board = match.boards[spell.targetSide];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      let died = false;
+      let hpDelta = 0;
+      if (cellUnit && !resisted) {
+        cellUnit.atk += 3;
+        hpDelta = applyWardedDamage(cellUnit, 1);
+        cellUnit.hp -= hpDelta;
+        died = cellUnit.hp <= 0;
+      }
+      events.push({
+        type: 'spell', kind: 'corruptedPower', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
+        hpDelta, empty: !cellUnit, resisted, died,
+      });
+      if (died) killUnit(match, spell.targetSide, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'ignition') {
       // Воспламенение: same specific-cell "unit takes the hit OR the
       // hero does (never both)" fallback shape as Метеорит above, but
