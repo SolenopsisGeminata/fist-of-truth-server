@@ -1049,6 +1049,11 @@ export const CARD_POOL = [
   // checked first before every other pre-attack effect). No new mechanic
   // needed.
   { id: 'c241', name: '\u041c\u0435\u0434\u0432\u0435\u0434\u044c-\u043f\u0440\u0438\u0437\u0440\u0430\u043a', type: 'creature', cost: 4, atk: 6, hp: 6, trample: true, ghostEffect: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442 \u0442\u0435\u0445\u043e\u0431\u0441\u043b\u0443\u0436\u0438\u0432\u0430\u043d\u0438\u044f: see maintenanceRobotPulse in the
+  // start-of-resolution loop in tryEndTurn above (right after
+  // \u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a's own block) \u2014 1 damage to every OTHER creature
+  // on the entire board, both sides, every round.
+  { id: 'c242', name: '\u0420\u043e\u0431\u043e\u0442 \u0442\u0435\u0445\u043e\u0431\u0441\u043b\u0443\u0436\u0438\u0432\u0430\u043d\u0438\u044f', type: 'creature', cost: 4, atk: 1, hp: 6, maintenanceRobotPulse: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1766,6 +1771,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // as Охранный робот above, but a single shot dealing its own CURRENT
     // attack instead of two fixed-2 ones.
     impulseRobotShot: !!card.impulseRobotShot,
+    // Робот техобслуживания: see the start-of-resolution loop in
+    // tryEndTurn above (right after Арбалетчик's own block).
+    maintenanceRobotPulse: !!card.maintenanceRobotPulse,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -7101,6 +7109,46 @@ export function tryEndTurn(match, username) {
             type: 'heroShot', side, targetSide, amount,
             laneIdx: l, depthIdx: d, sourceUid: unit.uid,
           });
+        }
+      }
+    }
+  }
+
+  // Робот техобслуживания: unlike Арбалетчик right above, no bornRound
+  // gate — fires even in its own placement round, same "no gate" timing
+  // as Аннабэль's own dawnBuff (resolution beginning IS the start of
+  // this round for everyone). Deals 1 damage to EVERY creature on the
+  // ENTIRE board except itself — both allies and enemies, on both
+  // players' boards. Same applyWardedDamage (respects Магическая
+  // защита, ignores armor entirely) and shieldEffect exclusion (immune
+  // to mechanics of other units, per its own tooltip) as every other
+  // non-combat damage source in the file; a unit killed by it dies
+  // normally via killUnit. Multiple copies on the board each pulse
+  // independently, hitting each other too (never themselves).
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.maintenanceRobotPulse) continue;
+        for (const targetSide of match.players) {
+          const targetBoard = match.boards[targetSide];
+          for (let tl = 0; tl < LANES; tl++) {
+            for (let td = 0; td < DEPTH; td++) {
+              if (targetSide === side && tl === l && td === d) continue;
+              const targetUnit = targetBoard[tl][td];
+              if (!targetUnit || targetUnit.shieldEffect) continue;
+              const applied = applyWardedDamage(targetUnit, 1);
+              targetUnit.hp -= applied;
+              const died = targetUnit.hp <= 0;
+              events.push({
+                type: 'maintenanceRobotPulse', side, targetSide,
+                laneIdx: l, depthIdx: d, targetLaneIdx: tl, targetDepthIdx: td,
+                sourceUid: unit.uid, amount: applied, died,
+              });
+              if (died) killUnit(match, targetSide, tl, td, events);
+            }
+          }
         }
       }
     }
