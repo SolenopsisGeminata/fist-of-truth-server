@@ -1998,7 +1998,7 @@ wss.on('connection', (ws) => {
     if (msg.type === 'cast_spell' && msg.matchId) {
       const mm = liveMatches.get(msg.matchId);
       if (!mm) return;
-      const result = engine.castSpell(mm.match, msg.username, msg.uid, msg.lane, msg.depth);
+      const result = engine.castSpell(mm.match, msg.username, msg.uid, msg.lane, msg.depth, msg.targetMine);
       if (result.error) { safeSend(ws, { type: 'action_rejected', reason: result.error }); return; }
       persistMatch(mm);
       sendSnapshots(mm);

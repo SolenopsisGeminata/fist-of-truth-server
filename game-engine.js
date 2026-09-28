@@ -958,6 +958,11 @@ export const CARD_POOL = [
   // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0438\u0441\u043a\u0443\u0441\u0441\u0442\u0432: see artProfessorGrowOnSpellCast in the
   // end-of-round loop in tryEndTurn above (match.spellsCastThisRoundBySide).
   { id: 'c230', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0438\u0441\u043a\u0443\u0441\u0441\u0442\u0432', type: 'creature', cost: 2, atk: 1, hp: 4, artProfessorGrowOnSpellCast: true, rarity: 'epic', faction: 'mystery' },
+  // \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435: see the 'cloneCardToHand' spell kind in resolveSpells
+  // above \u2014 the first spell able to target either side's board (via the
+  // client's own targetMine flag, resolved once at cast time in
+  // castSpell).
+  { id: 's55', name: '\u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435', type: 'spell', cost: 2, cloneCardToHand: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2421,7 +2426,7 @@ export function returnToHand(match, username, uid) {
   return { ok: true };
 }
 
-export function castSpell(match, username, uid, lane, depth) {
+export function castSpell(match, username, uid, lane, depth, targetMine) {
   if (match.phase !== 'placing') return { error: '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u0444\u0430\u0437\u0430 \u0440\u0430\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0438.' };
   const hand = match.hands[username];
   const idx = hand.findIndex((c) => c.uid === uid);
@@ -2620,6 +2625,17 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.cloneCardToHand) {
+    // \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435: the first spell able to target EITHER
+    // side's board \u2014 lane/depth alone can't disambiguate (both boards
+    // share the same 3x3 index space), so the client tells us which one
+    // via targetMine (true = the caster's OWN board, false = the
+    // opponent's). Same "specific cell, empty or occupied" bounds-only
+    // validation as \u041e\u0431\u0443\u0437\u0430 above; which side's board is never itself
+    // rejected here \u2014 either is always a legal target.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -2627,9 +2643,14 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : 'buff')))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : 'buff'))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
+    // Клонирование: resolved once, right here at cast time, from the
+    // client's own targetMine flag — every other spell kind leaves this
+    // undefined and reads match.boards[username]/otherPlayer(...) directly
+    // instead, since they only ever target one fixed side.
+    targetSide: card.cloneCardToHand ? (targetMine ? username : otherPlayer(match, username)) : undefined,
     dmg: card.dmg,
     wrathDmg: card.wrathDmg,
     heal: card.heal,
@@ -4304,6 +4325,29 @@ function resolveSpells(match, events) {
         type: 'spell', kind: 'burden', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
         delta, empty: !cellUnit, resisted,
+      });
+    } else if (spell.kind === 'cloneCardToHand') {
+      // Клонирование: spell.targetSide was resolved once at cast time
+      // (see castSpell's cloneCardToHand branch) from the client's own
+      // targetMine flag — the ONLY spell kind in this file whose target
+      // board isn't implied by the card itself. Щит and Чаростойкость
+      // make a unit immune to being targeted at all, same as every other
+      // targeted spell (Архат's own comment on the 'buff' branch above);
+      // an empty cell just fizzles, no hero fallback of any kind. The
+      // fresh copy always lands in the CASTER's own hand (spell.side),
+      // regardless of which side owns the targeted unit.
+      const board = match.boards[spell.targetSide];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      let clonedCardId = null;
+      if (cellUnit && !resisted) {
+        clonedCardId = cellUnit.id;
+        match.hands[spell.side].push({ id: clonedCardId, uid: nextUid('card') });
+      }
+      events.push({
+        type: 'spell', kind: 'cloneCardToHand', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
+        clonedCardId, empty: !cellUnit, resisted,
       });
     } else if (spell.kind === 'ignition') {
       // Воспламенение: same specific-cell "unit takes the hit OR the
