@@ -989,6 +989,9 @@ export const CARD_POOL = [
   // \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442: see applyGuardRobotShot/the resolveCombatPass
   // pre-attack hook above.
   { id: 'c235', name: '\u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, guardRobotTwinShot: true, rarity: 'rare', faction: 'mystery' },
+  // \u0423\u0441\u0442\u0430\u043b\u043e\u0441\u0442\u044c: see the 'fatigue' spell kind in resolveSpells above \u2014 same
+  // "every depth in the chosen enemy lane" area shape as \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441.
+  { id: 's57', name: '\u0423\u0441\u0442\u0430\u043b\u043e\u0441\u0442\u044c', type: 'spell', cost: 3, fatigueDebuff: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2470,7 +2473,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
   if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
-  if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath || card.ragingFire) {
+  if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath || card.ragingFire || card.fatigueDebuff) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
   } else if (card.healHero) {
     // Родник: any cell works, occupied or empty, friendly or not — the
@@ -2685,7 +2688,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : 'buff')))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : 'buff'))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     // Клонирование/Извращенная сила: resolved once, right here at cast
@@ -3835,6 +3838,40 @@ function resolveSpells(match, events) {
             amount: applied, died, empty: false, resisted: false,
           });
           if (died) killUnit(match, defenderName, spell.laneIdx, d, events);
+        }
+      }
+    } else if (spell.kind === 'fatigue') {
+      // Усталость: same "every depth position in the chosen enemy lane"
+      // area shape as Гнев небес above, but a flat -2 atk debuff instead
+      // of damage (floored at 0, never negative, same convention as
+      // Обуза's own atk debuff). Only Чаростойкость blocks it per cell —
+      // lane-wide spells in this file don't check Щит, unlike single-cell
+      // ones like Обуза/Извращенная сила.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      for (let d = 0; d < DEPTH; d++) {
+        const targetUnit = board[spell.laneIdx][d];
+        if (!targetUnit) {
+          events.push({
+            type: 'spell', kind: 'fatigue', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            delta: 0, empty: true, resisted: false,
+          });
+        } else if (targetUnit.spellResist) {
+          events.push({
+            type: 'spell', kind: 'fatigue', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            delta: 0, empty: false, resisted: true,
+          });
+        } else {
+          const before = targetUnit.atk;
+          targetUnit.atk = Math.max(0, targetUnit.atk - 2);
+          const delta = targetUnit.atk - before;
+          events.push({
+            type: 'spell', kind: 'fatigue', side: spell.side, cardId: spell.cardId,
+            laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: d,
+            delta, empty: false, resisted: false,
+          });
         }
       }
     } else if (spell.kind === 'ragingFire') {
