@@ -948,6 +948,13 @@ export const CARD_POOL = [
   // from the caster's own deck (buffDrawCard, unlike \u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a/\u0417\u0430\u043f\u043e\u0437\u0434\u0430\u043b\u0430\u044f
   // \u043f\u043e\u0441\u0442\u0430\u0432\u043a\u0430's own CONDITIONAL draws).
   { id: 's54', name: '\u041e\u0437\u0430\u0440\u0435\u043d\u0438\u0435', type: 'spell', cost: 2, buffAtk: 1, buffMagicShield: 2, buffDrawCard: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442 \u0430\u0432\u0430\u043d\u0433\u0430\u0440\u0434\u0430: see vanguardRobotGrowOnMana in the resolveCombatPass
+  // pre-attack hook above \u2014 same "no bornRound gate" single-trigger
+  // timing as \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442's own spell-count growth right above, but reads
+  // match.mana[side] (its OWN hero's currently unspent mana) instead of
+  // the spell counter \u2014 a pure read, so the mana itself is never
+  // actually spent by this.
+  { id: 'c229', name: '\u0420\u043e\u0431\u043e\u0442 \u0430\u0432\u0430\u043d\u0433\u0430\u0440\u0434\u0430', type: 'creature', cost: 2, atk: 2, hp: 1, firstStrike: true, vanguardRobotGrowOnMana: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1603,6 +1610,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // block right after Детеныш кабана's own healOnDeath (on-death heal).
     observerRobotGrowOnInsight: !!card.observerRobotGrowOnInsight,
     healHeroByAtkOnDeath: !!card.healHeroByAtkOnDeath,
+    // Робот авангарда: see the resolveCombatPass pre-attack hook above
+    // (match.mana[side], a pure read — never actually spent by this).
+    vanguardRobotGrowOnMana: !!card.vanguardRobotGrowOnMana,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -5842,6 +5852,23 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.moonCatGrowOnSpellCount && match.spellsCastThisRound) {
         bUnit.atk += match.spellsCastThisRound;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: match.spellsCastThisRound, buffHp: 0, sourceUid: bUnit.uid });
+      }
+      // Робот авангарда: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every attack
+      // of his, permanently gains +1 attack for every mana point his OWN
+      // hero currently has left unspent (match.mana[side], read fresh at
+      // this exact moment — the mana itself is never actually spent). A
+      // silent no-op at 0 mana, same "skip a zero-delta rallyBuff" rule
+      // as Злолунный кот right above.
+      if (aEligible && aUnit.vanguardRobotGrowOnMana && match.mana[nameA] > 0) {
+        const amount = match.mana[nameA];
+        aUnit.atk += amount;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: aUnit.uid });
+      }
+      if (bEligible && bUnit.vanguardRobotGrowOnMana && match.mana[nameB] > 0) {
+        const amount = match.mana[nameB];
+        bUnit.atk += amount;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: bUnit.uid });
       }
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
