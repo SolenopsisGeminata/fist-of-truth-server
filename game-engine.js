@@ -998,6 +998,13 @@ export const CARD_POOL = [
   // above), which permanently grants \u041f\u0440\u043e\u0431\u0438\u0442\u0438\u0435 (pierce) \u2014 same flag
   // \u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c (c180) carries statically.
   { id: 's58', name: '\u0426\u0435\u043b\u0435\u0443\u0441\u0442\u0440\u0435\u043c\u043b\u0435\u043d\u043d\u043e\u0441\u0442\u044c', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffPierce: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435: see the 'decompression' spell kind in resolveSpells
+  // above \u2014 same "either side's board, via targetMine" targeting as
+  // \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435/\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430, and introduces \u041d\u0435\u0432\u0438\u0434\u0438\u043c\u043e\u0441\u0442\u044c (see
+  // frontVisibleUnit near frontUnit's own definition, plus
+  // applyFollowupAttack/applyTrampleCascade/the main combat wave, all
+  // updated to skip an invisible unit).
+  { id: 's59', name: '\u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435', type: 'spell', cost: 3, decompressionDebuff: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1239,6 +1246,23 @@ export function freshFrozenGrid() {
 export function frontUnit(board, laneIdx) {
   for (let d = 0; d < DEPTH; d++) {
     if (board[laneIdx][d]) return { unit: board[laneIdx][d], depth: d };
+  }
+  return null;
+}
+
+// Невидимость (Разуплотнение): the frontmost-unit lookup used ONLY by a
+// NORMAL ATTACK's own target selection (the main combat wave below and
+// Пылкая охотница's own follow-up attack) — every other frontUnit() call
+// in this file (spells, shots, throws, bounces) is unaffected, since
+// Невидимость explicitly only blocks normal attacks. An invisible unit
+// is skipped entirely, as if it weren't on the board at all — the
+// attack simply continues to whoever's next in the lane, or falls
+// through to the hero if nothing else is left (frontUnit's own existing
+// "no target" convention, unchanged).
+export function frontVisibleUnit(board, laneIdx) {
+  for (let d = 0; d < DEPTH; d++) {
+    const unit = board[laneIdx][d];
+    if (unit && !unit.invisible) return { unit, depth: d };
   }
   return null;
 }
@@ -1563,6 +1587,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Пробитие (Pierce): see the aTarget/bTarget computation in
     // resolveCombatPass above.
     pierce: !!card.pierce,
+    // Невидимость: not currently a static card property anywhere —
+    // only ever granted dynamically by Разуплотнение (see the
+    // 'decompression' spell kind in resolveSpells and frontVisibleUnit
+    // above/below).
+    invisible: !!card.invisible,
     punisherKill: !!card.punisherKill,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
@@ -2681,9 +2710,16 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
   } else if (card.corruptedPowerBuff) {
-    // \u0418\u0437\u0432\u0440\u0430\u0449\u0451\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430: same "either side's board, via targetMine"
+    // \u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430: same "either side's board, via targetMine"
     // targeting as \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 above \u2014 bounds-only, both boards are
     // always legal targets.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
+  } else if (card.decompressionDebuff) {
+    // \u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435: same "either side's board, via targetMine"
+    // targeting as \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435/\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430 above \u2014 bounds-only,
+    // both boards are always legal targets.
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
@@ -2694,15 +2730,15 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : 'buff'))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : 'buff')))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
-    // Клонирование/Извращенная сила: resolved once, right here at cast
-    // time, from the client's own targetMine flag — every other spell
-    // kind leaves this undefined and reads
+    // Клонирование/Извращенная сила/Разуплотнение: resolved once, right
+    // here at cast time, from the client's own targetMine flag — every
+    // other spell kind leaves this undefined and reads
     // match.boards[username]/otherPlayer(...) directly instead, since
     // they only ever target one fixed side.
-    targetSide: (card.cloneCardToHand || card.corruptedPowerBuff) ? (targetMine ? username : otherPlayer(match, username)) : undefined,
+    targetSide: (card.cloneCardToHand || card.corruptedPowerBuff || card.decompressionDebuff) ? (targetMine ? username : otherPlayer(match, username)) : undefined,
     dmg: card.dmg,
     wrathDmg: card.wrathDmg,
     heal: card.heal,
@@ -4461,6 +4497,27 @@ function resolveSpells(match, events) {
         hpDelta, empty: !cellUnit, resisted, died,
       });
       if (died) killUnit(match, spell.targetSide, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'decompression') {
+      // Разуплотнение: same "either side's board, via targetMine"
+      // targeting/resisted shape as Клонирование/Извращенная сила above.
+      // -6 atk (floored at 0, never negative) and permanently grants
+      // Невидимость (see frontVisibleUnit above) — no damage at all, so
+      // no death is possible here.
+      const board = match.boards[spell.targetSide];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      let delta = 0;
+      if (cellUnit && !resisted) {
+        const before = cellUnit.atk;
+        cellUnit.atk = Math.max(0, cellUnit.atk - 6);
+        delta = cellUnit.atk - before;
+        cellUnit.invisible = true;
+      }
+      events.push({
+        type: 'spell', kind: 'decompression', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
+        delta, empty: !cellUnit, resisted,
+      });
     } else if (spell.kind === 'ignition') {
       // Воспламенение: same specific-cell "unit takes the hit OR the
       // hero does (never both)" fallback shape as Метеорит above, but
@@ -5168,7 +5225,10 @@ function applyTrampleCascade(match, attackerSide, defenderSide, laneIdx, fromDep
   const board = match.boards[defenderSide];
   for (let d = fromDepth + 1; d < DEPTH && remaining > 0; d++) {
     const targetUnit = board[laneIdx][d];
-    if (!targetUnit) continue;
+    // Невидимость: trample overflow is still part of the same normal
+    // attack that started it, so an invisible unit is skipped here too —
+    // the excess damage keeps traveling past it, same as an empty cell.
+    if (!targetUnit || targetUnit.invisible) continue;
     const beforeHp = targetUnit.hp;
     const applied = Math.max(0, remaining - (targetUnit.armor || 0));
     targetUnit.hp -= applied;
@@ -5866,7 +5926,9 @@ function applyFollowupAttack(match, side, laneIdx, depthIdx, events) {
   const targetSide = otherPlayer(match, side);
   const atk = effectiveAtk(board, laneIdx, depthIdx);
   if (atk <= 0) return;
-  const target = frontUnit(match.boards[targetSide], laneIdx);
+  // Невидимость: this is still a genuine normal attack (see the
+  // function's own doc comment above), so it uses frontVisibleUnit too.
+  const target = frontVisibleUnit(match.boards[targetSide], laneIdx);
   let applied = 0;
   let lifesteal = 0;
   let died = false;
@@ -6167,8 +6229,12 @@ function resolveCombatPass(match, events, isEligible) {
       // Щит are irrelevant since they only ever protected against being
       // the target of a spell, not of a normal attack, and this makes
       // the piercer's own attack not target anyone in the first place.
-      const aTarget = (aAttacks && !aUnit.pierce) ? frontUnit(match.boards[nameB], l) : null;
-      const bTarget = (bAttacks && !bUnit.pierce) ? frontUnit(match.boards[nameA], l) : null;
+      // Невидимость (Разуплотнение): uses frontVisibleUnit instead of
+      // plain frontUnit here — an invisible front unit is skipped, same
+      // "attack passes straight through to whoever's next" rule as an
+      // empty cell.
+      const aTarget = (aAttacks && !aUnit.pierce) ? frontVisibleUnit(match.boards[nameB], l) : null;
+      const bTarget = (bAttacks && !bUnit.pierce) ? frontVisibleUnit(match.boards[nameA], l) : null;
 
       // Armor reduces incoming damage per hit (never goes negative, never
       // consumed) — only units can have it, heroes always take the full
