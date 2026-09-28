@@ -983,6 +983,9 @@ export const CARD_POOL = [
   // shop (noShop; commons are already shop-excluded by rarity alone, but
   // every other token spell in the file sets this explicitly too).
   { id: 's56', name: '\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430', type: 'spell', cost: 0, corruptedPowerBuff: true, rarity: 'common', noShop: true, faction: 'mystery' },
+  // \u0418\u0441\u0446\u0435\u043b\u044f\u044e\u0449\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430: see healingPrismHealOnMana in the end-of-round
+  // loop in tryEndTurn above (match.mana[side]).
+  { id: 'c234', name: '\u0418\u0441\u0446\u0435\u043b\u044f\u044e\u0449\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 3, atk: 2, hp: 4, healingPrismHealOnMana: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1647,6 +1650,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Робот снабжения: see the end-of-round loop in tryEndTurn above
     // (match.mana[side], a pure read — never actually spent by this).
     supplyRobotGrowOnMana: !!card.supplyRobotGrowOnMana,
+    // Исцеляющая призма: see the end-of-round loop in tryEndTurn above
+    // (match.mana[side], a pure read — never actually spent by this).
+    healingPrismHealOnMana: !!card.healingPrismHealOnMana,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -7881,6 +7887,19 @@ export function tryEndTurn(match, username) {
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: leftoverMana, buffHp: leftoverMana, sourceUid: unit.uid,
               });
+            }
+          }
+          // Исцеляющая призма: same "mana left unspent that round, read
+          // fresh, before this round's own mana refill further down —
+          // never actually spent" mechanic as Робот снабжения right
+          // above, but heals its OWNER's hero instead of growing itself.
+          // Reuses the plain endOfRound heal-orb event/animation, same as
+          // Повар/Священник Луны.
+          if (unit && unit.healingPrismHealOnMana) {
+            const leftoverMana = match.mana[name] || 0;
+            if (leftoverMana > 0) {
+              const healed = healHero(match, name, leftoverMana, events);
+              events.push({ type: 'endOfRound', side: name, cardId: unit.id, uid: unit.uid, amount: healed, laneIdx: l, depthIdx: d });
             }
           }
           // Бегемот: same roundStartHp-based "took damage this round"
