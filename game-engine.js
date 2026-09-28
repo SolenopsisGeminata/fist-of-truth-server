@@ -1054,6 +1054,11 @@ export const CARD_POOL = [
   // \u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a's own block) \u2014 1 damage to every OTHER creature
   // on the entire board, both sides, every round.
   { id: 'c242', name: '\u0420\u043e\u0431\u043e\u0442 \u0442\u0435\u0445\u043e\u0431\u0441\u043b\u0443\u0436\u0438\u0432\u0430\u043d\u0438\u044f', type: 'creature', cost: 4, atk: 1, hp: 6, maintenanceRobotPulse: true, rarity: 'rare', faction: 'mystery' },
+  // \u041c\u0435\u0445\u0430\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043c\u0443\u0445\u0430: pure combination of two pre-existing static
+  // flags \u2014 armor (\u0411\u0440\u043e\u043d\u044f) and pierce (\u041f\u0440\u043e\u0431\u0438\u0442\u0438\u0435, ignores any blocker
+  // including \u0429\u0438\u0442/\u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c and hits the enemy hero directly). No new
+  // mechanic needed.
+  { id: 'c243', name: '\u041c\u0435\u0445\u0430\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 4, atk: 4, hp: 4, armor: 1, pierce: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
