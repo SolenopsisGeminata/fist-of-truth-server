@@ -992,6 +992,12 @@ export const CARD_POOL = [
   // \u0423\u0441\u0442\u0430\u043b\u043e\u0441\u0442\u044c: see the 'fatigue' spell kind in resolveSpells above \u2014 same
   // "every depth in the chosen enemy lane" area shape as \u0413\u043d\u0435\u0432 \u043d\u0435\u0431\u0435\u0441.
   { id: 's57', name: '\u0423\u0441\u0442\u0430\u043b\u043e\u0441\u0442\u044c', type: 'spell', cost: 3, fatigueDebuff: true, rarity: 'rare', faction: 'mystery' },
+  // \u0426\u0435\u043b\u0435\u0443\u0441\u0442\u0440\u0435\u043c\u043b\u0435\u043d\u043d\u043e\u0441\u0442\u044c: pure reuse of the 'buff' spell kind (own-unit
+  // targeting, same validation branch as \u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430/\u042f\u0440\u043e\u0441\u0442\u044c \u043a\u0430\u0431\u0430\u043d\u0430) \u2014
+  // +1 atk, +1 hp, and buffPierce (see the 'buff' kind in resolveSpells
+  // above), which permanently grants \u041f\u0440\u043e\u0431\u0438\u0442\u0438\u0435 (pierce) \u2014 same flag
+  // \u0414\u0435\u043c\u043e\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c (c180) carries statically.
+  { id: 's58', name: '\u0426\u0435\u043b\u0435\u0443\u0441\u0442\u0440\u0435\u043c\u043b\u0435\u043d\u043d\u043e\u0441\u0442\u044c', type: 'spell', cost: 3, buffAtk: 1, buffHp: 1, buffPierce: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2482,7 +2488,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist || card.buffRageOnEnemySummon || card.buffMagicShield) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist || card.buffRageOnEnemySummon || card.buffMagicShield || card.buffPierce) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
     // Архат в доспехах: Щит makes a unit immune to being the TARGET of
@@ -2727,6 +2733,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     buffRageOnEnemySummon: card.buffRageOnEnemySummon,
     buffMagicShield: card.buffMagicShield,
     buffDrawCard: card.buffDrawCard,
+    buffPierce: card.buffPierce,
     madFireballDmg: card.madFireballDmg,
     meteorDmg: card.meteorDmg,
     soulDrainDmg: card.soulDrainDmg,
@@ -4575,6 +4582,11 @@ function resolveSpells(match, events) {
         // защита — see applyWardedDamage above, the shared choke point every
         // non-combat cross-side damage source now routes through.
         if (spell.buffMagicShield) unit.magicShield = (unit.magicShield || 0) + spell.buffMagicShield;
+        // Целеустремленность: permanently grants Пробитие (pierce) —
+        // same flag c180's own static pierce field sets, checked at
+        // combat time in resolveCombatPass (bypasses whatever's standing
+        // in front and hits the enemy hero directly).
+        if (spell.buffPierce) unit.pierce = true;
         // Двойной удар (the spell): grants a stack of the SAME
         // doubleStrike counter already used by Имперский полководец's
         // warlordBuff — genuinely stacks now if recast on the same unit
@@ -4603,7 +4615,7 @@ function resolveSpells(match, events) {
           buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike,
           buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0,
           buffSpellResist: !!spell.buffSpellResist, buffRageOnEnemySummon: !!spell.buffRageOnEnemySummon,
-          buffMagicShield: spell.buffMagicShield || 0, drewCard,
+          buffMagicShield: spell.buffMagicShield || 0, buffPierce: !!spell.buffPierce, drewCard,
         });
         // Бурный рост: also heals the CASTER's own hero, alongside the
         // stat buff on the target unit — reuses the exact same
