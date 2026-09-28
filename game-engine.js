@@ -1033,6 +1033,11 @@ export const CARD_POOL = [
   // shop-excluded by rarity alone, but every other token spell in the
   // file sets this explicitly too).
   { id: 's60', name: '\u0422\u0438\u0448\u0438\u043d\u0430', type: 'spell', cost: 1, silenceDebuff: true, rarity: 'common', noShop: true, faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442-\u043f\u043e\u0433\u0440\u0443\u0437\u0447\u0438\u043a: see loaderRobotBuffOnPlay in placeCard above \u2014 pure
+  // reuse of the deferred pendingRallyBuffs mechanism, "any ally
+  // anywhere" pool like \u0420\u0435\u043c\u043e\u043d\u0442\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442's own on-death buff. Part of
+  // the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see mysteryStarterDeckCounts below).
+  { id: 'c239', name: '\u0420\u043e\u0431\u043e\u0442-\u043f\u043e\u0433\u0440\u0443\u0437\u0447\u0438\u043a', type: 'creature', cost: 4, atk: 3, hp: 3, loaderRobotBuffOnPlay: true, rarity: 'common', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1155,11 +1160,12 @@ export function frostStarterDeckCounts() {
 
 // The Мистерия starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Робот-разведчик, Немота, Ремонтный робот, Призрачный питон, and
-// Ученик алхимика are the confirmed starter-deck cards so far, same
-// "starter decks are Common-only" convention as every other faction.
+// Робот-разведчик, Немота, Ремонтный робот, Призрачный питон, Ученик
+// алхимика, and Робот-погрузчик are the confirmed starter-deck cards so
+// far, same "starter decks are Common-only" convention as every other
+// faction.
 export function mysteryStarterDeckCounts() {
-  return { c219: 3, s52: 3, c221: 3, c223: 3, c231: 3 };
+  return { c219: 3, s52: 3, c221: 3, c223: 3, c231: 3, c239: 3 };
 }
 
 // ---------- Factions ----------
@@ -2224,6 +2230,29 @@ export function placeCard(match, username, uid, lane, depth) {
     const neighbours = adjacentAllyPositions(board, lane, depth);
     if (neighbours.length > 0) {
       const chosen = neighbours[Math.floor(Math.random() * neighbours.length)];
+      match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
+    }
+  }
+
+  // Робот-погрузчик: unlike Родная тетушка/Шумная дикарка's own
+  // ADJACENT-only pool right above/below, this picks from EVERY ally
+  // anywhere on his own board — same "any cell, anywhere" pool as
+  // Ремонтный робот/Костяная гончая's own on-death buff, just triggered
+  // on play instead, and explicitly excluding his own cell (he's already
+  // on the board by this point, same reasoning as Паладин's own
+  // `other !== unit` exclusion above). +1/+1, same deferred
+  // pendingRallyBuffs queue. A safe no-op if he's the only unit on the
+  // board.
+  if (card.loaderRobotBuffOnPlay) {
+    const board = match.boards[username];
+    const allies = [];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        if (board[l2][d2] && !(l2 === lane && d2 === depth)) allies.push({ laneIdx: l2, depthIdx: d2 });
+      }
+    }
+    if (allies.length > 0) {
+      const chosen = allies[Math.floor(Math.random() * allies.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
     }
   }
