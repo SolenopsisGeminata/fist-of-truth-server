@@ -1064,6 +1064,11 @@ export const CARD_POOL = [
   // vanguardRobotGrowOnMana block) \u2014 drains 1 attack per unspent mana
   // point from a random enemy, gaining it for itself.
   { id: 'c244', name: '\u0414\u0435\u0440\u0435\u0432\u043e \u0441\u0442\u0440\u0430\u0445\u0430', type: 'creature', cost: 4, atk: 2, hp: 7, fearTreeAbsorbOnMana: true, rarity: 'rare', faction: 'mystery' },
+  // \u041c\u0430\u0441\u0442\u0435\u0440 \u0438\u043b\u043b\u044e\u0437\u0438\u0439: see illusionMasterSummonPython in placeCard (battlecry
+  // summon queue) and illusionMasterGrowGhostAlly in the tryEndTurn
+  // round-start loop (both above) \u2014 two separate new mechanics working
+  // together as a combo.
+  { id: 'c245', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0438\u043b\u043b\u044e\u0437\u0438\u0439', type: 'creature', cost: 4, atk: 2, hp: 2, illusionMasterSummonPython: true, illusionMasterGrowGhostAlly: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1514,6 +1519,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
     pendingPunisherKills: [],
+    pendingIllusionMasterSummons: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
     // Бешенство: placeCard has no `events` array to push a live
@@ -1768,6 +1774,12 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Дерево страха: see the resolveCombatPass pre-attack hook right
     // after Робот авангарда's own vanguardRobotGrowOnMana above.
     fearTreeAbsorbOnMana: !!card.fearTreeAbsorbOnMana,
+    // Мастер иллюзий: see the round-start loop in tryEndTurn above
+    // (right after Робот техобслуживания's own maintenanceRobotPulse
+    // block). illusionMasterSummonPython is battlecry-only, checked
+    // directly off `card` in placeCard — not carried on the runtime
+    // unit, same convention as loaderRobotBuffOnPlay/noisyBuff above.
+    illusionMasterGrowGhostAlly: !!card.illusionMasterGrowGhostAlly,
     // Профессор искусств: see the end-of-round loop in tryEndTurn above
     // (match.spellsCastThisRoundBySide).
     artProfessorGrowOnSpellCast: !!card.artProfessorGrowOnSpellCast,
@@ -2287,6 +2299,17 @@ export function placeCard(match, username, uid, lane, depth) {
       const chosen = allies[Math.floor(Math.random() * allies.length)];
       match.pendingRallyBuffs.push({ side: username, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid });
     }
+  }
+
+  // Мастер иллюзий: unlike every pendingRallyBuffs battlecry above,
+  // this queues a SUMMON, not a stat buff — position captured now
+  // (its own lane and depth), resolved later during the Мгновенный
+  // призыв phase in tryEndTurn (see pendingIllusionMasterSummons
+  // there), early enough that the freshly summoned Призрачный питон
+  // already counts as "on the board" for its own illusionMasterGrowGhostAlly
+  // round-start hook later this same round.
+  if (card.illusionMasterSummonPython) {
+    match.pendingIllusionMasterSummons.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Шумная дикарка: same adjacent-ally-only targeting as Родная
@@ -7058,6 +7081,33 @@ export function tryEndTurn(match, username) {
     if (!resisted) killUnit(match, targetSide, kill.laneIdx, targetInfo.depth, events);
   }
 
+  // Мастер иллюзий: right after Карающий ангел above (early enough
+  // that a summoned Призрачный питон already counts as "on the board"
+  // for illusionMasterGrowGhostAlly's own round-start hook later this
+  // same round) — summons a fresh Призрачный питон (c223) onto a
+  // random FREE cell in front of itself: same lane, any depth strictly
+  // closer to the enemy (lower depth index) than where it was placed.
+  // A silent no-op if it was placed at the very front (depth 0,
+  // nothing can be "in front" of that) or if every eligible cell ahead
+  // of it is already occupied.
+  const illusionMasterSummonQueue = match.pendingIllusionMasterSummons;
+  match.pendingIllusionMasterSummons = [];
+  for (const entry of illusionMasterSummonQueue) {
+    const board = match.boards[entry.side];
+    const freeDepths = [];
+    for (let d = 0; d < entry.depthIdx; d++) {
+      if (!board[entry.laneIdx][d]) freeDepths.push(d);
+    }
+    if (freeDepths.length === 0) continue;
+    const d = freeDepths[Math.floor(Math.random() * freeDepths.length)];
+    const summonedCard = cardById('c223');
+    if (!summonedCard) continue;
+    const summonedUnit = buildUnitFromCard(summonedCard, false, match.round);
+    board[entry.laneIdx][d] = summonedUnit;
+    events.push({ type: 'summon', side: entry.side, cardId: 'c223', laneIdx: entry.laneIdx, depthIdx: d, uid: summonedUnit.uid });
+    applyRageOnSummon(match, entry.side, events);
+  }
+
   // Рейна Ослепительная: temporarily grants ALL current enemy units the
   // same "can't attack" restriction as Защитник, but ONLY for this
   // round's combat — match.blindedUids is cleared right after
@@ -7217,6 +7267,39 @@ export function tryEndTurn(match, username) {
             }
           }
         }
+      }
+    }
+  }
+
+  // Мастер иллюзий: same unconditional "start of every round" timing
+  // as Робот техобслуживания's own maintenanceRobotPulse right above
+  // (not gated on eligibility to attack) — picks ONE random ally
+  // anywhere on its OWN board that currently carries the Призрак
+  // (ghostEffect) flag, Щит excluded from the pool same as every other
+  // "buff a random ally" mechanic in the file (e.g. Мудрый олень), and
+  // permanently grants it +1 attack. Reuses the plain 'rallyBuff'
+  // event. A silent no-op with no eligible target.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.illusionMasterGrowGhostAlly) continue;
+        const ghostAllies = [];
+        for (let gl = 0; gl < LANES; gl++) {
+          for (let gd = 0; gd < DEPTH; gd++) {
+            const g = board[gl][gd];
+            if (g && g.ghostEffect && !g.shieldEffect) ghostAllies.push({ laneIdx: gl, depthIdx: gd });
+          }
+        }
+        if (ghostAllies.length === 0) continue;
+        const chosen = ghostAllies[Math.floor(Math.random() * ghostAllies.length)];
+        const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+        targetUnit.atk += 1;
+        events.push({
+          type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
+          targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
+        });
       }
     }
   }
