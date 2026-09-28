@@ -955,6 +955,9 @@ export const CARD_POOL = [
   // the spell counter \u2014 a pure read, so the mana itself is never
   // actually spent by this.
   { id: 'c229', name: '\u0420\u043e\u0431\u043e\u0442 \u0430\u0432\u0430\u043d\u0433\u0430\u0440\u0434\u0430', type: 'creature', cost: 2, atk: 2, hp: 1, firstStrike: true, vanguardRobotGrowOnMana: true, rarity: 'epic', faction: 'mystery' },
+  // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0438\u0441\u043a\u0443\u0441\u0441\u0442\u0432: see artProfessorGrowOnSpellCast in the
+  // end-of-round loop in tryEndTurn above (match.spellsCastThisRoundBySide).
+  { id: 'c230', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0438\u0441\u043a\u0443\u0441\u0441\u0442\u0432', type: 'creature', cost: 2, atk: 1, hp: 4, artProfessorGrowOnSpellCast: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1613,6 +1616,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Робот авангарда: see the resolveCombatPass pre-attack hook above
     // (match.mana[side], a pure read — never actually spent by this).
     vanguardRobotGrowOnMana: !!card.vanguardRobotGrowOnMana,
+    // Профессор искусств: see the end-of-round loop in tryEndTurn above
+    // (match.spellsCastThisRoundBySide).
+    artProfessorGrowOnSpellCast: !!card.artProfessorGrowOnSpellCast,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -3695,6 +3701,16 @@ function resolveSpells(match, events) {
   // fresh at the top of every round's own resolveSpells call, so no
   // separate reset is needed elsewhere.
   match.spellsCastThisRound = queue.length;
+  // Профессор искусств: same snapshot moment as spellsCastThisRound
+  // above, but split by CASTER side — his own end-of-round trigger (see
+  // the end-of-round loop in tryEndTurn) only ever counts his own
+  // owner's own spells, unlike Злолунный кот's combined-both-sides count
+  // right above.
+  match.spellsCastThisRoundBySide = {};
+  for (const name of match.players) match.spellsCastThisRoundBySide[name] = 0;
+  for (const sp of queue) {
+    match.spellsCastThisRoundBySide[sp.side] = (match.spellsCastThisRoundBySide[sp.side] || 0) + 1;
+  }
   for (const spell of queue) {
     if (anyHeroDown(match)) break; // match already decided — stop applying further spells
     // Злолунная летучая мышь: whenever ITS OWNER casts ANY spell (this
@@ -7716,6 +7732,34 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Профессор искусств: at the end of the round, if its OWNER
+          // cast at least one spell this round (match.spellsCastThisRoundBySide
+          // — split by caster side, unlike Злолунный кот's combined
+          // both-sides count, since this only ever counts its own
+          // owner's own spells), draws 1 card from its owner's own deck
+          // (same draw()/beforeLen/drew shape as Денежное дерево's
+          // moneyTreeDraw above, its own dedicated event since the
+          // trigger condition differs) AND permanently grows its own
+          // attack AND health by 1 for each spell its owner cast this
+          // round (reuses the plain rallyBuff event, same as Горный воин
+          // right above).
+          if (unit && unit.artProfessorGrowOnSpellCast) {
+            const castCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[name]) || 0;
+            if (castCount > 0) {
+              const hand = match.hands[name];
+              const beforeLen = hand.length;
+              draw(match.decks[name], hand, 1);
+              const drew = hand.length > beforeLen;
+              events.push({ type: 'artProfessorDraw', side: name, sourceUid: unit.uid, laneIdx: l, depthIdx: d, drew });
+              unit.atk += castCount;
+              unit.hp += castCount;
+              unit.maxHp += castCount;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: castCount, buffHp: castCount, sourceUid: unit.uid,
               });
             }
           }
