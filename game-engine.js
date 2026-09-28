@@ -1043,6 +1043,12 @@ export const CARD_POOL = [
   // above, match.spellsCastThisRound) plus plain firstStrike \u2014 no new
   // mechanic needed.
   { id: 'c240', name: '\u0420\u043e\u0431\u043e\u0442-\u043f\u0430\u0443\u043a', type: 'creature', cost: 4, atk: 4, hp: 2, firstStrike: true, moonCatGrowOnSpellCount: true, rarity: 'rare', faction: 'mystery' },
+  // \u041c\u0435\u0434\u0432\u0435\u0434\u044c-\u043f\u0440\u0438\u0437\u0440\u0430\u043a: pure combination of two pre-existing static
+  // flags \u2014 \u0422\u043e\u043f\u043e\u0442 (trample, see applyTrampleCascade/killUnit) and
+  // \u041f\u0440\u0438\u0437\u0440\u0430\u043a (ghostEffect, see the resolveCombatPass pre-attack hook,
+  // checked first before every other pre-attack effect). No new mechanic
+  // needed.
+  { id: 'c241', name: '\u041c\u0435\u0434\u0432\u0435\u0434\u044c-\u043f\u0440\u0438\u0437\u0440\u0430\u043a', type: 'creature', cost: 4, atk: 6, hp: 6, trample: true, ghostEffect: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
