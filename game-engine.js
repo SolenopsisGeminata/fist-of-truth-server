@@ -963,6 +963,11 @@ export const CARD_POOL = [
   // client's own targetMine flag, resolved once at cast time in
   // castSpell).
   { id: 's55', name: '\u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435', type: 'spell', cost: 2, cloneCardToHand: true, rarity: 'epic', faction: 'mystery' },
+  // \u0423\u0447\u0435\u043d\u0438\u043a \u0430\u043b\u0445\u0438\u043c\u0438\u043a\u0430: pure reuse of \u0414\u0438\u043a\u0430\u0440\u044c-\u0441\u0442\u0440\u0435\u043b\u043e\u043a's own
+  // randomShotOnPlay battlecry (see pendingMarksmanShots/applyRandomEnemyShot
+  // above) \u2014 no new mechanic needed. Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck
+  // (see mysteryStarterDeckCounts below).
+  { id: 'c231', name: '\u0423\u0447\u0435\u043d\u0438\u043a \u0430\u043b\u0445\u0438\u043c\u0438\u043a\u0430', type: 'creature', cost: 2, atk: 2, hp: 1, randomShotOnPlay: 1, rarity: 'common', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1069,11 +1074,11 @@ export function frostStarterDeckCounts() {
 
 // The Мистерия starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Робот-разведчик is the first (and so far only) confirmed starter-deck
-// card, same "starter decks are Common-only" convention as every other
-// faction.
+// Робот-разведчик, Немота, Ремонтный робот, Призрачный питон, and
+// Ученик алхимика are the confirmed starter-deck cards so far, same
+// "starter decks are Common-only" convention as every other faction.
 export function mysteryStarterDeckCounts() {
-  return { c219: 3, s52: 3, c221: 3, c223: 3 };
+  return { c219: 3, s52: 3, c221: 3, c223: 3, c231: 3 };
 }
 
 // ---------- Factions ----------
