@@ -1019,6 +1019,20 @@ export const CARD_POOL = [
   // the resulting tax (a negative discount) actually raises the cost of
   // whichever hand card it lands on.
   { id: 'c237', name: '\u0421\u0443\u043c\u0435\u0440\u0435\u0447\u043d\u044b\u0439 \u0444\u0430\u043c\u0438\u043b\u0438\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, duskFamiliarCostTax: true, rarity: 'epic', faction: 'mystery' },
+  // \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0431\u0435\u0437\u043c\u043e\u043b\u0432\u0438\u044f: pure reuse of \u0423\u0447\u0435\u043d\u0438\u043a \u0438\u043b\u043b\u044e\u0437\u0438\u043e\u043d\u0438\u0441\u0442\u0430's own
+  // addCardToHandOnPlay battlecry \u2014 hands out a fresh \u0422\u0438\u0448\u0438\u043d\u0430 (s60,
+  // right below) straight to hand.
+  { id: 'c238', name: '\u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440 \u0431\u0435\u0437\u043c\u043e\u043b\u0432\u0438\u044f', type: 'creature', cost: 3, atk: 4, hp: 1, addCardToHandOnPlay: 's60', rarity: 'epic', faction: 'mystery' },
+  // \u0422\u0438\u0448\u0438\u043d\u0430: see the 'silence' spell kind in resolveSpells above \u2014
+  // same "either side's board, via targetMine" targeting as
+  // \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435/\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430/\u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435, unlike s52 \u041d\u0435\u043c\u043e\u0442\u0430's
+  // own enemy-only muteStrike. A token spell, never part of any deck
+  // build on its own \u2014 the ONLY way to get one is \u041f\u0440\u043e\u0444\u0435\u0441\u0441\u043e\u0440
+  // \u0431\u0435\u0437\u043c\u043e\u043b\u0432\u0438\u044f's own battlecry above, so it's excluded from both the
+  // \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck and the shop (noShop; commons are already
+  // shop-excluded by rarity alone, but every other token spell in the
+  // file sets this explicitly too).
+  { id: 's60', name: '\u0422\u0438\u0448\u0438\u043d\u0430', type: 'spell', cost: 1, silenceDebuff: true, rarity: 'common', noShop: true, faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2765,6 +2779,16 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.silenceDebuff) {
+    // \u0422\u0438\u0448\u0438\u043d\u0430: same "either side's board, via targetMine" targeting
+    // as \u041a\u043b\u043e\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435/\u0418\u0437\u0432\u0440\u0430\u0449\u0435\u043d\u043d\u0430\u044f \u0441\u0438\u043b\u0430/\u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435 above \u2014
+    // bounds-only, both boards are always legal targets. Unlike s52
+    // \u041d\u0435\u043c\u043e\u0442\u0430 (muteStrike, enemy-only with a hero fallback), this
+    // never redirects to a hero (see the 'silence' branch in
+    // resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= effectiveCost;
@@ -2772,15 +2796,15 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : 'buff')))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : 'buff'))))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
-    // Клонирование/Извращенная сила/Разуплотнение: resolved once, right
-    // here at cast time, from the client's own targetMine flag — every
-    // other spell kind leaves this undefined and reads
+    // Клонирование/Извращенная сила/Разуплотнение/Тишина: resolved once,
+    // right here at cast time, from the client's own targetMine flag —
+    // every other spell kind leaves this undefined and reads
     // match.boards[username]/otherPlayer(...) directly instead, since
     // they only ever target one fixed side.
-    targetSide: (card.cloneCardToHand || card.corruptedPowerBuff || card.decompressionDebuff) ? (targetMine ? username : otherPlayer(match, username)) : undefined,
+    targetSide: (card.cloneCardToHand || card.corruptedPowerBuff || card.decompressionDebuff || card.silenceDebuff) ? (targetMine ? username : otherPlayer(match, username)) : undefined,
     dmg: card.dmg,
     wrathDmg: card.wrathDmg,
     heal: card.heal,
@@ -4560,6 +4584,32 @@ function resolveSpells(match, events) {
         laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
         delta, empty: !cellUnit, resisted,
       });
+    } else if (spell.kind === 'silence') {
+      // Тишина: same "either side's board, via targetMine"
+      // targeting/resisted shape as Клонирование/Извращенная
+      // сила/Разуплотнение above — unlike s52 Немота (muteStrike,
+      // enemy-only), an empty cell just fizzles here, no hero fallback
+      // of any kind (a "hit my own hero" outcome on the ally-targeting
+      // side would make no sense). Fixed 1 damage (warded) + applySilence,
+      // same ordering as muteStrike (silence first, so the fresh hp
+      // isn't clobbered by applySilence's own rebuild).
+      const board = match.boards[spell.targetSide];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      let died = false;
+      let applied = 0;
+      if (cellUnit && !resisted) {
+        applySilence(cellUnit);
+        applied = applyWardedDamage(cellUnit, 1);
+        cellUnit.hp -= applied;
+        died = cellUnit.hp <= 0;
+      }
+      events.push({
+        type: 'spell', kind: 'silence', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: spell.targetSide, targetDepth: spell.depthIdx,
+        amount: applied, died, empty: !cellUnit, resisted,
+      });
+      if (died) killUnit(match, spell.targetSide, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'ignition') {
       // Воспламенение: same specific-cell "unit takes the hit OR the
       // hero does (never both)" fallback shape as Метеорит above, but
