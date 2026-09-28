@@ -940,6 +940,8 @@ export const CARD_POOL = [
   // \u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c: see observerRobotGrowOnInsight in applyInsight above and
   // healHeroByAtkOnDeath in killUnit above.
   { id: 'c228', name: '\u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 2, hp: 2, observerRobotGrowOnInsight: true, healHeroByAtkOnDeath: true, rarity: 'rare', faction: 'mystery' },
+  // \u041e\u0431\u0443\u0437\u0430: see the 'burden' spell kind in resolveSpells above.
+  { id: 's53', name: '\u041e\u0431\u0443\u0437\u0430', type: 'spell', cost: 2, burdenDebuff: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2581,6 +2583,15 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.burdenDebuff) {
+    // \u041e\u0431\u0443\u0437\u0430: same "specific enemy cell, empty or occupied" bounds-only
+    // validation as \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 above \u2014 a pure atk debuff,
+    // never damage, so an empty cell (or a resisted hit) means the spell
+    // simply does nothing, no hero redirect at all (see the 'burden'
+    // branch in resolveSpells).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   }
 
   match.mana[username] -= card.cost;
@@ -2588,7 +2599,7 @@ export function castSpell(match, username, uid, lane, depth) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : 'buff'))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : 'buff')))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     dmg: card.dmg,
@@ -4193,6 +4204,27 @@ function resolveSpells(match, events) {
         amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'burden') {
+      // Обуза: same specific-cell targeting as Немота above, but a
+      // pure atk debuff — no damage, no hero fallback at all (an empty
+      // cell just fizzles, same as Безумный огненный шар). Щит blocks
+      // it too, not just Чаростойкость, same as Арктическое пугало's own
+      // arcticScarecrowChill debuff. Floored at 0, never negative.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const cellUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
+      let delta = 0;
+      if (cellUnit && !resisted) {
+        const before = cellUnit.atk;
+        cellUnit.atk = Math.max(0, cellUnit.atk - 3);
+        delta = cellUnit.atk - before;
+      }
+      events.push({
+        type: 'spell', kind: 'burden', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        delta, empty: !cellUnit, resisted,
+      });
     } else if (spell.kind === 'ignition') {
       // Воспламенение: same specific-cell "unit takes the hit OR the
       // hero does (never both)" fallback shape as Метеорит above, but
