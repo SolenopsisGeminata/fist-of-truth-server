@@ -1005,6 +1005,13 @@ export const CARD_POOL = [
   // applyFollowupAttack/applyTrampleCascade/the main combat wave, all
   // updated to skip an invisible unit).
   { id: 's59', name: '\u0420\u0430\u0437\u0443\u043f\u043b\u043e\u0442\u043d\u0435\u043d\u0438\u0435', type: 'spell', cost: 3, decompressionDebuff: true, rarity: 'rare', faction: 'mystery' },
+  // \u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442: insightEffect (pure reuse of the standard keyword),
+  // observerRobotGrowOnInsight (pure reuse of \u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c's own
+  // "grows on ITS OWNER's own Insight" reaction), and impulseRobotShot
+  // (see applyGuardRobotShot/the resolveCombatPass pre-attack hook
+  // above \u2014 reuses \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442's own shot helper, single shot dealing
+  // its own current attack).
+  { id: 'c236', name: '\u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, insightEffect: 1, observerRobotGrowOnInsight: true, impulseRobotShot: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1697,6 +1704,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Охранный робот: see applyGuardRobotShot/the resolveCombatPass
     // pre-attack hook above.
     guardRobotTwinShot: !!card.guardRobotTwinShot,
+    // Импульсный робот: reuses the exact same applyGuardRobotShot helper
+    // as Охранный робот above, but a single shot dealing its own CURRENT
+    // attack instead of two fixed-2 ones.
+    impulseRobotShot: !!card.impulseRobotShot,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -5728,18 +5739,24 @@ function applyLavaWarlockFireballs(match, events) {
 }
 
 // Охранный робот: same "mirrored lane, frontmost unit, hero fallback if
-// the lane's empty" targeting as Лавовый колдун's own fireball above,
-// just a fixed 2 damage and its own 'guardRobotShot' event/animation.
-// Called TWICE per attack (see the pre-attack hook below, same "each
-// call independently re-picks the current front" pattern as Порождение
-// бездны's own double spikeShot) — so if the first plasma bolt kills the
-// frontmost unit, the second one correctly hits whatever's now in front
-// of it instead (or the enemy hero, if the lane's now empty).
-function applyGuardRobotShot(match, side, enemySide, events, unit, laneIdx, depthIdx) {
+// the lane's empty" targeting as Лавовый колдун's own fireball above.
+// Called TWICE per attack for Охранный робот (see the pre-attack hook
+// below, same "each call independently re-picks the current front"
+// pattern as Порождение бездны's own double spikeShot) with a fixed
+// amount of 2 — so if the first plasma bolt kills the frontmost unit,
+// the second one correctly hits whatever's now in front of it instead
+// (or the enemy hero, if the lane's now empty). Импульсный робот reuses
+// the exact same shot once per attack, but with fixedAmount left unset
+// so it falls back to the shooter's own CURRENT attack (read fresh, same
+// "amount equals current attack unless fixedAmount overrides it"
+// convention as Фанатик с топорами's own axeFanaticThrow) and its own
+// 'impulseRobotShot' eventType override (same override technique as
+// Циклоп's boulderThrow reusing axeFanaticThrow).
+function applyGuardRobotShot(match, side, enemySide, events, unit, laneIdx, depthIdx, fixedAmount, eventType) {
   const targetBoard = match.boards[enemySide];
   const front = frontUnit(targetBoard, laneIdx);
   const resisted = !!(front && front.unit.spellResist);
-  const amount = 2;
+  const amount = fixedAmount != null ? fixedAmount : unit.atk;
   let died = false;
   let applied = 0;
   if (resisted) {
@@ -5753,7 +5770,7 @@ function applyGuardRobotShot(match, side, enemySide, events, unit, laneIdx, dept
     applied = amount;
   }
   events.push({
-    type: 'guardRobotShot', side, targetSide: enemySide, amount: resisted ? 0 : applied,
+    type: eventType || 'guardRobotShot', side, targetSide: enemySide, amount: resisted ? 0 : applied,
     laneIdx, depthIdx, sourceUid: unit.uid,
     targetLaneIdx: laneIdx, targetDepthIdx: front ? front.depth : null,
     targetHero: !front, died, resisted,
@@ -6168,12 +6185,25 @@ function resolveCombatPass(match, events, isEligible) {
       // MIRRORED lane (unlike Порождение бездны's fully random pick, or
       // the hero if that lane is empty by then).
       if (aEligible && aUnit.guardRobotTwinShot) {
-        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
-        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, 2);
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, 2);
       }
       if (bEligible && bUnit.guardRobotTwinShot) {
-        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
-        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, 2);
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, 2);
+      }
+      // Импульсный робот: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every attack
+      // of his, fires a SINGLE pulse-cannon shot from the exact same
+      // applyGuardRobotShot helper Охранный робот uses (see above), but
+      // with fixedAmount left unset so it deals damage equal to his own
+      // CURRENT attack instead of a flat number, and its own
+      // 'impulseRobotShot' eventType.
+      if (aEligible && aUnit.impulseRobotShot) {
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, null, 'impulseRobotShot');
+      }
+      if (bEligible && bUnit.impulseRobotShot) {
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, null, 'impulseRobotShot');
       }
       // Инфернальная пасть: this is the PRE-ATTACK throw of its three
       // (start-of-round and end-of-round are handled elsewhere) — same
