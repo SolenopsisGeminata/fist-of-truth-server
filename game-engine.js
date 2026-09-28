@@ -1038,6 +1038,11 @@ export const CARD_POOL = [
   // anywhere" pool like \u0420\u0435\u043c\u043e\u043d\u0442\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442's own on-death buff. Part of
   // the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck (see mysteryStarterDeckCounts below).
   { id: 'c239', name: '\u0420\u043e\u0431\u043e\u0442-\u043f\u043e\u0433\u0440\u0443\u0437\u0447\u0438\u043a', type: 'creature', cost: 4, atk: 3, hp: 3, loaderRobotBuffOnPlay: true, rarity: 'common', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442-\u043f\u0430\u0443\u043a: pure reuse of \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442's own
+  // moonCatGrowOnSpellCount (see the resolveCombatPass pre-attack hook
+  // above, match.spellsCastThisRound) plus plain firstStrike \u2014 no new
+  // mechanic needed.
+  { id: 'c240', name: '\u0420\u043e\u0431\u043e\u0442-\u043f\u0430\u0443\u043a', type: 'creature', cost: 4, atk: 4, hp: 2, firstStrike: true, moonCatGrowOnSpellCount: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
