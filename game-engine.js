@@ -968,6 +968,9 @@ export const CARD_POOL = [
   // above) \u2014 no new mechanic needed. Part of the \u041c\u0438\u0441\u0442\u0435\u0440\u0438\u044f starter deck
   // (see mysteryStarterDeckCounts below).
   { id: 'c231', name: '\u0423\u0447\u0435\u043d\u0438\u043a \u0430\u043b\u0445\u0438\u043c\u0438\u043a\u0430', type: 'creature', cost: 2, atk: 2, hp: 1, randomShotOnPlay: 1, rarity: 'common', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442 \u0441\u043d\u0430\u0431\u0436\u0435\u043d\u0438\u044f: see supplyRobotGrowOnMana in the end-of-round loop
+  // in tryEndTurn above (match.mana[side]).
+  { id: 'c232', name: '\u0420\u043e\u0431\u043e\u0442 \u0441\u043d\u0430\u0431\u0436\u0435\u043d\u0438\u044f', type: 'creature', cost: 3, atk: 2, hp: 5, supplyRobotGrowOnMana: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1629,6 +1632,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Профессор искусств: see the end-of-round loop in tryEndTurn above
     // (match.spellsCastThisRoundBySide).
     artProfessorGrowOnSpellCast: !!card.artProfessorGrowOnSpellCast,
+    // Робот снабжения: see the end-of-round loop in tryEndTurn above
+    // (match.mana[side], a pure read — never actually spent by this).
+    supplyRobotGrowOnMana: !!card.supplyRobotGrowOnMana,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -7809,6 +7815,26 @@ export function tryEndTurn(match, username) {
               events.push({
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: castCount, buffHp: castCount, sourceUid: unit.uid,
+              });
+            }
+          }
+          // Робот снабжения: at the end of the round, permanently grows
+          // its own attack AND health by 1 for each mana point its OWNER
+          // currently has left unspent that round (match.mana[name], read
+          // fresh right here — BEFORE the next round's own mana refill
+          // further down in this same function — a pure read, so the
+          // mana itself is never actually spent). Same "skip a zero-delta
+          // rallyBuff event" rule as every other conditional growth
+          // trigger above; reuses the plain rallyBuff event.
+          if (unit && unit.supplyRobotGrowOnMana) {
+            const leftoverMana = match.mana[name] || 0;
+            if (leftoverMana > 0) {
+              unit.atk += leftoverMana;
+              unit.hp += leftoverMana;
+              unit.maxHp += leftoverMana;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: leftoverMana, buffHp: leftoverMana, sourceUid: unit.uid,
               });
             }
           }
