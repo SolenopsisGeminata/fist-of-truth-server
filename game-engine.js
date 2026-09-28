@@ -986,6 +986,9 @@ export const CARD_POOL = [
   // \u0418\u0441\u0446\u0435\u043b\u044f\u044e\u0449\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430: see healingPrismHealOnMana in the end-of-round
   // loop in tryEndTurn above (match.mana[side]).
   { id: 'c234', name: '\u0418\u0441\u0446\u0435\u043b\u044f\u044e\u0449\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 3, atk: 2, hp: 4, healingPrismHealOnMana: true, rarity: 'rare', faction: 'mystery' },
+  // \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442: see applyGuardRobotShot/the resolveCombatPass
+  // pre-attack hook above.
+  { id: 'c235', name: '\u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 3, atk: 3, hp: 3, guardRobotTwinShot: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1653,6 +1656,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Исцеляющая призма: see the end-of-round loop in tryEndTurn above
     // (match.mana[side], a pure read — never actually spent by this).
     healingPrismHealOnMana: !!card.healingPrismHealOnMana,
+    // Охранный робот: see applyGuardRobotShot/the resolveCombatPass
+    // pre-attack hook above.
+    guardRobotTwinShot: !!card.guardRobotTwinShot,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
@@ -5612,6 +5618,40 @@ function applyLavaWarlockFireballs(match, events) {
   }
 }
 
+// Охранный робот: same "mirrored lane, frontmost unit, hero fallback if
+// the lane's empty" targeting as Лавовый колдун's own fireball above,
+// just a fixed 2 damage and its own 'guardRobotShot' event/animation.
+// Called TWICE per attack (see the pre-attack hook below, same "each
+// call independently re-picks the current front" pattern as Порождение
+// бездны's own double spikeShot) — so if the first plasma bolt kills the
+// frontmost unit, the second one correctly hits whatever's now in front
+// of it instead (or the enemy hero, if the lane's now empty).
+function applyGuardRobotShot(match, side, enemySide, events, unit, laneIdx, depthIdx) {
+  const targetBoard = match.boards[enemySide];
+  const front = frontUnit(targetBoard, laneIdx);
+  const resisted = !!(front && front.unit.spellResist);
+  const amount = 2;
+  let died = false;
+  let applied = 0;
+  if (resisted) {
+    // no-op: the plasma bolt fizzles harmlessly on her
+  } else if (front) {
+    applied = applyWardedDamage(front.unit, amount);
+    front.unit.hp -= applied;
+    died = front.unit.hp <= 0;
+  } else {
+    damageHero(match, enemySide, amount, events);
+    applied = amount;
+  }
+  events.push({
+    type: 'guardRobotShot', side, targetSide: enemySide, amount: resisted ? 0 : applied,
+    laneIdx, depthIdx, sourceUid: unit.uid,
+    targetLaneIdx: laneIdx, targetDepthIdx: front ? front.depth : null,
+    targetHero: !front, died, resisted,
+  });
+  if (died) killUnit(match, enemySide, laneIdx, front.depth, events);
+}
+
 // Инфернальная пасть: this is the START-of-round throw of its three
 // (the other two are the pre-attack hook in resolveCombatPass and the
 // end-of-round loop in tryEndTurn) — same fully-random-enemy-unit pool
@@ -6009,6 +6049,20 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.abyssSpawnDoubleSpikeShot) {
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
+      }
+      // Охранный робот: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every attack
+      // of his, fires two plasma bolts in a row from applyGuardRobotShot
+      // (see above), each 2 damage to the frontmost unit in his own
+      // MIRRORED lane (unlike Порождение бездны's fully random pick, or
+      // the hero if that lane is empty by then).
+      if (aEligible && aUnit.guardRobotTwinShot) {
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      }
+      if (bEligible && bUnit.guardRobotTwinShot) {
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
       }
       // Инфернальная пасть: this is the PRE-ATTACK throw of its three
       // (start-of-round and end-of-round are handled elsewhere) — same
