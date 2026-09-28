@@ -1059,6 +1059,11 @@ export const CARD_POOL = [
   // including \u0429\u0438\u0442/\u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c and hits the enemy hero directly). No new
   // mechanic needed.
   { id: 'c243', name: '\u041c\u0435\u0445\u0430\u043d\u0438\u0447\u0435\u0441\u043a\u0430\u044f \u043c\u0443\u0445\u0430', type: 'creature', cost: 4, atk: 4, hp: 4, armor: 1, pierce: true, rarity: 'rare', faction: 'mystery' },
+  // \u0414\u0435\u0440\u0435\u0432\u043e \u0441\u0442\u0440\u0430\u0445\u0430: see fearTreeAbsorbOnMana in the resolveCombatPass
+  // pre-attack hook above (right after \u0420\u043e\u0431\u043e\u0442 \u0430\u0432\u0430\u043d\u0433\u0430\u0440\u0434\u0430's own
+  // vanguardRobotGrowOnMana block) \u2014 drains 1 attack per unspent mana
+  // point from a random enemy, gaining it for itself.
+  { id: 'c244', name: '\u0414\u0435\u0440\u0435\u0432\u043e \u0441\u0442\u0440\u0430\u0445\u0430', type: 'creature', cost: 4, atk: 2, hp: 7, fearTreeAbsorbOnMana: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1760,6 +1765,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Робот авангарда: see the resolveCombatPass pre-attack hook above
     // (match.mana[side], a pure read — never actually spent by this).
     vanguardRobotGrowOnMana: !!card.vanguardRobotGrowOnMana,
+    // Дерево страха: see the resolveCombatPass pre-attack hook right
+    // after Робот авангарда's own vanguardRobotGrowOnMana above.
+    fearTreeAbsorbOnMana: !!card.fearTreeAbsorbOnMana,
     // Профессор искусств: see the end-of-round loop in tryEndTurn above
     // (match.spellsCastThisRoundBySide).
     artProfessorGrowOnSpellCast: !!card.artProfessorGrowOnSpellCast,
@@ -6293,6 +6301,60 @@ function resolveCombatPass(match, events, isEligible) {
         const amount = match.mana[nameB];
         bUnit.atk += amount;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: amount, buffHp: 0, sourceUid: bUnit.uid });
+      }
+      // Дерево страха: same "match.mana[side], a pure read — never
+      // actually spent" convention as Робот авангарда's own
+      // vanguardRobotGrowOnMana right above, but instead of growing
+      // itself directly, it drains that many attack points from ONE
+      // random enemy creature (Чаростойкость/Щит excluded from the
+      // pool, same as Обуза's own single-target atk debuff) — the
+      // victim's attack is permanently reduced (floored at 0, never
+      // negative) while this unit gains the FULL drained amount for
+      // itself regardless of how much the victim actually had left. A
+      // silent no-op at 0 mana or with no eligible enemy target.
+      if (aEligible && aUnit.fearTreeAbsorbOnMana && match.mana[nameA] > 0) {
+        const amount = match.mana[nameA];
+        const enemyBoard = match.boards[nameB];
+        const targets = [];
+        for (let el = 0; el < LANES; el++) {
+          for (let ed = 0; ed < DEPTH; ed++) {
+            const t = enemyBoard[el][ed];
+            if (t && !t.spellResist && !t.shieldEffect) targets.push({ laneIdx: el, depthIdx: ed });
+          }
+        }
+        if (targets.length > 0) {
+          const chosen = targets[Math.floor(Math.random() * targets.length)];
+          const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+          targetUnit.atk = Math.max(0, targetUnit.atk - amount);
+          aUnit.atk += amount;
+          events.push({
+            type: 'fearTreeAbsorb', side: nameA, targetSide: nameB,
+            laneIdx: l, depthIdx: aInfo.depth, targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+            sourceUid: aUnit.uid, amount,
+          });
+        }
+      }
+      if (bEligible && bUnit.fearTreeAbsorbOnMana && match.mana[nameB] > 0) {
+        const amount = match.mana[nameB];
+        const enemyBoard = match.boards[nameA];
+        const targets = [];
+        for (let el = 0; el < LANES; el++) {
+          for (let ed = 0; ed < DEPTH; ed++) {
+            const t = enemyBoard[el][ed];
+            if (t && !t.spellResist && !t.shieldEffect) targets.push({ laneIdx: el, depthIdx: ed });
+          }
+        }
+        if (targets.length > 0) {
+          const chosen = targets[Math.floor(Math.random() * targets.length)];
+          const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+          targetUnit.atk = Math.max(0, targetUnit.atk - amount);
+          bUnit.atk += amount;
+          events.push({
+            type: 'fearTreeAbsorb', side: nameB, targetSide: nameA,
+            laneIdx: l, depthIdx: bInfo.depth, targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+            sourceUid: bUnit.uid, amount,
+          });
+        }
       }
       // Порождение бездны: same "no bornRound gate" timing as every
       // other single-trigger pre-attack card above — right before every
