@@ -1012,10 +1012,33 @@ export const CARD_POOL = [
   // above \u2014 reuses \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442's own shot helper, single shot dealing
   // its own current attack).
   { id: 'c236', name: '\u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 3, atk: 2, hp: 2, insightEffect: 1, observerRobotGrowOnInsight: true, impulseRobotShot: true, rarity: 'epic', faction: 'mystery' },
+  // \u0421\u0443\u043c\u0435\u0440\u0435\u0447\u043d\u044b\u0439 \u0444\u0430\u043c\u0438\u043b\u0438\u0430\u0440: see duskFamiliarCostTax in the
+  // resolveCombatPass "own attack lands on the enemy hero" trigger
+  // family above (same one \u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441's own thiefImpStealOnHeroHit
+  // uses) \u2014 also see effectiveHandCardCost near cardById above for how
+  // the resulting tax (a negative discount) actually raises the cost of
+  // whichever hand card it lands on.
+  { id: 'c237', name: '\u0421\u0443\u043c\u0435\u0440\u0435\u0447\u043d\u044b\u0439 \u0444\u0430\u043c\u0438\u043b\u0438\u0430\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, duskFamiliarCostTax: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
   return CARD_POOL.find((c) => c.id === id);
+}
+
+// A specific hand-card INSTANCE's own current cost — its static
+// card.cost, adjusted by whatever discount (Горящий черт's own
+// trampleDiscountOnPlay) or tax (Сумеречный фамилиар's duskFamiliarCostTax,
+// stored as a NEGATIVE discount — same field, opposite sign, so the one
+// "card.cost - discount" formula below handles both directions for free)
+// has landed on this particular copy — never below 0. Two copies of the
+// same card in hand can have different discount values (this is per-
+// INSTANCE state on the hand entry itself, never on the static CARD_POOL
+// definition), so callers must always pass the actual hand entry, not
+// just its cardId.
+export function effectiveHandCardCost(handEntry) {
+  const card = cardById(handEntry.id);
+  if (!card) return 0;
+  return Math.max(0, card.cost - (handEntry.discount || 0));
 }
 
 // Max copies of a single card allowed in a deck, by rarity: Common/Rare/
@@ -1629,6 +1652,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     painSentinelPulse: !!card.painSentinelPulse,
     blazeImpEmptyHandGrow: !!card.blazeImpEmptyHandGrow,
     thiefImpStealOnHeroHit: !!card.thiefImpStealOnHeroHit,
+    // Сумеречный фамилиар: see resolveCombatPass's "own attack lands
+    // directly on the enemy hero" trigger family above (same one
+    // thiefImpStealOnHeroHit uses).
+    duskFamiliarCostTax: !!card.duskFamiliarCostTax,
     bloodShadowBladeOnEnemyHeroDamage: !!card.bloodShadowBladeOnEnemyHeroDamage,
     spittingDemonAcidSpit: !!card.spittingDemonAcidSpit,
     abyssSpawnDoubleSpikeShot: !!card.abyssSpawnDoubleSpikeShot,
@@ -1867,10 +1894,11 @@ export function placeCard(match, username, uid, lane, depth) {
   const card = cardById(hand[idx].id);
   if (!card || card.type !== 'creature') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0431\u043e\u0435\u0446.' };
   if (match.boards[username][lane][depth]) return { error: '\u0421\u043b\u043e\u0442 \u0437\u0430\u043d\u044f\u0442.' };
-  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441 (the new one): a hand card can carry its own
-  // per-instance discount (set by trampleDiscountOnPlay below) on top
-  // of its static card.cost \u2014 never below 0.
-  const effectiveCost = Math.max(0, card.cost - (hand[idx].discount || 0));
+  // \u0413\u043e\u0440\u044f\u0449\u0438\u0439 \u0431\u0435\u0441/\u0421\u0443\u043c\u0435\u0440\u0435\u0447\u043d\u044b\u0439 \u0444\u0430\u043c\u0438\u043b\u0438\u0430\u0440: a hand card can
+  // carry its own per-instance discount (or, stored as a negative
+  // discount, a tax) on top of its static card.cost \u2014 see
+  // effectiveHandCardCost above.
+  const effectiveCost = effectiveHandCardCost(hand[idx]);
   if (match.mana[username] < effectiveCost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
   match.mana[username] -= effectiveCost;
@@ -2517,7 +2545,10 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   if (idx === -1) return { error: '\u0422\u0430\u043a\u043e\u0439 \u043a\u0430\u0440\u0442\u044b \u043d\u0435\u0442 \u0432 \u0440\u0443\u043a\u0435.' };
   const card = cardById(hand[idx].id);
   if (!card || card.type !== 'spell') return { error: '\u042d\u0442\u0430 \u043a\u0430\u0440\u0442\u0430 \u043d\u0435 \u0437\u0430\u043a\u043b\u0438\u043d\u0430\u043d\u0438\u0435.' };
-  if (match.mana[username] < card.cost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
+  // \u0421\u0443\u043c\u0435\u0440\u0435\u0447\u043d\u044b\u0439 \u0444\u0430\u043c\u0438\u043b\u0438\u0430\u0440: same per-instance discount/tax as placeCard
+  // above \u2014 see effectiveHandCardCost.
+  const effectiveCost = effectiveHandCardCost(hand[idx]);
+  if (match.mana[username] < effectiveCost) return { error: '\u041d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442 \u043c\u0430\u043d\u044b.' };
 
   if (card.dmg || card.wrathDmg || card.bounceToHand || card.treeWrath || card.ragingFire || card.fatigueDebuff) {
     if (lane < 0 || lane >= LANES) return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u043b\u043e\u0441\u0430.' };
@@ -2736,7 +2767,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     }
   }
 
-  match.mana[username] -= card.cost;
+  match.mana[username] -= effectiveCost;
   hand.splice(idx, 1);
   match.pendingSpells.push({
     side: username,
@@ -6427,6 +6458,42 @@ function resolveCombatPass(match, events, isEligible) {
         }
       }
 
+      // Сумеречный фамилиар: same "own attack lands directly on the
+      // enemy hero" trigger family as Вороватый бес above — picks a
+      // random card from the OPPONENT's hand (any type, not filtered)
+      // and permanently taxes it: a NEGATIVE discount, so the existing
+      // "card.cost - discount" formula (effectiveHandCardCost) naturally
+      // raises its cost by 1 instead of lowering it, no separate field or
+      // formula needed. Same privacy discipline as every other hand-
+      // touching event here — the event carries no card identity, only
+      // whether a target existed to tax at all (an empty enemy hand is a
+      // silent no-op, no fallback benefit unlike Вороватый бес's own
+      // atk-growth consolation).
+      if (aAttacks && !aTarget && aUnit.duskFamiliarCostTax) {
+        const targetHand = match.hands[nameB];
+        const taxed = targetHand.length > 0;
+        if (taxed) {
+          const chosen = targetHand[Math.floor(Math.random() * targetHand.length)];
+          chosen.discount = (chosen.discount || 0) - 1;
+        }
+        events.push({
+          type: 'duskFamiliarTax', side: nameA, targetSide: nameB,
+          laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, cardId: aUnit.id, taxed,
+        });
+      }
+      if (bAttacks && !bTarget && bUnit.duskFamiliarCostTax) {
+        const targetHand = match.hands[nameA];
+        const taxed = targetHand.length > 0;
+        if (taxed) {
+          const chosen = targetHand[Math.floor(Math.random() * targetHand.length)];
+          chosen.discount = (chosen.discount || 0) - 1;
+        }
+        events.push({
+          type: 'duskFamiliarTax', side: nameB, targetSide: nameA,
+          laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, cardId: bUnit.id, taxed,
+        });
+      }
+
       // Пожиратель: same "own attack lands directly on the enemy hero"
       // trigger family as Чертенок/Яростный бес above, but combines
       // TWO effects that ALWAYS both happen together (unlike Вороватый
@@ -8817,7 +8884,7 @@ export function aiPlaceCards(match, aiName) {
   while (guard++ < 20) {
     const hand = match.hands[aiName];
     const mana = match.mana[aiName];
-    const affordable = hand.filter((c) => cardById(c.id).cost <= mana);
+    const affordable = hand.filter((c) => effectiveHandCardCost(c) <= mana);
     if (affordable.length === 0) break;
 
     const creatures = affordable.filter((c) => cardById(c.id).type === 'creature');
