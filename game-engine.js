@@ -1069,11 +1069,12 @@ export function mysteryStarterDeckCounts() {
 export const FACTION_IDS = ['empire', 'pirates', 'savages', 'inferno', 'frost', 'zen', 'mystery'];
 
 // Which factions every account starts unlocked with, day one — every
-// OTHER faction in FACTION_IDS is locked by default until some future
-// unlock condition (not built yet) grants it. Only Империя (empire)
-// starts unlocked; everything else — Пираты, Дикари, Инферно, Холод,
-// Дзен, Мистерия — is locked from day one, whether or not it has any
-// cards yet.
+// OTHER faction in FACTION_IDS is locked by default until the matching
+// unlock condition in server.js grants it (Дикари/Дзен: PVE wins,
+// Инферно: PVP wins, Пираты: Treasure Race wins, Холод/Мистерия:
+// tournament league — see PVE_WIN_FACTION_UNLOCKS and friends there).
+// Only Империя (empire) starts unlocked; everything else is locked from
+// day one, whether or not it has any cards yet.
 export function defaultUnlockedFactions() {
   return ['empire'];
 }

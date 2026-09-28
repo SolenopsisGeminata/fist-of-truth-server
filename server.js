@@ -275,7 +275,9 @@ function getTournamentRecordRaw(username) {
 // server-wide reward pass.
 function getTournamentRecord(username) {
   ensureTournamentWeeklyRewardsProcessed();
-  return getTournamentRecordRaw(username);
+  const record = getTournamentRecordRaw(username);
+  maybeUnlockTournamentFactions(username, record);
+  return record;
 }
 
 // ---------- Treasure Race (Гонка за сокровищами) ----------
@@ -459,6 +461,9 @@ function applyTreasureRaceResult(match) {
     if (match.winner === name) {
       rec.wins += 1;
       rec.gold += TREASURE_RACE_REWARDS[rec.wins - 1] || 0;
+      for (const [factionId, required] of Object.entries(TREASURE_RACE_WIN_FACTION_UNLOCKS)) {
+        if (rec.wins >= required) unlockFactionForAccount(name, factionId);
+      }
       if (rec.wins >= TREASURE_RACE_MAX_WINS) {
         rec.gold = Math.round(rec.gold * TREASURE_RACE_BONUS_MULTIPLIER);
         rec.status = 'won';
@@ -534,10 +539,11 @@ function getResources(username) {
 // server-authoritative array of faction ids, backfilled to the default
 // set (see engine.defaultUnlockedFactions) for any account that
 // predates this feature or was never initialized for some other
-// reason. New factions (Дикари/savages, Дзен/zen right now) stay
-// excluded until unlockFactionForAccount below actually grants them —
-// there's no unlock CONDITION wired up yet (that's a later step), only
-// the mechanism itself.
+// reason. Every non-default faction stays excluded until
+// unlockFactionForAccount below actually grants it — see
+// PVE_WIN_FACTION_UNLOCKS, PVP_WIN_FACTION_UNLOCKS,
+// TREASURE_RACE_WIN_FACTION_UNLOCKS and TOURNAMENT_LEAGUE_FACTION_UNLOCKS
+// for the real conditions that trigger each one.
 function getUnlockedFactions(username) {
   if (!db.data.unlockedFactions) db.data.unlockedFactions = {};
   let rec = db.data.unlockedFactions[username];
@@ -553,9 +559,10 @@ function getUnlockedFactions(username) {
 // safe no-op if already unlocked) and merges in that faction's starter
 // deck counts on top of whatever cards the account already owns (never
 // overwrites — a card already owned in some quantity just gets that
-// quantity ADDED to, same as buying a duplicate in the shop). Nothing
-// currently calls this outside of the admin test endpoint below, since
-// real unlock conditions haven't been built yet.
+// quantity ADDED to, same as buying a duplicate in the shop). Called both
+// by the real unlock conditions below (applyPveProgress, applyPvpRewards,
+// maybeUnlockTournamentFactions, applyTreasureRaceResult) and by the
+// admin test endpoint further down.
 function unlockFactionForAccount(username, factionId) {
   const unlocked = getUnlockedFactions(username);
   if (unlocked.includes(factionId)) return { alreadyUnlocked: true, unlocked };
@@ -567,6 +574,45 @@ function unlockFactionForAccount(username, factionId) {
   }
   db.write();
   return { alreadyUnlocked: false, unlocked, grantedCounts: starterCounts };
+}
+
+// Дикари unlock at 5 PVE wins, Дзен at 10 — see applyPveProgress below,
+// the only caller. Both thresholds are cumulative wins ever (db.data.pveStats),
+// never reset, so this only ever needs to fire once per account.
+const PVE_WIN_FACTION_UNLOCKS = { savages: 5, zen: 10 };
+
+// Инферно unlock at 5 PVP wins — see applyPvpRewards below, the only
+// caller. Same cumulative-forever counter as the PVE unlocks above.
+const PVP_WIN_FACTION_UNLOCKS = { inferno: 5 };
+
+// Пираты unlock at 3 Treasure Race wins — see applyTreasureRaceResult
+// below, the only caller. `rec.wins` counts wins within the CURRENT
+// Treasure Race run (it resets to 0 every fresh run/window), but that's
+// fine here: the unlock itself is permanent (unlockFactionForAccount only
+// ever adds), so it only needs to cross the threshold once, in any run.
+const TREASURE_RACE_WIN_FACTION_UNLOCKS = { pirates: 3 };
+
+// Холод unlocks on reaching the Воин (warrior) tournament league, Мистерия
+// on reaching Гладиатор (gladiator) — "reaching" a league, not "currently
+// holding" it, since the weekly reward reset (see
+// ensureTournamentWeeklyRewardsProcessed) demotes leagues back down every
+// Saturday and that must never re-lock a faction already granted. Checked
+// by league RANK (LEAGUE_ORDER index), so any higher league (elite,
+// warlord, champion, king) also satisfies a lower threshold.
+const TOURNAMENT_LEAGUE_FACTION_UNLOCKS = { frost: 'warrior', mystery: 'gladiator' };
+
+// Called from getTournamentRecord (the one place every code path reads a
+// tournament record through) so this fires both right after a promotion
+// and for any account whose league was already at/above a threshold
+// before these unlock conditions existed.
+function maybeUnlockTournamentFactions(username, record) {
+  if (!record) return;
+  const leagueIdx = LEAGUE_ORDER.indexOf(record.league);
+  for (const [factionId, requiredLeague] of Object.entries(TOURNAMENT_LEAGUE_FACTION_UNLOCKS)) {
+    if (leagueIdx >= LEAGUE_ORDER.indexOf(requiredLeague)) {
+      unlockFactionForAccount(username, factionId);
+    }
+  }
 }
 
 // How many copies of each card this account owns — a map of cardId to
@@ -734,7 +780,12 @@ function applyPveProgress(match) {
   const won = match.winner === username;
   const stats = db.data.pveStats[username] || (db.data.pveStats[username] = { played: 0, won: 0 });
   stats.played += 1;
-  if (won) stats.won += 1;
+  if (won) {
+    stats.won += 1;
+    for (const [factionId, required] of Object.entries(PVE_WIN_FACTION_UNLOCKS)) {
+      if (stats.won >= required) unlockFactionForAccount(username, factionId);
+    }
+  }
   const resources = getResources(username);
   const matchGold = won ? 20 : 0;
   const matchDust = won ? 20 : 0;
@@ -793,7 +844,12 @@ function applyPvpRewards(match) {
     const won = match.winner === username;
     const stats = db.data.pvpStats[username] || (db.data.pvpStats[username] = { played: 0, won: 0 });
     stats.played += 1;
-    if (won) stats.won += 1;
+    if (won) {
+      stats.won += 1;
+      for (const [factionId, required] of Object.entries(PVP_WIN_FACTION_UNLOCKS)) {
+        if (stats.won >= required) unlockFactionForAccount(username, factionId);
+      }
+    }
     const resources = getResources(username);
     const matchGold = won ? 30 : 0;
     const matchDust = won ? 30 : 0;
@@ -1311,13 +1367,13 @@ app.post('/api/admin/grant-test-resources', (req, res) => {
   res.json({ ok: true, resources });
 });
 
-// Admin-only TESTING tool for the unlockFactionForAccount mechanism —
-// real unlock conditions (whatever eventually triggers a faction
-// unlocking for a real account) aren't built yet, so this is the only
-// way to exercise the mechanism end to end until that later step
-// exists. Unlocks the faction for the CALLING admin account itself
-// (not an arbitrary target username), same scope as the resources
-// grant right above.
+// Admin-only override for the unlockFactionForAccount mechanism — real
+// unlock conditions now exist (PVE/PVP win counts, Treasure Race wins,
+// tournament league, see PVE_WIN_FACTION_UNLOCKS and friends above), this
+// just lets an admin grant a faction directly without grinding those out.
+// Unlocks the faction for the CALLING admin account itself (not an
+// arbitrary target username), same scope as the resources grant right
+// above.
 app.post('/api/admin/unlock-faction', (req, res) => {
   const username = usernameFromRequest(req);
   if (!username) return res.status(401).json({ error: '\u041d\u0435 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u043e\u0432\u0430\u043d.' });
