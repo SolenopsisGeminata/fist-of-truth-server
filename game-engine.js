@@ -942,6 +942,12 @@ export const CARD_POOL = [
   { id: 'c228', name: '\u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 2, hp: 2, observerRobotGrowOnInsight: true, healHeroByAtkOnDeath: true, rarity: 'rare', faction: 'mystery' },
   // \u041e\u0431\u0443\u0437\u0430: see the 'burden' spell kind in resolveSpells above.
   { id: 's53', name: '\u041e\u0431\u0443\u0437\u0430', type: 'spell', cost: 2, burdenDebuff: true, rarity: 'rare', faction: 'mystery' },
+  // \u041e\u0437\u0430\u0440\u0435\u043d\u0438\u0435: pure reuse of the 'buff' spell kind (own-unit targeting,
+  // same validation branch as \u041a\u043e\u043b\u044c\u0447\u0443\u0433\u0430/\u0414\u043e\u0441\u043f\u0435\u0445\u0438) \u2014 +1 atk, +2 \u041c\u0430\u0433\u0438\u0447\u0435\u0441\u043a\u0430\u044f
+  // \u0437\u0430\u0449\u0438\u0442\u0430 (see buffMagicShield above), and an unconditional card draw
+  // from the caster's own deck (buffDrawCard, unlike \u041d\u0430\u043f\u043b\u0435\u0447\u043d\u0438\u043a/\u0417\u0430\u043f\u043e\u0437\u0434\u0430\u043b\u0430\u044f
+  // \u043f\u043e\u0441\u0442\u0430\u0432\u043a\u0430's own CONDITIONAL draws).
+  { id: 's54', name: '\u041e\u0437\u0430\u0440\u0435\u043d\u0438\u0435', type: 'spell', cost: 2, buffAtk: 1, buffMagicShield: 2, buffDrawCard: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1667,6 +1673,11 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Мистический обелиск: see manaDrainAuraTotal above and the round-refill
     // formula in tryEndTurn.
     manaDrainAura: card.manaDrainAura || 0,
+    // Магическая защита: see applyWardedDamage above — reduces every hit this
+    // unit takes from a spell or another unit's mechanic (never normal
+    // combat, which already has its own separate Броня/armor reduction)
+    // by this value, floored at 0.
+    magicShield: card.magicShield || 0,
     mysteriousMaid: !!card.mysteriousMaid,
     insightEffect: card.insightEffect || 0,
     cantAttackThisRound: false,
@@ -2411,7 +2422,7 @@ export function castSpell(match, username, uid, lane, depth) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
-  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist || card.buffRageOnEnemySummon) {
+  } else if (card.heal || card.buffHp || card.buffAtk || card.buffArmor || card.buffLifesteal || card.buffDoubleStrike || card.mountainStrength || card.buffTrample || card.buffLegacy || card.buffSpellResist || card.buffRageOnEnemySummon || card.buffMagicShield) {
     const unit = depth != null && match.boards[username][lane] && match.boards[username][lane][depth];
     if (!unit) return { error: '\u0422\u0430\u043c \u043d\u0435\u0442 \u0441\u0432\u043e\u0435\u0433\u043e \u0431\u043e\u0439\u0446\u0430.' };
     // Архат в доспехах: Щит makes a unit immune to being the TARGET of
@@ -2630,6 +2641,8 @@ export function castSpell(match, username, uid, lane, depth) {
     ragingFireDmg: card.ragingFireDmg,
     ragingFireHeroDmg: card.ragingFireHeroDmg,
     buffRageOnEnemySummon: card.buffRageOnEnemySummon,
+    buffMagicShield: card.buffMagicShield,
+    buffDrawCard: card.buffDrawCard,
     madFireballDmg: card.madFireballDmg,
     meteorDmg: card.meteorDmg,
     soulDrainDmg: card.soulDrainDmg,
@@ -2779,16 +2792,19 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
     const amount = unit.atk;
     let died = false;
+    let applied = 0;
     if (resisted) {
       // no-op: the weapon lands on her harmlessly
     } else if (targetUnit) {
-      targetUnit.hp -= amount;
+      applied = applyWardedDamage(targetUnit, amount);
+      targetUnit.hp -= applied;
       died = targetUnit.hp <= 0;
     } else {
       damageHero(match, targetSide, amount, events);
+      applied = amount;
     }
     events.push({
-      type: 'weaponThrow', side, targetSide, amount: resisted ? 0 : amount,
+      type: 'weaponThrow', side, targetSide, amount: resisted ? 0 : applied,
       laneIdx, depthIdx, sourceUid: unit.uid,
       targetLaneIdx: laneIdx, targetDepthIdx: targetDepth,
       targetHero: !cellUnit, died, resisted,
@@ -2847,16 +2863,19 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
     const amount = 2;
     let died = false;
+    let applied = 0;
     if (resisted) {
       // no-op: the acid burns off her harmlessly
     } else if (targetUnit) {
-      targetUnit.hp -= amount;
+      applied = applyWardedDamage(targetUnit, amount);
+      targetUnit.hp -= applied;
       died = targetUnit.hp <= 0;
     } else {
       damageHero(match, targetSide, amount, events);
+      applied = amount;
     }
     events.push({
-      type: 'acidShot', side, targetSide, amount: resisted ? 0 : amount,
+      type: 'acidShot', side, targetSide, amount: resisted ? 0 : applied,
       laneIdx, depthIdx, sourceUid: unit.uid, cardId: unit.id,
       targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
       targetHero: !cellUnit, died, resisted,
@@ -2961,7 +2980,7 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           const enemyChosen = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
           const enemyUnit = enemyBoard[enemyChosen.laneIdx][enemyChosen.depthIdx];
           const resisted = !!enemyUnit.spellResist;
-          const spearAmount = resisted ? 0 : 2;
+          const spearAmount = resisted ? 0 : applyWardedDamage(enemyUnit, 2);
           let enemyDied = false;
           if (!resisted) {
             enemyUnit.hp -= spearAmount;
@@ -3367,6 +3386,23 @@ function applyRageOnSummon(match, summonedSide, events) {
   }
 }
 
+// Озарение: Магическая защита reduces every hit a unit takes from a
+// SPELL or from ANOTHER UNIT'S mechanic (a pre-attack shot, an on-death
+// effect, a battlecry blast — anything that isn't the unit's own normal
+// combat attack, which already has its own separate Броня/armor
+// reduction and deliberately ignores this one) by the shield's own
+// value, floored at 0 — never negative, never healing. This is now the
+// single funnel every non-combat cross-side unit-damage site in the
+// file should go through, mirroring how damageHero() is already the
+// one choke point for every hero-damage site right below. Amount-only:
+// callers still do their own resisted/spellResist check beforehand (a
+// fully-blocked hit never reaches this function at all) and still do
+// their own hp subtraction and death check with whatever this returns.
+function applyWardedDamage(unit, amount) {
+  if (!unit || amount <= 0) return amount;
+  return Math.max(0, amount - (unit.magicShield || 0));
+}
+
 // Огненная муха: same "every X actually lands, from ANY source"
 // reactive-trigger shape as healHero() above, but for HERO DAMAGE
 // instead of healing, and reacting on the OPPOSING side rather than
@@ -3540,7 +3576,7 @@ function applyLizardWarriorTrigger(match, side, events) {
         if (targets.length > 0) {
           const chosen = targets[Math.floor(Math.random() * targets.length)];
           const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
-          const amount = u.atk;
+          const amount = applyWardedDamage(targetUnit, u.atk);
           targetUnit.hp -= amount;
           const died = targetUnit.hp <= 0;
           events.push({
@@ -3697,9 +3733,9 @@ function resolveSpells(match, events) {
             amount: 0, died: false, empty: false, resisted: true,
           });
         } else {
-          // Spell damage ignores armor entirely — only direct combat hits
-          // are reduced by it.
-          const applied = spell.wrathDmg;
+          // Spell damage ignores armor entirely — only direct combat
+          // hits are reduced by it; Магическая защита still applies.
+          const applied = applyWardedDamage(targetUnit, spell.wrathDmg);
           targetUnit.hp -= applied;
           const died = targetUnit.hp <= 0;
           events.push({
@@ -3737,9 +3773,9 @@ function resolveSpells(match, events) {
             amount: 0, died: false, empty: false, resisted: true,
           });
         } else {
-          // Spell damage ignores armor entirely — only direct combat hits
-          // are reduced by it.
-          const applied = spell.ragingFireDmg;
+          // Spell damage ignores armor entirely — only direct combat
+          // hits are reduced by it; Магическая защита still applies.
+          const applied = applyWardedDamage(targetUnit, spell.ragingFireDmg);
           targetUnit.hp -= applied;
           const died = targetUnit.hp <= 0;
           events.push({
@@ -3855,7 +3891,7 @@ function resolveSpells(match, events) {
       let died = false;
       if (targets.length > 0) {
         const chosen = targets[Math.floor(Math.random() * targets.length)];
-        amount = spell.soulDrainDmg;
+        amount = applyWardedDamage(chosen.unit, spell.soulDrainDmg);
         chosen.unit.hp -= amount;
         died = chosen.unit.hp <= 0;
         targetLaneIdx = chosen.laneIdx;
@@ -4087,12 +4123,16 @@ function resolveSpells(match, events) {
       const amount = spell.treeWrathAmount;
       damageHero(match, defenderName, amount, events);
       let died = false;
+      let unitAmount = 0;
       if (cellUnit && !resisted) {
-        cellUnit.hp -= amount;
+        // Магическая защита only ever softens the UNIT's own share of
+        // the hit — the hero's amount above is never touched by it.
+        unitAmount = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= unitAmount;
         died = cellUnit.hp <= 0;
       }
       events.push({
-        type: 'treeWrath', side: spell.side, targetSide: defenderName, amount,
+        type: 'treeWrath', side: spell.side, targetSide: defenderName, amount, unitAmount,
         laneIdx: spell.laneIdx, targetDepthIdx: targetDepth,
         targetHero: !cellUnit, died, resisted,
       });
@@ -4110,12 +4150,16 @@ function resolveSpells(match, events) {
       const amount = spell.lightningDmg;
       damageHero(match, defenderName, amount, events);
       let died = false;
+      let unitAmount = 0;
       if (cellUnit && !resisted) {
-        cellUnit.hp -= amount;
+        // Магическая защита only ever softens the UNIT's own share of
+        // the hit — the hero's amount above is never touched by it.
+        unitAmount = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= unitAmount;
         died = cellUnit.hp <= 0;
       }
       events.push({
-        type: 'lightningStrike', side: spell.side, targetSide: defenderName, amount,
+        type: 'lightningStrike', side: spell.side, targetSide: defenderName, amount, unitAmount,
         laneIdx: spell.laneIdx, targetDepthIdx: spell.depthIdx,
         targetHero: !cellUnit, died, resisted,
       });
@@ -4132,19 +4176,22 @@ function resolveSpells(match, events) {
       const resisted = !!(cellUnit && cellUnit.spellResist);
       const amount = spell.heatSurgeDmg;
       let died = false;
+      let applied = 0;
       if (resisted) {
         // no-op: the lava blob burns off her harmlessly
       } else if (cellUnit) {
-        cellUnit.hp -= amount;
+        applied = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= applied;
         died = cellUnit.hp <= 0;
       } else {
         damageHero(match, defenderName, amount, events);
+        applied = amount;
       }
       const healed = healHero(match, spell.side, spell.heatSurgeHeal, events);
       events.push({
         type: 'heatSurge', side: spell.side, targetSide: defenderName,
         laneIdx: spell.laneIdx, targetDepthIdx: spell.depthIdx,
-        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, healed,
+        amount: resisted ? 0 : applied, targetHero: !cellUnit, died, resisted, healed,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'meteor') {
@@ -4158,18 +4205,21 @@ function resolveSpells(match, events) {
       const resisted = !!(cellUnit && cellUnit.spellResist);
       const amount = spell.meteorDmg;
       let died = false;
+      let applied = 0;
       if (resisted) {
         // no-op: the meteorite burns off her harmlessly
       } else if (cellUnit) {
-        cellUnit.hp -= amount;
+        applied = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= applied;
         died = cellUnit.hp <= 0;
       } else {
         damageHero(match, defenderName, amount, events);
+        applied = amount;
       }
       events.push({
         type: 'spell', kind: 'meteor', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
-        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
+        amount: resisted ? 0 : applied, targetHero: !cellUnit, died, resisted,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'muteStrike') {
@@ -4189,19 +4239,22 @@ function resolveSpells(match, events) {
       const resisted = !!(cellUnit && (cellUnit.spellResist || cellUnit.shieldEffect));
       const amount = 1;
       let died = false;
+      let applied = 0;
       if (resisted) {
         // no-op: the lightning bolt crackles off her harmlessly
       } else if (cellUnit) {
         applySilence(cellUnit);
-        cellUnit.hp -= amount;
+        applied = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= applied;
         died = cellUnit.hp <= 0;
       } else {
         damageHero(match, defenderName, amount, events);
+        applied = amount;
       }
       events.push({
         type: 'spell', kind: 'muteStrike', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
-        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted,
+        amount: resisted ? 0 : applied, targetHero: !cellUnit, died, resisted,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'burden') {
@@ -4239,18 +4292,21 @@ function resolveSpells(match, events) {
       const emptyHand = match.hands[spell.side].length === 0;
       const amount = emptyHand ? spell.ignitionEmptyHandDmg : spell.ignitionDmg;
       let died = false;
+      let applied = 0;
       if (resisted) {
         // no-op: the flame burns off her harmlessly
       } else if (cellUnit) {
-        cellUnit.hp -= amount;
+        applied = applyWardedDamage(cellUnit, amount);
+        cellUnit.hp -= applied;
         died = cellUnit.hp <= 0;
       } else {
         damageHero(match, defenderName, amount, events);
+        applied = amount;
       }
       events.push({
         type: 'spell', kind: 'ignition', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
-        amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, emptyHand,
+        amount: resisted ? 0 : applied, targetHero: !cellUnit, died, resisted, emptyHand,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'damage') {
@@ -4269,9 +4325,9 @@ function resolveSpells(match, events) {
           amount: 0, died: false, resisted: true,
         });
       } else if (info) {
-        // Spell damage ignores armor entirely — only direct combat hits
-        // are reduced by it.
-        const applied = spell.dmg;
+        // Spell damage ignores armor entirely — only direct combat
+        // hits are reduced by it; Магическая защита still applies.
+        const applied = applyWardedDamage(info.unit, spell.dmg);
         info.unit.hp -= applied;
         const died = info.unit.hp <= 0;
         events.push({
@@ -4339,6 +4395,10 @@ function resolveSpells(match, events) {
         // actual +1-attack-per-appearance reaction; this just plants
         // the flag on this specific unit instance.
         if (spell.buffRageOnEnemySummon) unit.rageGrowOnEnemySummon = true;
+        // Озарение: permanently grants (or stacks onto) Магическая
+        // защита — see applyWardedDamage above, the shared choke point every
+        // non-combat cross-side damage source now routes through.
+        if (spell.buffMagicShield) unit.magicShield = (unit.magicShield || 0) + spell.buffMagicShield;
         // Двойной удар (the spell): grants a stack of the SAME
         // doubleStrike counter already used by Имперский полководец's
         // warlordBuff — genuinely stacks now if recast on the same unit
@@ -4351,8 +4411,11 @@ function resolveSpells(match, events) {
         // target carrying Сон instead of Armor — checks the flag itself,
         // not whether it's currently gating the target's attack (i.e.
         // still true from the round after bornRound onward too).
+        // Озарение: unlike Наплечник/Запоздалая поставка's own
+        // conditional draws right below, buffDrawCard always draws — no
+        // condition on the target's own state at all.
         let drewCard = false;
-        if ((spell.drawIfArmored && unit.armor > 0) || (spell.drawIfAsleep && unit.sleep)) {
+        if (spell.buffDrawCard || (spell.drawIfArmored && unit.armor > 0) || (spell.drawIfAsleep && unit.sleep)) {
           const beforeLen = match.hands[spell.side].length;
           draw(match.decks[spell.side], match.hands[spell.side], 1);
           drewCard = match.hands[spell.side].length > beforeLen;
@@ -4363,7 +4426,8 @@ function resolveSpells(match, events) {
           buffAtk: spell.buffAtk || 0, buffHp: spell.buffHp || 0, buffArmor: spell.buffArmor || 0,
           buffLifesteal: !!spell.buffLifesteal, buffDoubleStrike: !!spell.buffDoubleStrike,
           buffTrample: !!spell.buffTrample, buffLegacy: spell.buffLegacy || 0,
-          buffSpellResist: !!spell.buffSpellResist, buffRageOnEnemySummon: !!spell.buffRageOnEnemySummon, drewCard,
+          buffSpellResist: !!spell.buffSpellResist, buffRageOnEnemySummon: !!spell.buffRageOnEnemySummon,
+          buffMagicShield: spell.buffMagicShield || 0, drewCard,
         });
         // Бурный рост: also heals the CASTER's own hero, alongside the
         // stat buff on the target unit — reuses the exact same
@@ -4420,14 +4484,16 @@ function resolveSpells(match, events) {
       const targetUnit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
       const resisted = !!(targetUnit && (targetUnit.spellResist || targetUnit.shieldEffect));
       let died = false;
+      let applied = 0;
       if (targetUnit && !resisted) {
-        targetUnit.hp -= spell.madFireballDmg;
+        applied = applyWardedDamage(targetUnit, spell.madFireballDmg);
+        targetUnit.hp -= applied;
         died = targetUnit.hp <= 0;
       }
       events.push({
         type: 'spell', kind: 'madFireball', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
-        amount: (targetUnit && !resisted) ? spell.madFireballDmg : 0,
+        amount: (targetUnit && !resisted) ? applied : 0,
         resisted, empty: !targetUnit, died,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
@@ -4597,12 +4663,13 @@ function applyMusicalDaoist(match, events) {
               });
               continue;
             }
-            enemyUnit.hp -= 1;
+            const applied = applyWardedDamage(enemyUnit, 1);
+            enemyUnit.hp -= applied;
             const died = enemyUnit.hp <= 0;
             events.push({
               type: 'musicalDaoistHit', side, targetSide: enemySide,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
-              targetLaneIdx: l2, targetDepthIdx: d2, amount: 1, died, resisted: false,
+              targetLaneIdx: l2, targetDepthIdx: d2, amount: applied, died, resisted: false,
             });
             if (died) killUnit(match, enemySide, l2, d2, events);
           }
@@ -5025,13 +5092,15 @@ function applyShurikenMaster(match, side, enemySide, events, sourceUnit, sourceL
     if (!targetUnit) continue;
     const resisted = !!targetUnit.spellResist;
     let died = false;
+    let applied = 0;
     if (!resisted) {
-      targetUnit.hp -= 2;
+      applied = applyWardedDamage(targetUnit, 2);
+      targetUnit.hp -= applied;
       died = targetUnit.hp <= 0;
     }
     events.push({
       type: 'shurikenHit', side, targetSide: enemySide, laneIdx: sourceLaneIdx,
-      sourceDepthIdx, targetDepthIdx: d, amount: resisted ? 0 : 2, died, resisted, sourceUid: sourceUnit.uid,
+      sourceDepthIdx, targetDepthIdx: d, amount: resisted ? 0 : applied, died, resisted, sourceUid: sourceUnit.uid,
     });
     if (died) killUnit(match, enemySide, sourceLaneIdx, d, events);
   }
@@ -5062,7 +5131,7 @@ function applyDrunkenDisciple(match, side, events, sourceUnit, sourceLaneIdx, so
   const chosen = candidates[Math.floor(Math.random() * candidates.length)];
   const targetUnit = match.boards[chosen.side][chosen.laneIdx][chosen.depthIdx];
   const resisted = !!targetUnit.spellResist;
-  const amount = resisted ? 0 : 1;
+  const amount = resisted ? 0 : applyWardedDamage(targetUnit, 1);
   let died = false;
   if (!resisted) {
     targetUnit.hp -= amount;
@@ -5085,16 +5154,19 @@ function applyBambooRecurringShot(match, side, enemySide, events, sourceUnit, so
   const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
   const amount = sourceUnit.bambooShotRecurring;
   let died = false;
+  let applied = 0;
   if (resisted) {
     // no-op: the spear lands on her harmlessly
   } else if (targetUnit) {
-    targetUnit.hp -= amount;
+    applied = applyWardedDamage(targetUnit, amount);
+    targetUnit.hp -= applied;
     died = targetUnit.hp <= 0;
   } else {
     damageHero(match, enemySide, amount, events);
+    applied = amount;
   }
   events.push({
-    type: 'bambooShot', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    type: 'bambooShot', side, targetSide: enemySide, amount: resisted ? 0 : applied,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
     targetLaneIdx: sourceLaneIdx, targetDepthIdx: targetDepth,
     sourceUid: sourceUnit.uid, targetHero: !cellUnit, died, resisted,
@@ -5117,7 +5189,7 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
   const resisted = !!targetUnit.spellResist;
-  const amount = resisted ? 0 : 1;
+  const amount = resisted ? 0 : applyWardedDamage(targetUnit, 1);
   let died = false;
   if (!resisted) {
     targetUnit.hp -= amount;
@@ -5158,13 +5230,14 @@ function applyIceMageFreeze(match, side, enemySide, events, sourceUid, sourceLan
   const alreadyFrozen = match.frozenCells[enemySide][chosen.laneIdx][chosen.depthIdx];
   match.frozenCells[enemySide][chosen.laneIdx][chosen.depthIdx] = true;
   targetUnit.atk = Math.max(0, targetUnit.atk - 1);
-  targetUnit.hp -= 1;
+  const hpDelta = applyWardedDamage(targetUnit, 1);
+  targetUnit.hp -= hpDelta;
   const died = targetUnit.hp <= 0;
   events.push({
     type: 'iceMageFreeze', side, targetSide: enemySide,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
     targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
-    sourceUid, alreadyFrozen, died,
+    sourceUid, alreadyFrozen, died, hpDelta,
   });
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
@@ -5188,16 +5261,19 @@ function applyLightPrismShot(match, side, enemySide, events, sourceUid, sourceLa
   const resisted = !!(cellUnit && cellUnit.spellResist);
   const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
   let died = false;
+  let applied = 0;
   if (resisted) {
     // no-op: the beam disperses on her harmlessly
   } else if (targetUnit) {
-    targetUnit.hp -= amount;
+    applied = applyWardedDamage(targetUnit, amount);
+    targetUnit.hp -= applied;
     died = targetUnit.hp <= 0;
   } else {
     damageHero(match, enemySide, amount, events);
+    applied = amount;
   }
   events.push({
-    type: 'lightPrismShot', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    type: 'lightPrismShot', side, targetSide: enemySide, amount: resisted ? 0 : applied,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx, sourceUid,
     targetLaneIdx: targetLane, targetDepthIdx: targetDepth, targetHero: !cellUnit, died, resisted,
   });
@@ -5234,10 +5310,11 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
   }
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
-  targetUnit.hp -= amount;
+  const applied = applyWardedDamage(targetUnit, amount);
+  targetUnit.hp -= applied;
   const died = targetUnit.hp <= 0;
   events.push({
-    type: eventType || 'musketShot', side, targetSide: enemySide, amount,
+    type: eventType || 'musketShot', side, targetSide: enemySide, amount: applied,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
     targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
     sourceUid, resisted: false, died,
@@ -5258,7 +5335,7 @@ function applyFireImpThrow(match, side, enemySide, events, sourceUid, sourceLane
   if (!info) return;
   const targetUnit = info.unit;
   const resisted = !!targetUnit.spellResist;
-  const applied = resisted ? 0 : amount;
+  const applied = resisted ? 0 : applyWardedDamage(targetUnit, amount);
   let died = false;
   if (!resisted) {
     targetUnit.hp -= applied;
@@ -5331,16 +5408,19 @@ function applyAxeFanaticThrow(match, side, enemySide, events, unit, laneIdx, dep
   const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
   const amount = fixedAmount != null ? fixedAmount : unit.atk;
   let died = false;
+  let applied = 0;
   if (resisted) {
     // no-op: the axe lands on her harmlessly
   } else if (targetUnit) {
-    targetUnit.hp -= amount;
+    applied = applyWardedDamage(targetUnit, amount);
+    targetUnit.hp -= applied;
     died = targetUnit.hp <= 0;
   } else {
     damageHero(match, enemySide, amount, events);
+    applied = amount;
   }
   events.push({
-    type: eventType || 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    type: eventType || 'axeThrow', side, targetSide: enemySide, amount: resisted ? 0 : applied,
     laneIdx, depthIdx, sourceUid: unit.uid,
     targetLaneIdx: laneIdx, targetDepthIdx: targetDepth,
     targetHero: !cellUnit, died, resisted,
@@ -5363,16 +5443,19 @@ function applyLavaWarlockFireball(match, side, enemySide, events, unit, laneIdx,
   const resisted = !!(front && front.unit.spellResist);
   const amount = 3;
   let died = false;
+  let applied = 0;
   if (resisted) {
     // no-op: the fireball fizzles harmlessly on her
   } else if (front) {
-    front.unit.hp -= amount;
+    applied = applyWardedDamage(front.unit, amount);
+    front.unit.hp -= applied;
     died = front.unit.hp <= 0;
   } else {
     damageHero(match, enemySide, amount, events);
+    applied = amount;
   }
   events.push({
-    type: 'lavaWarlockFireball', side, targetSide: enemySide, amount: resisted ? 0 : amount,
+    type: 'lavaWarlockFireball', side, targetSide: enemySide, amount: resisted ? 0 : applied,
     laneIdx, depthIdx, sourceUid: unit.uid,
     targetLaneIdx: laneIdx, targetDepthIdx: front ? front.depth : null,
     targetHero: !front, died, resisted,
@@ -5434,19 +5517,22 @@ function applyPrairieDragonFireball(match, side, enemySide, events, sourceUid, s
   const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
   const amount = 2;
   let died = false;
+  let applied = 0;
   if (resisted) {
     // no-op: the fireball fizzles harmlessly
   } else if (targetUnit) {
-    targetUnit.hp -= amount;
+    applied = applyWardedDamage(targetUnit, amount);
+    targetUnit.hp -= applied;
     died = targetUnit.hp <= 0;
   } else {
     damageHero(match, enemySide, amount, events);
+    applied = amount;
   }
   events.push({
     type: 'dragonFireball', side, targetSide: enemySide,
     laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
     targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
-    amount: resisted ? 0 : amount, targetHero: !cellUnit, died, resisted, sourceUid,
+    amount: resisted ? 0 : applied, targetHero: !cellUnit, died, resisted, sourceUid,
   });
   if (died) killUnit(match, enemySide, targetLane, targetDepth, events);
 }
@@ -5491,7 +5577,7 @@ function applySolarDragonWave(match, side, enemySide, laneIdx, events, sourceUid
         amount: 0, died: false, empty: false, resisted: true, sourceUid,
       });
     } else {
-      const applied = 5;
+      const applied = applyWardedDamage(targetUnit, 5);
       targetUnit.hp -= applied;
       const died = targetUnit.hp <= 0;
       events.push({
@@ -5524,7 +5610,7 @@ function applyButcherSpikeWave(match, side, enemySide, laneIdx, events, sourceUi
         amount: 0, died: false, empty: false, resisted: true, sourceUid,
       });
     } else {
-      const applied = 2;
+      const applied = applyWardedDamage(targetUnit, 2);
       targetUnit.hp -= applied;
       const died = targetUnit.hp <= 0;
       events.push({
@@ -6529,16 +6615,19 @@ export function tryEndTurn(match, username) {
     const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
     const amount = shot.amount;
     let died = false;
+    let applied = 0;
     if (resisted) {
       // no-op: the spear lands on her harmlessly
     } else if (targetUnit) {
-      targetUnit.hp -= amount;
+      applied = applyWardedDamage(targetUnit, amount);
+      targetUnit.hp -= applied;
       died = targetUnit.hp <= 0;
     } else {
       damageHero(match, targetSide, amount, events);
+      applied = amount;
     }
     events.push({
-      type: 'bambooShot', side: shot.side, targetSide, amount: resisted ? 0 : amount,
+      type: 'bambooShot', side: shot.side, targetSide, amount: resisted ? 0 : applied,
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
       targetLaneIdx: shot.laneIdx, targetDepthIdx: targetDepth,
       targetHero: !cellUnit, died, resisted,
@@ -6604,7 +6693,7 @@ export function tryEndTurn(match, username) {
     const chosen = targets[Math.floor(Math.random() * targets.length)];
     const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
     const resisted = !!targetUnit.spellResist;
-    const amount = resisted ? 0 : entry.amount;
+    const amount = resisted ? 0 : applyWardedDamage(targetUnit, entry.amount);
     let died = false;
     if (!resisted) {
       targetUnit.hp -= amount;
@@ -6788,13 +6877,15 @@ export function tryEndTurn(match, username) {
     const targetUnit = front.unit;
     const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
     let died = false;
+    let applied = 0;
     if (!resisted) {
-      targetUnit.hp -= 9;
+      applied = applyWardedDamage(targetUnit, 9);
+      targetUnit.hp -= applied;
       died = targetUnit.hp <= 0;
     }
     events.push({
       type: 'nualFrontStab', side: entry.side, targetSide: enemySide, laneIdx: entry.laneIdx,
-      targetDepthIdx: front.depth, amount: resisted ? 0 : 9, resisted, died, sourceUid: entry.sourceUid,
+      targetDepthIdx: front.depth, amount: resisted ? 0 : applied, resisted, died, sourceUid: entry.sourceUid,
     });
     if (died) killUnit(match, enemySide, entry.laneIdx, front.depth, events);
   }
@@ -6821,13 +6912,15 @@ export function tryEndTurn(match, username) {
       const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
       const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
       let died = false;
+      let applied = 0;
       if (!resisted) {
-        targetUnit.hp -= 3;
+        applied = applyWardedDamage(targetUnit, 3);
+        targetUnit.hp -= applied;
         died = targetUnit.hp <= 0;
       }
       events.push({
         type: 'nualQuadStab', side: entry.side, targetSide: enemySide, laneIdx: chosen.laneIdx,
-        targetDepthIdx: chosen.depthIdx, amount: resisted ? 0 : 3, resisted, died, sourceUid: entry.sourceUid,
+        targetDepthIdx: chosen.depthIdx, amount: resisted ? 0 : applied, resisted, died, sourceUid: entry.sourceUid,
       });
       if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
     }
@@ -6858,14 +6951,16 @@ export function tryEndTurn(match, username) {
         if (!targetUnit) continue;
         const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
         let died = false;
+        let hpDelta = 0;
         if (!resisted) {
           targetUnit.atk = Math.max(0, targetUnit.atk - 1);
-          targetUnit.hp -= 1;
+          hpDelta = applyWardedDamage(targetUnit, 1);
+          targetUnit.hp -= hpDelta;
           died = targetUnit.hp <= 0;
         }
         events.push({
           type: 'wiseDeerDebuff', side: entry.side, targetSide: enemySide, laneIdx: l,
-          depthIdx: d, resisted, died, sourceUid: entry.sourceUid,
+          depthIdx: d, resisted, died, sourceUid: entry.sourceUid, hpDelta,
         });
         if (died) killUnit(match, enemySide, l, d, events);
       }
@@ -7323,8 +7418,8 @@ export function tryEndTurn(match, username) {
       const chosen = targets[Math.floor(Math.random() * targets.length)];
       targetLaneIdx = chosen.laneIdx;
       targetDepthIdx = chosen.depthIdx;
-      amount = entry.amount;
       const targetUnit = board[targetLaneIdx][targetDepthIdx];
+      amount = applyWardedDamage(targetUnit, entry.amount);
       targetUnit.hp -= amount;
       died = targetUnit.hp <= 0;
     }
@@ -7854,7 +7949,7 @@ export function tryEndTurn(match, username) {
             if (targets.length > 0) {
               const chosen = targets[Math.floor(Math.random() * targets.length)];
               const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
-              const amount = 2;
+              const amount = applyWardedDamage(targetUnit, 2);
               targetUnit.hp -= amount;
               const died = targetUnit.hp <= 0;
               events.push({
@@ -7882,17 +7977,20 @@ export function tryEndTurn(match, username) {
             const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
             const amount = 5;
             let died = false;
+            let applied = 0;
             if (resisted) {
               // no-op: the keg explodes on her harmlessly, same pattern
               // as every other cross-side mechanic checking this status.
             } else if (targetUnit) {
-              targetUnit.hp -= amount;
+              applied = applyWardedDamage(targetUnit, amount);
+              targetUnit.hp -= applied;
               died = targetUnit.hp <= 0;
             } else {
               damageHero(match, targetSide, amount, events);
+              applied = amount;
             }
             events.push({
-              type: 'powderKegShot', side: name, targetSide, amount: resisted ? 0 : amount,
+              type: 'powderKegShot', side: name, targetSide, amount: resisted ? 0 : applied,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
               targetLaneIdx, targetDepthIdx, targetHero: !cellUnit, died, resisted,
             });
@@ -7945,16 +8043,19 @@ export function tryEndTurn(match, username) {
               const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
               const amount = unit.cannonShotFixed || effectiveAtk(board, l, d);
               let died = false;
+              let applied = 0;
               if (resisted) {
                 // no-op: cannonball explodes on her harmlessly
               } else if (targetUnit) {
-                targetUnit.hp -= amount;
+                applied = applyWardedDamage(targetUnit, amount);
+                targetUnit.hp -= applied;
                 died = targetUnit.hp <= 0;
               } else {
                 damageHero(match, targetSide, amount, events);
+                applied = amount;
               }
               events.push({
-                type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : amount,
+                type: 'cannonShot', side: name, targetSide, amount: resisted ? 0 : applied,
                 laneIdx: l, depthIdx: d, sourceUid: unit.uid,
                 targetLaneIdx: l, targetDepthIdx: targetDepth,
                 targetHero: !cellUnit, died, resisted,
@@ -7980,17 +8081,20 @@ export function tryEndTurn(match, username) {
             const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
             const amount = 3;
             let died = false;
+            let applied = 0;
             if (resisted) {
               // no-op: the ice ball shatters on her harmlessly
             } else if (targetUnit) {
-              targetUnit.hp -= amount;
+              applied = applyWardedDamage(targetUnit, amount);
+              targetUnit.hp -= applied;
               died = targetUnit.hp <= 0;
             } else {
               damageHero(match, targetSide, amount, events);
+              applied = amount;
             }
             match.frozenCells[targetSide][targetLane][targetDepth] = true;
             events.push({
-              type: 'iceCatapultShot', side: name, targetSide, amount: resisted ? 0 : amount,
+              type: 'iceCatapultShot', side: name, targetSide, amount: resisted ? 0 : applied,
               laneIdx: l, depthIdx: d, sourceUid: unit.uid,
               targetLaneIdx: targetLane, targetDepthIdx: targetDepth,
               targetHero: !cellUnit, died, resisted,
