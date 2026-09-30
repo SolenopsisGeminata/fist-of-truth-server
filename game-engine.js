@@ -1129,6 +1129,11 @@ export const CARD_POOL = [
   // loop preamble and timeKeeperReturnOnDeath in killUnit (both above)
   // \u2014 two independent "return a card to hand" mechanics.
   { id: 'c257', name: '\u0425\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u0438\u0446\u0430 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 5, atk: 3, hp: 2, manaAura: 1, timeKeeperReturnSpellOnCast: true, timeKeeperReturnOnDeath: true, rarity: 'legendary', faction: 'mystery' },
+  // \u0411\u0435\u0441\u0442\u0435\u043b\u0435\u0441\u043d\u044b\u0439 \u0414\u0440\u0430\u043a\u043e\u043d: see dragonWeakenAllEnemiesOnPlay in placeCard and the
+  // matching drain in tryEndTurn (both above) \u2014 same "every enemy unit"
+  // scan as \u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c's own wiseDeerDebuff, pure -2 atk, no hp
+  // component.
+  { id: 'c258', name: '\u0411\u0435\u0441\u0442\u0435\u043b\u0435\u0441\u043d\u044b\u0439 \u0414\u0440\u0430\u043a\u043e\u043d', type: 'creature', cost: 6, atk: 10, hp: 10, shieldEffect: true, dragonWeakenAllEnemiesOnPlay: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1549,6 +1554,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingDragonSpits: [],
     pendingWiseDeerDebuff: [],
     pendingWiseDeerBuff: [],
+    pendingDragonWeaken: [],
     pendingSpearmanBuff: [],
     pendingArcticScarecrow: [],
     pendingFrostSpiderWeb: [],
@@ -2268,6 +2274,16 @@ export function placeCard(match, username, uid, lane, depth) {
       match.pendingWiseDeerBuff.push({ side: username, sourceUid: unit.uid });
     }
     // depth === middle: no queued effect at all.
+  }
+
+  // Бестелесный Дракон: unconditional on-play battlecry (no depth
+  // condition, unlike Мудрый олень's own wiseDeerOnPlay right above) —
+  // -2 attack (floored at 0) to EVERY enemy unit on the board,
+  // Чаростойкость/Щит protecting individual units the same way, no hp
+  // change at all (pure atk debuff, unlike Мудрый олень's own
+  // debuff+damage combo).
+  if (card.dragonWeakenAllEnemiesOnPlay) {
+    match.pendingDragonWeaken.push({ side: username, sourceUid: unit.uid });
   }
 
   // Воин с копьем: whether an enemy "ALSO appeared this same phase"
@@ -8027,6 +8043,30 @@ export function tryEndTurn(match, username) {
           depthIdx: d, resisted, died, sourceUid: entry.sourceUid, hpDelta,
         });
         if (died) killUnit(match, enemySide, l, d, events);
+      }
+    }
+  }
+
+  // Бестелесный Дракон: same "every enemy unit, Чаростойкость/Щит
+  // protects individually" scan as Мудрый олень's own wiseDeerDebuff
+  // right above, but a bigger -2 amount and NO hp component at all (a
+  // pure atk debuff, never kills anyone). A dedicated 'dragonWeaken'
+  // event since the negative delta can't be represented by rallyBuff.
+  const dragonWeakenQueue = match.pendingDragonWeaken;
+  match.pendingDragonWeaken = [];
+  for (const entry of dragonWeakenQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    const enemyBoard = match.boards[enemySide];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const targetUnit = enemyBoard[l][d];
+        if (!targetUnit) continue;
+        const resisted = !!(targetUnit.spellResist || targetUnit.shieldEffect);
+        if (!resisted) targetUnit.atk = Math.max(0, targetUnit.atk - 2);
+        events.push({
+          type: 'dragonWeaken', side: entry.side, targetSide: enemySide,
+          laneIdx: l, depthIdx: d, resisted, sourceUid: entry.sourceUid,
+        });
       }
     }
   }
