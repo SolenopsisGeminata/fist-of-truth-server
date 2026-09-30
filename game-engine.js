@@ -1113,6 +1113,10 @@ export const CARD_POOL = [
   // armor and manaAura (\u041c\u0430\u043d\u0430 2, same as \u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439's own manaAura,
   // just a bigger amount). No new mechanic needed.
   { id: 'c254', name: '\u0420\u043e\u0431\u043e\u0442-\u0436\u0430\u0431\u0430', type: 'creature', cost: 5, atk: 3, hp: 4, armor: 2, manaAura: 2, rarity: 'rare', faction: 'mystery' },
+  // \u041f\u0440\u043e\u043a\u043b\u044f\u0442\u0430\u044f \u0431\u0430\u0431\u0443\u0448\u043a\u0430: see cursedGrandmaDiscardOnPlay in placeCard and the
+  // matching drain in tryEndTurn (both above) \u2014 same mechanic as
+  // \u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e's own hellScarecrowDiscardOnPlay, its own queue/event.
+  { id: 'c255', name: '\u041f\u0440\u043e\u043a\u043b\u044f\u0442\u0430\u044f \u0431\u0430\u0431\u0443\u0448\u043a\u0430', type: 'creature', cost: 5, atk: 2, hp: 4, cursedGrandmaDiscardOnPlay: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1555,6 +1559,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingTrampleDiscounts: [],
     pendingFatDemonBuffs: [],
     pendingHellScarecrowDiscards: [],
+    pendingCursedGrandmaDiscards: [],
     pendingHowlingDemonDoubles: [],
     pendingSpikeWaves: [],
     pendingButcherKills: [],
@@ -2507,6 +2512,15 @@ export function placeCard(match, username, uid, lane, depth) {
   // identity).
   if (card.hellScarecrowDiscardOnPlay) {
     match.pendingHellScarecrowDiscards.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
+  }
+
+  // Проклятая бабушка: same "on play, forces the OPPONENT to lose a
+  // random card from their own hand" mechanic as Адское пугало's own
+  // hellScarecrowDiscardOnPlay right above, but its own queue/event so
+  // the fallback name stays correct if the unit is ever gone by
+  // resolution time.
+  if (card.cursedGrandmaDiscardOnPlay) {
+    match.pendingCursedGrandmaDiscards.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid });
   }
 
   // Воющий демон: on play, doubles the attack of a random ADJACENT
@@ -8263,6 +8277,25 @@ export function tryEndTurn(match, username) {
     }
     events.push({
       type: 'hellScarecrowDiscard', side: entry.side, targetSide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, discarded,
+    });
+  }
+
+  // Проклятая бабушка's battlecry — see cursedGrandmaDiscardOnPlay
+  // above. Same drain logic as Адское пугало's own
+  // hellScarecrowDiscardQueue right above, its own dedicated event.
+  const cursedGrandmaDiscardQueue = match.pendingCursedGrandmaDiscards;
+  match.pendingCursedGrandmaDiscards = [];
+  for (const entry of cursedGrandmaDiscardQueue) {
+    const targetSide = otherPlayer(match, entry.side);
+    const targetHand = match.hands[targetSide];
+    const discarded = targetHand.length > 0;
+    if (discarded) {
+      const idx = Math.floor(Math.random() * targetHand.length);
+      targetHand.splice(idx, 1);
+    }
+    events.push({
+      type: 'cursedGrandmaDiscard', side: entry.side, targetSide,
       laneIdx: entry.laneIdx, depthIdx: entry.depthIdx, sourceUid: entry.sourceUid, discarded,
     });
   }
