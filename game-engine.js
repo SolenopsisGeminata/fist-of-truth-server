@@ -1100,6 +1100,11 @@ export const CARD_POOL = [
   // death-summon loop. Never in the shop or the starter deck, 0 mana
   // (see mysteryStarterDeckCounts/noShop convention elsewhere).
   { id: 'c251', name: '\u041c\u0430\u043b\u044c\u0447\u0438\u043a-\u0441\u0435\u0432\u0435\u0440\u0438\u043d', type: 'creature', cost: 0, atk: 0, hp: 2, kidoBoyVanishOnSacrifice: true, rarity: 'common', noShop: true, faction: 'mystery' },
+  // \u0417\u043e\u043b\u043e\u0442\u0430\u044f \u0433\u043e\u0440\u0433\u0443\u043b\u044c\u044f: see the armor bonus baked into buildUnitFromCard and
+  // the round-start wake-up loop in tryEndTurn (both above) \u2014 +3 armor
+  // only while asleep in its own bornRound. manaDrainAura is a pure
+  // reuse of the existing keyword (\u041c\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a).
+  { id: 'c252', name: '\u0417\u043e\u043b\u043e\u0442\u0430\u044f \u0433\u043e\u0440\u0433\u0443\u043b\u044c\u044f', type: 'creature', cost: 5, atk: 3, hp: 8, sleep: true, goldenGargoyleSleepArmor: true, manaDrainAura: 1, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1648,7 +1653,13 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     atk: card.atk,
     hp: card.hp,
     maxHp: card.hp,
-    armor: card.armor || 0,
+    // Золотая горгулья: +3 armor baked in right here, since every
+    // caller of buildUnitFromCard passes match.round as bornRound — a
+    // freshly built unit is always "asleep" (bornRound === match.round)
+    // at the exact moment it's constructed if it also carries Сон. The
+    // bonus is removed again once it wakes up — see the round-start
+    // loop in tryEndTurn (goldenGargoyleSleepArmor/sleepArmorActive).
+    armor: (card.armor || 0) + (card.goldenGargoyleSleepArmor ? 3 : 0),
     lifesteal: !!card.lifesteal,
     synergy: card.synergy || 0,
     shootHero: !!card.shootHero,
@@ -1679,6 +1690,12 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // below. Replaces the old Защитник+temporaryDefender combo that
     // used to give Стервятник/Глупый дикарь this exact timing.
     sleep: !!card.sleep,
+    goldenGargoyleSleepArmor: !!card.goldenGargoyleSleepArmor,
+    // Not card-derived after construction — flipped false once the
+    // round-start loop below removes the bonus on waking, same
+    // "transient runtime-only state" convention as Немота's own
+    // silenced flag.
+    sleepArmorActive: !!card.goldenGargoyleSleepArmor,
     cannonShot: !!card.cannonShot,
     cannonShotFixed: card.cannonShotFixed || 0,
     cannonShotExtraChance: card.cannonShotExtraChance || 0,
@@ -7472,6 +7489,27 @@ export function tryEndTurn(match, username) {
           sourceUid: unit.uid, amount, died,
         });
         if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+      }
+    }
+  }
+
+  // Золотая горгулья: the +3 armor bonus was already baked in at
+  // construction time (see buildUnitFromCard) since it's asleep from
+  // the instant it's placed — this is the OTHER half, removing it the
+  // instant it wakes up (match.round > unit.bornRound, same isAsleep
+  // boundary as resolveCombat's own sleep check), exactly once
+  // (sleepArmorActive guards against repeating this every later
+  // round). A dedicated 'goldenGargoyleWake' event since the negative
+  // delta can't be represented by rallyBuff's "+N" popup.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.sleepArmorActive || match.round <= unit.bornRound) continue;
+        unit.armor = Math.max(0, unit.armor - 3);
+        unit.sleepArmorActive = false;
+        events.push({ type: 'goldenGargoyleWake', side, laneIdx: l, depthIdx: d, sourceUid: unit.uid, amount: 3 });
       }
     }
   }
