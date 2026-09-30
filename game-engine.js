@@ -1069,6 +1069,12 @@ export const CARD_POOL = [
   // round-start loop (both above) \u2014 two separate new mechanics working
   // together as a combo.
   { id: 'c245', name: '\u041c\u0430\u0441\u0442\u0435\u0440 \u0438\u043b\u043b\u044e\u0437\u0438\u0439', type: 'creature', cost: 4, atk: 2, hp: 2, illusionMasterSummonPython: true, illusionMasterGrowGhostAlly: true, rarity: 'epic', faction: 'mystery' },
+  // \u0421\u0435\u0434\u043e\u0439 \u043a\u043e\u0440\u0435\u043d\u044c: see greyRootDoubleOnRoundEnd in the end-of-round loop
+  // above (right after \u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e's own hellScarecrowGrowOnEmptyHand)
+  // \u2014 reuses the "buff amount = current stat" doubling convention from
+  // \u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d's own battlecry, applied to itself every round instead
+  // of once to a neighbour.
+  { id: 'c246', name: '\u0421\u0435\u0434\u043e\u0439 \u043a\u043e\u0440\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, shieldEffect: true, greyRootDoubleOnRoundEnd: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1714,6 +1720,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     infernalMawSpike: !!card.infernalMawSpike,
     vileVerminSelfAcid: !!card.vileVerminSelfAcid,
     hellScarecrowGrowOnEmptyHand: !!card.hellScarecrowGrowOnEmptyHand,
+    // Седой корень: see the end-of-round loop in tryEndTurn above
+    // (right after Адское пугало's own hellScarecrowGrowOnEmptyHand).
+    greyRootDoubleOnRoundEnd: !!card.greyRootDoubleOnRoundEnd,
     succubusDrainOnRoundEnd: !!card.succubusDrainOnRoundEnd,
     demonicBatGrowChance: card.demonicBatGrowChance || 0,
     bloodPoolSelfHitDraw: !!card.bloodPoolSelfHitDraw,
@@ -8574,6 +8583,25 @@ export function tryEndTurn(match, username) {
                 targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
               });
             }
+          }
+          // Седой корень: at the end of every round it's alive
+          // (unconditional, same "no roundStartHp gate" timing as
+          // Адское пугало above), doubles its OWN current attack and
+          // health — the delta pushed as a plain 'rallyBuff' is exactly
+          // its pre-doubling value, same "buff amount = current stat"
+          // convention as Воющий демон's own battlecry doubling. Щит
+          // only blocks mechanics of OTHER units directed against this
+          // one, so it never stops this unit from doubling itself.
+          if (unit && unit.greyRootDoubleOnRoundEnd) {
+            const buffAtk = unit.atk;
+            const buffHp = unit.hp;
+            unit.atk += buffAtk;
+            unit.hp += buffHp;
+            unit.maxHp += buffHp;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk, buffHp, sourceUid: unit.uid,
+            });
           }
           // Суккуб: at the end of every round she's alive
           // (unconditional, same "no roundStartHp gate" timing as
