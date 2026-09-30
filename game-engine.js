@@ -1121,6 +1121,10 @@ export const CARD_POOL = [
   // resolveSpells above \u2014 draws 2 cards, +1 more if the caster
   // sacrificed a card this round (match.sacrifices[side]).
   { id: 's61', name: '\u041a\u043e\u043d\u0446\u0435\u043d\u0442\u0440\u0430\u0446\u0438\u044f', type: 'spell', cost: 5, concentrationDraw: 2, rarity: 'rare', faction: 'mystery' },
+  // \u041f\u0440\u043e\u0440\u043e\u043a \u043e\u0431\u0441\u0435\u0440\u0432\u0430\u0442\u043e\u0440\u0438\u0438: see observatoryProphetDrawOnInsight in applyInsight above
+  // (right after \u041e\u0445\u0440\u0430\u043d\u043d\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430's own guardPrismGrowOnInsight) \u2014 same
+  // "count > 0" trigger, draws 1 card instead of buffing itself.
+  { id: 'c256', name: '\u041f\u0440\u043e\u0440\u043e\u043a \u043e\u0431\u0441\u0435\u0440\u0432\u0430\u0442\u043e\u0440\u0438\u0438', type: 'creature', cost: 5, atk: 1, hp: 4, insightEffect: 1, observatoryProphetDrawOnInsight: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1838,6 +1842,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Охранная призма: see applyInsight above (right after Робот-
     // наблюдатель's own observerRobotGrowOnInsight growth).
     guardPrismGrowOnInsight: !!card.guardPrismGrowOnInsight,
+    // Пророк обсерватории: see applyInsight above (right after Охранная
+    // призма's own guardPrismGrowOnInsight).
+    observatoryProphetDrawOnInsight: !!card.observatoryProphetDrawOnInsight,
     healHeroByAtkOnDeath: !!card.healHeroByAtkOnDeath,
     // Робот авангарда: see the resolveCombatPass pre-attack hook above
     // (match.mana[side], a pure read — never actually spent by this).
@@ -5300,6 +5307,21 @@ function applyInsight(match, casterSide, amount, events) {
             type: 'rallyBuff', side: casterSide, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 2, buffArmor: 1, sourceUid: u.uid,
           });
+        }
+        // Пророк обсерватории: same "count > 0" trigger condition as
+        // Робот-наблюдатель/Охранная призма right above, but instead of
+        // buffing itself, draws 1 card from its OWNER's own deck —
+        // reuses the exact same 'moneyTreeDraw'-style draw()/beforeLen/
+        // drew shape used everywhere else in this file, its own
+        // dedicated event.
+        if (u && u.observatoryProphetDrawOnInsight) {
+          const hand = match.hands[casterSide];
+          if (hand.length < MAX_HAND) {
+            const beforeLen = hand.length;
+            draw(match.decks[casterSide], hand, 1);
+            const drew = hand.length > beforeLen;
+            events.push({ type: 'observatoryProphetDraw', side: casterSide, sourceUid: u.uid, laneIdx: l, depthIdx: d, drew });
+          }
         }
       }
     }
