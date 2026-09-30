@@ -1134,6 +1134,12 @@ export const CARD_POOL = [
   // scan as \u041c\u0443\u0434\u0440\u044b\u0439 \u043e\u043b\u0435\u043d\u044c's own wiseDeerDebuff, pure -2 atk, no hp
   // component.
   { id: 'c258', name: '\u0411\u0435\u0441\u0442\u0435\u043b\u0435\u0441\u043d\u044b\u0439 \u0414\u0440\u0430\u043a\u043e\u043d', type: 'creature', cost: 6, atk: 10, hp: 10, shieldEffect: true, dragonWeakenAllEnemiesOnPlay: true, rarity: 'epic', faction: 'mystery' },
+  // \u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436: see impulseGuardianShot and
+  // impulseGuardianSummonOnSacrifice in the resolveCombatPass pre-attack
+  // hook above (right after \u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0440\u043e\u0431\u043e\u0442's own impulseRobotShot)
+  // \u2014 reuses applyGuardRobotShot (fixed 3 dmg) and summons \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439
+  // \u0440\u043e\u0431\u043e\u0442 (c235) on a sacrifice.
+  { id: 'c259', name: '\u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 6, atk: 4, hp: 7, impulseGuardianShot: true, impulseGuardianSummonOnSacrifice: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1893,6 +1899,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // as Охранный робот above, but a single shot dealing its own CURRENT
     // attack instead of two fixed-2 ones.
     impulseRobotShot: !!card.impulseRobotShot,
+    // Импульсный страж: see the resolveCombatPass pre-attack hook above
+    // (right after Импульсный робот's own impulseRobotShot).
+    impulseGuardianShot: !!card.impulseGuardianShot,
+    impulseGuardianSummonOnSacrifice: !!card.impulseGuardianSummonOnSacrifice,
     // Робот техобслуживания: see the start-of-resolution loop in
     // tryEndTurn above (right after Арбалетчик's own block).
     maintenanceRobotPulse: !!card.maintenanceRobotPulse,
@@ -6729,6 +6739,31 @@ function resolveCombatPass(match, events, isEligible) {
       }
       if (bEligible && bUnit.impulseRobotShot) {
         applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, null, 'impulseRobotShot');
+      }
+      // Импульсный страж: same "no bornRound gate" pre-attack timing and
+      // the exact same applyGuardRobotShot helper as Импульсный робот's
+      // own impulseRobotShot right above, but a fixed 3 damage instead
+      // of its own current attack, and its own 'impulseGuardianShot'
+      // eventType.
+      if (aEligible && aUnit.impulseGuardianShot) {
+        applyGuardRobotShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, 3, 'impulseGuardianShot');
+      }
+      if (bEligible && bUnit.impulseGuardianShot) {
+        applyGuardRobotShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, 3, 'impulseGuardianShot');
+      }
+      // Импульсный страж: same "before its own attack" eligibility gate
+      // as its own impulseGuardianShot right above, and the same
+      // match.sacrifices[side] check (still reflects THIS round's
+      // sacrifice at this exact point in resolution) as Страж реки
+      // Стикс/Мальчик-северин/Боевой робот elsewhere — summons a fresh
+      // Охранный робот (c235) onto a random free cell of its OWN board,
+      // reusing summonUnitToRandomFreeCell (silent no-op if the board's
+      // already full).
+      if (aEligible && aUnit.impulseGuardianSummonOnSacrifice && match.sacrifices[nameA]) {
+        summonUnitToRandomFreeCell(match, nameA, 'c235', events);
+      }
+      if (bEligible && bUnit.impulseGuardianSummonOnSacrifice && match.sacrifices[nameB]) {
+        summonUnitToRandomFreeCell(match, nameB, 'c235', events);
       }
       // Инфернальная пасть: this is the PRE-ATTACK throw of its three
       // (start-of-round and end-of-round are handled elsewhere) — same
