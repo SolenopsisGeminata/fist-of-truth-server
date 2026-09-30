@@ -1109,6 +1109,10 @@ export const CARD_POOL = [
   // \u0441\u0435\u0432\u0435\u0440\u0438\u043d's own applyKidoBoyVanish) \u2014 same sacrifice-this-round
   // condition, shoots a random enemy for 3 damage then shrinks itself.
   { id: 'c253', name: '\u0411\u043e\u0435\u0432\u043e\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 5, atk: 5, hp: 5, battleRobotSacrificeShot: true, rarity: 'rare', faction: 'mystery' },
+  // \u0420\u043e\u0431\u043e\u0442-\u0436\u0430\u0431\u0430: pure combination of two pre-existing static keywords \u2014
+  // armor and manaAura (\u041c\u0430\u043d\u0430 2, same as \u0428\u0430\u043c\u0430\u043d \u043f\u0440\u0435\u0440\u0438\u0439's own manaAura,
+  // just a bigger amount). No new mechanic needed.
+  { id: 'c254', name: '\u0420\u043e\u0431\u043e\u0442-\u0436\u0430\u0431\u0430', type: 'creature', cost: 5, atk: 3, hp: 4, armor: 2, manaAura: 2, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
