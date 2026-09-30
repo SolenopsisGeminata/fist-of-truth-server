@@ -1080,6 +1080,10 @@ export const CARD_POOL = [
   // summons a fresh copy of itself (cardById(unit.id)) onto a random
   // adjacent empty cell whenever it took damage this round.
   { id: 'c247', name: '\u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u0441\u043b\u0438\u0437\u044c', type: 'creature', cost: 4, atk: 3, hp: 5, infiniteSlimeSummonOnDamage: true, rarity: 'epic', faction: 'mystery' },
+  // \u041e\u0445\u0440\u0430\u043d\u043d\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430: see guardPrismGrowOnInsight in applyInsight above
+  // (right after \u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c's own observerRobotGrowOnInsight) \u2014
+  // same trigger, its own +1/+2/+1 armor amounts.
+  { id: 'c248', name: '\u041e\u0445\u0440\u0430\u043d\u043d\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, rockEffect: true, guardPrismGrowOnInsight: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1781,6 +1785,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Робот-наблюдатель: see applyInsight above (growth) and the killUnit
     // block right after Детеныш кабана's own healOnDeath (on-death heal).
     observerRobotGrowOnInsight: !!card.observerRobotGrowOnInsight,
+    // Охранная призма: see applyInsight above (right after Робот-
+    // наблюдатель's own observerRobotGrowOnInsight growth).
+    guardPrismGrowOnInsight: !!card.guardPrismGrowOnInsight,
     healHeroByAtkOnDeath: !!card.healHeroByAtkOnDeath,
     // Робот авангарда: see the resolveCombatPass pre-attack hook above
     // (match.mana[side], a pure read — never actually spent by this).
@@ -5159,6 +5166,23 @@ function applyInsight(match, casterSide, amount, events) {
           events.push({
             type: 'rallyBuff', side: casterSide, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: u.uid,
+          });
+        }
+        // Охранная призма: same "count > 0" trigger condition as
+        // Робот-наблюдатель's own observerRobotGrowOnInsight right
+        // above, but its own amounts (+1 attack, +2 health, +1 armor)
+        // and armor is part of the buff — a separate field since the
+        // amounts differ, same reasoning as every other "same trigger,
+        // different numbers" pair in this file. Reuses the existing
+        // 'rallyBuff' event/animation, which already supports buffArmor.
+        if (u && u.guardPrismGrowOnInsight) {
+          u.atk += 1;
+          u.hp += 2;
+          u.maxHp += 2;
+          u.armor = (u.armor || 0) + 1;
+          events.push({
+            type: 'rallyBuff', side: casterSide, laneIdx: l,
+            targetDepth: d, buffAtk: 1, buffHp: 2, buffArmor: 1, sourceUid: u.uid,
           });
         }
       }
