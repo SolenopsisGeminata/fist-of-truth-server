@@ -1125,6 +1125,10 @@ export const CARD_POOL = [
   // (right after \u041e\u0445\u0440\u0430\u043d\u043d\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430's own guardPrismGrowOnInsight) \u2014 same
   // "count > 0" trigger, draws 1 card instead of buffing itself.
   { id: 'c256', name: '\u041f\u0440\u043e\u0440\u043e\u043a \u043e\u0431\u0441\u0435\u0440\u0432\u0430\u0442\u043e\u0440\u0438\u0438', type: 'creature', cost: 5, atk: 1, hp: 4, insightEffect: 1, observatoryProphetDrawOnInsight: true, rarity: 'epic', faction: 'mystery' },
+  // \u0425\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u0438\u0446\u0430 \u0432\u0440\u0435\u043c\u0435\u043d\u0438: see timeKeeperReturnSpellOnCast in the resolveSpells
+  // loop preamble and timeKeeperReturnOnDeath in killUnit (both above)
+  // \u2014 two independent "return a card to hand" mechanics.
+  { id: 'c257', name: '\u0425\u0440\u0430\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u0438\u0446\u0430 \u0432\u0440\u0435\u043c\u0435\u043d\u0438', type: 'creature', cost: 5, atk: 3, hp: 2, manaAura: 1, timeKeeperReturnSpellOnCast: true, timeKeeperReturnOnDeath: true, rarity: 'legendary', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1805,9 +1809,15 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // OWN cell is still covered in ice, its card returns to hand instead
     // of being lost.
     returnToHandOnFrozenDeath: !!card.returnToHandOnFrozenDeath,
+    // Хранительница времени: see the killUnit block right after
+    // Ледяной воин's own returnToHandOnFrozenDeath above.
+    timeKeeperReturnOnDeath: !!card.timeKeeperReturnOnDeath,
     // Злолунная летучая мышь: see the resolveSpells loop preamble above
     // (checked unconditionally for every spell that resolves).
     moonBatGrowOnSpellCast: !!card.moonBatGrowOnSpellCast,
+    // Хранительница времени: see the resolveSpells loop preamble above
+    // (right after Злолунная летучая мышь's own moonBatGrowOnSpellCast).
+    timeKeeperReturnSpellOnCast: !!card.timeKeeperReturnSpellOnCast,
     // Призрак (Ghost): see the resolveCombatPass pre-attack hook above
     // (the very first one checked, before every other pre-attack effect).
     ghostEffect: !!card.ghostEffect,
@@ -3292,6 +3302,13 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
     match.hands[side].push({ id: unit.id, uid: nextUid('card') });
     events.push({ type: 'frostWarriorReturn', side, cardId: unit.id, laneIdx, depthIdx, sourceUid: unit.uid });
   }
+  // Хранительница времени: same shape as Ледяной воин's own
+  // returnToHandOnFrozenDeath right above, but unconditional (from
+  // ANY death, not just while its own cell is frozen).
+  if (unit && unit.timeKeeperReturnOnDeath) {
+    match.hands[side].push({ id: unit.id, uid: nextUid('card') });
+    events.push({ type: 'timeKeeperDeathReturn', side, cardId: unit.id, laneIdx, depthIdx, sourceUid: unit.uid });
+  }
   // Скелет-лучник: on death, shoots one more arrow at a random enemy
   // unit for the same fixed 1 damage as his own pre-attack shot (see
   // skeletonArcherShot in resolveCombatPass above) — same
@@ -4114,6 +4131,24 @@ function resolveSpells(match, events) {
           events.push({
             type: 'rallyBuff', side: spell.side, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: u.uid,
+          });
+        }
+        // Хранительница времени: same "whenever ITS OWNER casts ANY
+        // spell" scoping as Злолунная летучая мышь's own
+        // moonBatGrowOnSpellCast right above (only the CASTER's own
+        // board is scanned, so this never reacts to the opponent's
+        // spells) — a fresh copy of that exact spell's own card
+        // (spell.cardId) returns straight to its caster's hand, no
+        // MAX_HAND cap, same convention as every other "add a specific
+        // card to hand" mechanic in this file. The spell's identity is
+        // already public the instant it resolves (its own 'spell' event
+        // already names it), so naming it again here in a dedicated
+        // event breaks no privacy discipline.
+        if (u && u.timeKeeperReturnSpellOnCast) {
+          match.hands[spell.side].push({ id: spell.cardId, uid: nextUid('card') });
+          events.push({
+            type: 'timeKeeperReturnSpell', side: spell.side, cardId: spell.cardId,
+            sourceUid: u.uid, laneIdx: l, depthIdx: d,
           });
         }
       }
