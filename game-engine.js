@@ -1117,6 +1117,10 @@ export const CARD_POOL = [
   // matching drain in tryEndTurn (both above) \u2014 same mechanic as
   // \u0410\u0434\u0441\u043a\u043e\u0435 \u043f\u0443\u0433\u0430\u043b\u043e's own hellScarecrowDiscardOnPlay, its own queue/event.
   { id: 'c255', name: '\u041f\u0440\u043e\u043a\u043b\u044f\u0442\u0430\u044f \u0431\u0430\u0431\u0443\u0448\u043a\u0430', type: 'creature', cost: 5, atk: 2, hp: 4, cursedGrandmaDiscardOnPlay: true, rarity: 'rare', faction: 'mystery' },
+  // \u041a\u043e\u043d\u0446\u0435\u043d\u0442\u0440\u0430\u0446\u0438\u044f: see the 'concentration' spell kind in castSpell/
+  // resolveSpells above \u2014 draws 2 cards, +1 more if the caster
+  // sacrificed a card this round (match.sacrifices[side]).
+  { id: 's61', name: '\u041a\u043e\u043d\u0446\u0435\u043d\u0442\u0440\u0430\u0446\u0438\u044f', type: 'spell', cost: 5, concentrationDraw: 2, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -2766,6 +2770,13 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.concentrationDraw) {
+    // Концентрация: any cell works, occupied or empty, friendly or not
+    // — same "purely a formality" casting as Отряд ополченцев above,
+    // since this spell doesn't touch the board at all.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: 'Некорректная позиция.' };
+    }
   } else if (card.pineForest) {
     // Сосновый лес: unlike Отряд ополченцев, the target cell here is
     // NOT just a formality — it's specifically WHERE one of the
@@ -2973,7 +2984,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : 'buff'))))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : 'buff')))))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     // Клонирование/Извращенная сила/Разуплотнение/Тишина: resolved once,
@@ -2987,6 +2998,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     heal: card.heal,
     healHero: card.healHero,
     drawCard: card.drawCard,
+    concentrationDraw: card.concentrationDraw,
     buffHp: card.buffHp,
     buffAtk: card.buffAtk,
     buffArmor: card.buffArmor,
@@ -4887,6 +4899,28 @@ function resolveSpells(match, events) {
         type: 'spell', kind: 'wellspring', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: spell.side,
         healAmount: healed, drew,
+      });
+    } else if (spell.kind === 'concentration') {
+      // Концентрация: draws spell.concentrationDraw (2) cards from the
+      // caster's own deck, PLUS 1 more if they sacrificed a card this
+      // round (match.sacrifices[spell.side], same "still reflects THIS
+      // round's sacrifice at this exact point in resolution" timing as
+      // Страж реки Стикс/Мальчик-северин/Боевой робот elsewhere). Never
+      // touches the board at all — the targeted cell is purely a
+      // formality, same as Отряд ополченцев. Exposes the exact COUNT
+      // actually drawn (respecting MAX_HAND, never the cards'
+      // identity), same privacy-safe convention as Понимание's own
+      // insightReveal count.
+      const hand = match.hands[spell.side];
+      const beforeLen = hand.length;
+      const bonus = match.sacrifices[spell.side] ? 1 : 0;
+      const attempted = spell.concentrationDraw + bonus;
+      draw(match.decks[spell.side], hand, attempted);
+      const drewCount = hand.length - beforeLen;
+      events.push({
+        type: 'spell', kind: 'concentration', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: spell.side,
+        attempted, drewCount, bonus,
       });
     } else if (spell.kind === 'buff') {
       // Permanent stat increase (e.g. Кольчуга, Доспехи) — unlike heal,
