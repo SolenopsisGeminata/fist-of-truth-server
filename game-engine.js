@@ -1090,6 +1090,16 @@ export const CARD_POOL = [
   // reusing the "pure read, never spent" convention from \u0414\u0435\u0440\u0435\u0432\u043e
   // \u0441\u0442\u0440\u0430\u0445\u0430's own fearTreeAbsorbOnMana.
   { id: 'c249', name: '\u0414\u0435\u0440\u0435\u0432\u043e \u043c\u0430\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 4, manaAura: 1, manaTreeShrinkOnMana: true, rarity: 'epic', faction: 'mystery' },
+  // \u041a\u0438\u0434\u043e-7: see kido7DoubleShot in the resolveCombatPass pre-attack hook
+  // (right after \u041f\u043e\u0440\u043e\u0436\u0434\u0435\u043d\u0438\u0435 \u0431\u0435\u0437\u0434\u043d\u044b's own abyssSpawnDoubleSpikeShot) and
+  // kido7SummonBoyOnDeath in killUnit (both above) \u2014 dies into \u041c\u0430\u043b\u044c\u0447\u0438\u043a-
+  // \u0441\u0435\u0432\u0435\u0440\u0438\u043d (c251), which itself can turn back into a fresh \u041a\u0438\u0434\u043e-7.
+  { id: 'c250', name: '\u041a\u0438\u0434\u043e-7', type: 'creature', cost: 4, atk: 2, hp: 3, kido7DoubleShot: true, kido7SummonBoyOnDeath: true, rarity: 'legendary', faction: 'mystery' },
+  // \u041c\u0430\u043b\u044c\u0447\u0438\u043a-\u0441\u0435\u0432\u0435\u0440\u0438\u043d: see applyKidoBoyVanish above (right after \u0421\u0442\u0440\u0430\u0436 \u0440\u0435\u043a\u0438
+  // \u0421\u0442\u0438\u043a\u0441's own applyStyxGuardPunish) \u2014 the other half of \u041a\u0438\u0434\u043e-7's own
+  // death-summon loop. Never in the shop or the starter deck, 0 mana
+  // (see mysteryStarterDeckCounts/noShop convention elsewhere).
+  { id: 'c251', name: '\u041c\u0430\u043b\u044c\u0447\u0438\u043a-\u0441\u0435\u0432\u0435\u0440\u0438\u043d', type: 'creature', cost: 0, atk: 0, hp: 2, kidoBoyVanishOnSacrifice: true, rarity: 'common', noShop: true, faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1913,6 +1923,14 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cantAttackThisRound: false,
     bambooGuardian: !!card.bambooGuardian,
     styxGuardSelfHit: !!card.styxGuardSelfHit,
+    // Кидо-7: see the resolveCombatPass pre-attack hook (double plasma
+    // shot) and the killUnit block (summon Мальчик-северин on death),
+    // both above.
+    kido7DoubleShot: !!card.kido7DoubleShot,
+    kido7SummonBoyOnDeath: !!card.kido7SummonBoyOnDeath,
+    // Мальчик-северин: see applyKidoBoyVanish above (right after Страж
+    // реки Стикс's own applyStyxGuardPunish).
+    kidoBoyVanishOnSacrifice: !!card.kidoBoyVanishOnSacrifice,
     // Немота (Смертный холод): not a card-derived field at all — never
     // set here from `card`, only ever flipped true by applySilence below.
     silenced: false,
@@ -3546,6 +3564,19 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
         type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
         targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
       });
+    }
+  }
+  // Кидо-7: on death (from anything), summons Мальчик-северин (c251)
+  // onto the EXACT SAME cell it just died on — already guaranteed
+  // empty (board[laneIdx][depthIdx] was nulled at the very top of this
+  // function), so no free-cell scan is needed at all, unlike every
+  // other on-death summon in this file.
+  if (unit && unit.kido7SummonBoyOnDeath) {
+    const summonedCard = cardById('c251');
+    if (summonedCard) {
+      const summonedUnit = buildUnitFromCard(summonedCard, false, match.round);
+      board[laneIdx][depthIdx] = summonedUnit;
+      events.push({ type: 'summon', side, cardId: 'c251', laneIdx, depthIdx, uid: summonedUnit.uid });
     }
   }
 }
@@ -5280,6 +5311,34 @@ function applyStyxGuardPunish(match, events) {
   }
 }
 
+// Мальчик-северин: same "match.sacrifices[side], set by the sacrifice()
+// action and reset to 0 at the start of the NEXT round, so it still
+// reflects THIS round's sacrifice at this exact point in resolution"
+// check as Страж реки Стикс's own applyStyxGuardPunish right above, but
+// instead of self-punishing, it simply vanishes from the board (removed
+// directly, NOT via killUnit, same "no on-death effect of any kind ever
+// fires" convention as Призрак/ghostEffect's own vanish) and its
+// owner's hand gains a fresh Кидо-7 (c250) — reuses the existing
+// 'addCardToHand' event/animation for that part, no MAX_HAND cap check,
+// same convention as every other "add a specific card to hand" mechanic
+// in this file.
+function applyKidoBoyVanish(match, events) {
+  for (const side of match.players) {
+    if (!match.sacrifices[side]) continue;
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.kidoBoyVanishOnSacrifice) continue;
+        board[l][d] = null;
+        events.push({ type: 'kidoBoyVanish', side, sourceUid: unit.uid, cardId: unit.id, laneIdx: l, depthIdx: d });
+        match.hands[side].push({ id: 'c250', uid: nextUid('card') });
+        events.push({ type: 'addCardToHand', side, cardId: 'c250', laneIdx: l, depthIdx: d, sourceUid: unit.uid });
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -6446,6 +6505,20 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.abyssSpawnDoubleSpikeShot) {
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
         applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 3, 'spikeShot');
+      }
+      // Кидо-7: same "no bornRound gate" timing and the exact same
+      // "fully random enemy unit, re-picked independently each call, no
+      // hero fallback" targeting shape as Порождение бездны's own
+      // abyssSpawnDoubleSpikeShot right above — two plasma bolts in a
+      // row, 1 damage each (2 total), its own 'kido7PlasmaShot' event
+      // for the flavor text/visual.
+      if (aEligible && aUnit.kido7DoubleShot) {
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 1, 'kido7PlasmaShot');
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 1, 'kido7PlasmaShot');
+      }
+      if (bEligible && bUnit.kido7DoubleShot) {
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 1, 'kido7PlasmaShot');
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 1, 'kido7PlasmaShot');
       }
       // Охранный робот: same "no bornRound gate" timing as every other
       // single-trigger pre-attack card above — right before every attack
@@ -8315,6 +8388,10 @@ export function tryEndTurn(match, username) {
   // Страж реки Стикс also fires here — 2 damage to his own owner's
   // hero, but only if that owner sacrificed a card this round.
   applyStyxGuardPunish(match, events);
+  // Мальчик-северин also fires here — vanishes and adds a Кидо-7 to
+  // its owner's hand, same sacrifice-this-round condition as Страж
+  // реки Стикс right above.
+  applyKidoBoyVanish(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
