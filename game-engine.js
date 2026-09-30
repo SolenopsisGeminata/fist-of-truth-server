@@ -1075,6 +1075,11 @@ export const CARD_POOL = [
   // \u0412\u043e\u044e\u0449\u0438\u0439 \u0434\u0435\u043c\u043e\u043d's own battlecry, applied to itself every round instead
   // of once to a neighbour.
   { id: 'c246', name: '\u0421\u0435\u0434\u043e\u0439 \u043a\u043e\u0440\u0435\u043d\u044c', type: 'creature', cost: 4, atk: 2, hp: 2, shieldEffect: true, greyRootDoubleOnRoundEnd: true, rarity: 'epic', faction: 'mystery' },
+  // \u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u0441\u043b\u0438\u0437\u044c: see infiniteSlimeSummonOnDamage in the end-of-round
+  // loop above (right after \u0413\u043e\u0440\u043d\u044b\u0439 \u0432\u043e\u0438\u043d's own mountainWarriorBuff) \u2014
+  // summons a fresh copy of itself (cardById(unit.id)) onto a random
+  // adjacent empty cell whenever it took damage this round.
+  { id: 'c247', name: '\u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u0441\u043b\u0438\u0437\u044c', type: 'creature', cost: 4, atk: 3, hp: 5, infiniteSlimeSummonOnDamage: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1868,6 +1873,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     kaiBloodyLifestealGrant: !!card.kaiBloodyLifestealGrant,
     kaiBloodyHealBuff: !!card.kaiBloodyHealBuff,
     mountainWarriorBuff: !!card.mountainWarriorBuff,
+    // Бесконечная слизь: see the end-of-round loop in tryEndTurn above
+    // (right after Горный воин's own mountainWarriorBuff).
+    infiniteSlimeSummonOnDamage: !!card.infiniteSlimeSummonOnDamage,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
     axeWarriorGrowth: !!card.axeWarriorGrowth,
@@ -8402,6 +8410,32 @@ export function tryEndTurn(match, username) {
                 type: 'rallyBuff', side: name, laneIdx: l,
                 targetDepth: d, buffAtk: 1, buffHp: 2, sourceUid: unit.uid,
               });
+            }
+          }
+          // Бесконечная слизь: at the end of the round, if this unit
+          // took damage THIS round (same roundStartHp snapshot
+          // comparison as Денежное дерево/Горный воин above), summons a
+          // fresh copy of ITSELF (cardById(unit.id), same "always a
+          // fresh instance" convention as Бесконечная Кровавая Тень's
+          // own hand-copy above) onto a random adjacent EMPTY cell
+          // (occupancy-filtered adjacentCellPositions, unlike Небесный
+          // вихрь/Арктическое пугало's own occupancy-agnostic use of it)
+          // on its OWN board. A silent no-op if every adjacent cell is
+          // already occupied.
+          if (unit && unit.infiniteSlimeSummonOnDamage) {
+            const startHp = match.roundStartHp[unit.uid];
+            if (startHp !== undefined && unit.hp < startHp) {
+              const freeNeighbours = adjacentCellPositions(l, d).filter((pos) => !board[pos.laneIdx][pos.depthIdx]);
+              if (freeNeighbours.length > 0) {
+                const chosen = freeNeighbours[Math.floor(Math.random() * freeNeighbours.length)];
+                const summonedCard = cardById(unit.id);
+                if (summonedCard) {
+                  const summonedUnit = buildUnitFromCard(summonedCard, false, match.round);
+                  board[chosen.laneIdx][chosen.depthIdx] = summonedUnit;
+                  events.push({ type: 'summon', side: name, cardId: unit.id, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, uid: summonedUnit.uid });
+                  applyRageOnSummon(match, name, events);
+                }
+              }
             }
           }
           // Профессор искусств: at the end of the round, if its OWNER
