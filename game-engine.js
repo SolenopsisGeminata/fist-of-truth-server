@@ -1105,6 +1105,10 @@ export const CARD_POOL = [
   // only while asleep in its own bornRound. manaDrainAura is a pure
   // reuse of the existing keyword (\u041c\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0439 \u043e\u0431\u0435\u043b\u0438\u0441\u043a).
   { id: 'c252', name: '\u0417\u043e\u043b\u043e\u0442\u0430\u044f \u0433\u043e\u0440\u0433\u0443\u043b\u044c\u044f', type: 'creature', cost: 5, atk: 3, hp: 8, sleep: true, goldenGargoyleSleepArmor: true, manaDrainAura: 1, rarity: 'rare', faction: 'mystery' },
+  // \u0411\u043e\u0435\u0432\u043e\u0439 \u0440\u043e\u0431\u043e\u0442: see applyBattleRobotShot above (right after \u041c\u0430\u043b\u044c\u0447\u0438\u043a-
+  // \u0441\u0435\u0432\u0435\u0440\u0438\u043d's own applyKidoBoyVanish) \u2014 same sacrifice-this-round
+  // condition, shoots a random enemy for 3 damage then shrinks itself.
+  { id: 'c253', name: '\u0411\u043e\u0435\u0432\u043e\u0439 \u0440\u043e\u0431\u043e\u0442', type: 'creature', cost: 5, atk: 5, hp: 5, battleRobotSacrificeShot: true, rarity: 'rare', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1948,6 +1952,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Мальчик-северин: see applyKidoBoyVanish above (right after Страж
     // реки Стикс's own applyStyxGuardPunish).
     kidoBoyVanishOnSacrifice: !!card.kidoBoyVanishOnSacrifice,
+    // Боевой робот: see applyBattleRobotShot above (right after
+    // Мальчик-северин's own applyKidoBoyVanish).
+    battleRobotSacrificeShot: !!card.battleRobotSacrificeShot,
     // Немота (Смертный холод): not a card-derived field at all — never
     // set here from `card`, only ever flipped true by applySilence below.
     silenced: false,
@@ -5356,6 +5363,40 @@ function applyKidoBoyVanish(match, events) {
   }
 }
 
+// Боевой робот: same "match.sacrifices[side]" check as Страж реки
+// Стикс/Мальчик-северин above, but instead of punishing the hero or
+// vanishing, it fires a single bullet at a random enemy for 3 damage
+// (applyRandomEnemyShot's usual Чаростойкость-excluded pool, WITH hero
+// fallback if the enemy board is empty — same shape as Инфернальная
+// пасть's own start-of-round throw), then unconditionally shrinks its
+// OWN attack and health by 1 (floored at 0 for attack, health can drop
+// it to death like any other self-inflicted loss, handled via killUnit)
+// — a dedicated 'battleRobotSelfHit' event since the negative delta
+// can't be represented by rallyBuff's "+N" popup.
+function applyBattleRobotShot(match, events) {
+  for (const side of match.players) {
+    if (anyHeroDown(match)) break;
+    if (!match.sacrifices[side]) continue;
+    const board = match.boards[side];
+    const enemySide = otherPlayer(match, side);
+    for (let l = 0; l < LANES; l++) {
+      if (anyHeroDown(match)) break;
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.battleRobotSacrificeShot) continue;
+        applyRandomEnemyShot(match, side, enemySide, events, unit.uid, l, d, 3, 'battleRobotShot', true);
+        if (anyHeroDown(match)) break;
+        unit.atk = Math.max(0, unit.atk - 1);
+        unit.hp -= 1;
+        unit.maxHp -= 1;
+        const died = unit.hp <= 0;
+        events.push({ type: 'battleRobotSelfHit', side, laneIdx: l, depthIdx: d, sourceUid: unit.uid, died });
+        if (died) killUnit(match, side, l, d, events);
+      }
+    }
+  }
+}
+
 function applyStatueBuffs(match, events) {
   for (const side of match.players) {
     const board = match.boards[side];
@@ -8430,6 +8471,10 @@ export function tryEndTurn(match, username) {
   // its owner's hand, same sacrifice-this-round condition as Страж
   // реки Стикс right above.
   applyKidoBoyVanish(match, events);
+  // Боевой робот also fires here — shoots a random enemy for 3 damage
+  // then shrinks its own attack and health by 1, same sacrifice-this-
+  // round condition as Страж реки Стикс/Мальчик-северин above.
+  applyBattleRobotShot(match, events);
 
   // Крестьянское ополчение: unlike every other spell (all resolved
   // above, before combat), this one is explicitly an END-of-round
