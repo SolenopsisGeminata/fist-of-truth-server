@@ -1084,6 +1084,12 @@ export const CARD_POOL = [
   // (right after \u0420\u043e\u0431\u043e\u0442-\u043d\u0430\u0431\u043b\u044e\u0434\u0430\u0442\u0435\u043b\u044c's own observerRobotGrowOnInsight) \u2014
   // same trigger, its own +1/+2/+1 armor amounts.
   { id: 'c248', name: '\u041e\u0445\u0440\u0430\u043d\u043d\u0430\u044f \u043f\u0440\u0438\u0437\u043c\u0430', type: 'creature', cost: 4, atk: 5, hp: 5, armor: 2, rockEffect: true, guardPrismGrowOnInsight: true, rarity: 'epic', faction: 'mystery' },
+  // \u0414\u0435\u0440\u0435\u0432\u043e \u043c\u0430\u043d\u044b: see manaTreeShrinkOnMana in the round-start loop above
+  // (right after \u041c\u0430\u0441\u0442\u0435\u0440 \u0438\u043b\u043b\u044e\u0437\u0438\u0439's own illusionMasterGrowGhostAlly) \u2014
+  // shrinks a random enemy's attack AND health by its own unspent mana,
+  // reusing the "pure read, never spent" convention from \u0414\u0435\u0440\u0435\u0432\u043e
+  // \u0441\u0442\u0440\u0430\u0445\u0430's own fearTreeAbsorbOnMana.
+  { id: 'c249', name: '\u0414\u0435\u0440\u0435\u0432\u043e \u043c\u0430\u043d\u044b', type: 'creature', cost: 4, atk: 0, hp: 4, manaAura: 1, manaTreeShrinkOnMana: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1795,6 +1801,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Дерево страха: see the resolveCombatPass pre-attack hook right
     // after Робот авангарда's own vanguardRobotGrowOnMana above.
     fearTreeAbsorbOnMana: !!card.fearTreeAbsorbOnMana,
+    // Дерево маны: see the round-start loop in tryEndTurn above (right
+    // after Мастер иллюзий's own illusionMasterGrowGhostAlly).
+    manaTreeShrinkOnMana: !!card.manaTreeShrinkOnMana,
     // Мастер иллюзий: see the round-start loop in tryEndTurn above
     // (right after Робот техобслуживания's own maintenanceRobotPulse
     // block). illusionMasterSummonPython is battlecry-only, checked
@@ -7341,6 +7350,55 @@ export function tryEndTurn(match, username) {
           type: 'rallyBuff', side, laneIdx: chosen.laneIdx,
           targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
         });
+      }
+    }
+  }
+
+  // Дерево маны: same unconditional "start of every round" timing as
+  // Робот техобслуживания's own maintenanceRobotPulse above (not gated
+  // on eligibility to attack), and the same "match.mana[side], a pure
+  // read — never actually spent" convention as Дерево страха's own
+  // fearTreeAbsorbOnMana — but instead of absorbing the amount for
+  // itself, it permanently SHRINKS one random enemy creature anywhere
+  // on the opposing board (Чаростойкость/Щит excluded from the pool,
+  // same as Обуза's own single-target debuff) by that much attack AND
+  // health together, mirroring the "+atk/+hp" buff convention used
+  // everywhere else in this file but in reverse: attack is floored at
+  // 0 same as every other atk-reducing effect, while health and its
+  // cap are reduced without a floor and the victim dies normally via
+  // killUnit if that drops it to 0 or below. A dedicated
+  // 'manaTreeShrink' event, since the negative health delta can't be
+  // represented by the generic rallyBuff's "+N" popup. A silent no-op
+  // at 0 mana or with no eligible enemy target.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.manaTreeShrinkOnMana || match.mana[side] <= 0) continue;
+        const amount = match.mana[side];
+        const enemySide = otherPlayer(match, side);
+        const enemyBoard = match.boards[enemySide];
+        const targets = [];
+        for (let el = 0; el < LANES; el++) {
+          for (let ed = 0; ed < DEPTH; ed++) {
+            const t = enemyBoard[el][ed];
+            if (t && !t.spellResist && !t.shieldEffect) targets.push({ laneIdx: el, depthIdx: ed });
+          }
+        }
+        if (targets.length === 0) continue;
+        const chosen = targets[Math.floor(Math.random() * targets.length)];
+        const targetUnit = enemyBoard[chosen.laneIdx][chosen.depthIdx];
+        targetUnit.atk = Math.max(0, targetUnit.atk - amount);
+        targetUnit.hp -= amount;
+        targetUnit.maxHp -= amount;
+        const died = targetUnit.hp <= 0;
+        events.push({
+          type: 'manaTreeShrink', side, targetSide: enemySide,
+          laneIdx: l, depthIdx: d, targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+          sourceUid: unit.uid, amount, died,
+        });
+        if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
       }
     }
   }
