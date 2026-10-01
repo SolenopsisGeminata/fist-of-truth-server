@@ -1181,6 +1181,9 @@ export const CARD_POOL = [
   // no hero damage at all \u2014 see the 'wrath' spell kind in resolveSpells)
   // with its own flavor/art. See piratesStarterDeckCounts below.
   { id: 's64', name: '\u0413\u0440\u0430\u0434 \u0441\u0442\u0440\u0435\u043b', type: 'spell', cost: 2, wrathDmg: 2, rarity: 'common', faction: 'pirates' },
+  // \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d: see furiousPeasantGrow in the end-of-round
+  // self-growth loop above (right after \u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442's own monkGrow).
+  { id: 'c266', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 2, hp: 2, furiousPeasantGrow: true, rarity: 'rare', faction: 'empire' },
 ];
 
 export function cardById(id) {
@@ -1755,6 +1758,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     wallGrow: !!card.wallGrow,
+    furiousPeasantGrow: !!card.furiousPeasantGrow,
     firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
     barrakInfernoBuff: !!card.barrakInfernoBuff,
@@ -9753,6 +9757,17 @@ export function tryEndTurn(match, username) {
             events.push({
               type: 'rallyBuff', side: name, laneIdx: l,
               targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+            });
+          }
+          // Яростный крестьянин: grows angrier at the end of every round
+          // he survives — permanently +1 to his OWN attack only (no hp
+          // change), same shape as Каменная Стена's own wallGrow, just
+          // atk instead of hp.
+          if (unit && unit.furiousPeasantGrow) {
+            unit.atk += 1;
+            events.push({
+              type: 'rallyBuff', side: name, laneIdx: l,
+              targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
             });
           }
           // Персиковый сад: at the end of every round he survives, adds
