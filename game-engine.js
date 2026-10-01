@@ -1160,6 +1160,10 @@ export const CARD_POOL = [
   // conditionalDefender in the pre-combat loop in tryEndTurn above
   // (right alongside \u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438's own coinFlipAttack roll).
   { id: 'c263', name: '\u0420\u0435\u0434\u043a\u0438\u0439 \u0437\u0432\u0435\u0440\u044c', type: 'creature', cost: 1, atk: 4, hp: 5, conditionalDefender: true, rarity: 'rare', faction: 'pirates' },
+  // \u041c\u0430\u043b\u0435\u043d\u044c\u043a\u0430\u044f \u0432\u0435\u0434\u044c\u043c\u0430: see littleWitchSpellPower in the resolveCombatPass
+  // pre-attack hook above (right alongside \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442's own
+  // moonCatGrowOnSpellCount check) plus the applyLittleWitchHex helper.
+  { id: 'c264', name: '\u041c\u0430\u043b\u0435\u043d\u044c\u043a\u0430\u044f \u0432\u0435\u0434\u044c\u043c\u0430', type: 'creature', cost: 1, atk: 1, hp: 1, littleWitchSpellPower: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1967,6 +1971,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // alongside Билл и Билли's own coinFlipAttack roll) — re-checked
     // fresh every round, unlike cowardlyAssassin's one-time check.
     conditionalDefender: !!card.conditionalDefender,
+    // Маленькая ведьма: see the pre-attack loop in resolveCombatPass
+    // above (right alongside Злолунный кот's own moonCatGrowOnSpellCount
+    // check) plus the applyLittleWitchHex helper it calls.
+    littleWitchSpellPower: !!card.littleWitchSpellPower,
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
@@ -6103,6 +6111,33 @@ function applyRandomEnemyShot(match, side, enemySide, events, sourceUid, sourceL
   if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
 }
 
+// Маленькая ведьма: picks a random ENEMY unit (same Чаростойкость/Щит
+// exclusion as every other atk-only debuff, e.g. Мудрый олень's own
+// wiseDeerDebuff) and reduces its attack by `amount` (floored at 0). A
+// silent no-op if no eligible target exists — no hero fallback, pure
+// atk debuff with no hp change, so it can never kill anyone outright.
+function applyLittleWitchHex(match, side, enemySide, events, sourceUid, sourceLaneIdx, sourceDepthIdx, amount) {
+  const targetBoard = match.boards[enemySide];
+  const targets = [];
+  for (let l = 0; l < LANES; l++) {
+    for (let d = 0; d < DEPTH; d++) {
+      const u = targetBoard[l][d];
+      if (u && !u.spellResist && !u.shieldEffect) targets.push({ laneIdx: l, depthIdx: d });
+    }
+  }
+  if (targets.length === 0) return;
+  const chosen = targets[Math.floor(Math.random() * targets.length)];
+  const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
+  const before = targetUnit.atk;
+  targetUnit.atk = Math.max(0, targetUnit.atk - amount);
+  events.push({
+    type: 'littleWitchHex', side, targetSide: enemySide,
+    laneIdx: sourceLaneIdx, depthIdx: sourceDepthIdx,
+    targetLaneIdx: chosen.laneIdx, targetDepthIdx: chosen.depthIdx,
+    delta: targetUnit.atk - before, sourceUid,
+  });
+}
+
 // Огненный бес: throws a fireball at the FIRST (front-most) unit in the
 // MIRRORED lane (same lane index, opponent's side) only — unlike
 // applyRandomEnemyShot/applyMusketShot above, there is no redirect to
@@ -6664,6 +6699,34 @@ function resolveCombatPass(match, events, isEligible) {
       if (bEligible && bUnit.moonCatGrowOnSpellCount && match.spellsCastThisRound) {
         bUnit.atk += match.spellsCastThisRound;
         events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: match.spellsCastThisRound, buffHp: 0, sourceUid: bUnit.uid });
+      }
+      // Маленькая ведьма: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every attack
+      // of hers, permanently gains +1 attack for every spell HER OWN
+      // side cast this round (match.spellsCastThisRoundBySide, unlike
+      // Злолунный кот's own moonCatGrowOnSpellCount which uses the
+      // combined match.spellsCastThisRound total for both sides), and
+      // separately hexes one random enemy unit via applyLittleWitchHex
+      // with -1 atk per spell the OPPONENT cast this round. Either half
+      // is a silent no-op at 0 (skips a zero-delta event) or when the
+      // hex has no eligible enemy target.
+      if (aEligible && aUnit.littleWitchSpellPower) {
+        const ownCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameA]) || 0;
+        if (ownCount) {
+          aUnit.atk += ownCount;
+          events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: ownCount, buffHp: 0, sourceUid: aUnit.uid });
+        }
+        const enemyCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameB]) || 0;
+        if (enemyCount) applyLittleWitchHex(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, enemyCount);
+      }
+      if (bEligible && bUnit.littleWitchSpellPower) {
+        const ownCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameB]) || 0;
+        if (ownCount) {
+          bUnit.atk += ownCount;
+          events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: ownCount, buffHp: 0, sourceUid: bUnit.uid });
+        }
+        const enemyCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameA]) || 0;
+        if (enemyCount) applyLittleWitchHex(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, enemyCount);
       }
       // Робот авангарда: same "no bornRound gate" timing as every other
       // single-trigger pre-attack card above — right before every attack
