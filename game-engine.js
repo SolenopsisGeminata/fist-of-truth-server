@@ -1156,6 +1156,10 @@ export const CARD_POOL = [
   // card in this file to actually use \u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0440\u0430\u0437\u0443\u043c\u0430 (Mind Control),
   // previously only promised by rockEffect's own tooltip.
   { id: 'c262', name: '\u0413\u0440\u0430\u0444 \u0418\u0441\u0442\u043e\u0440\u0432\u0438\u043b\u043b\u044c', type: 'creature', cost: 9, atk: 3, hp: 3, countHistorvilleOnRoundStart: true, rarity: 'legendary', faction: 'mystery' },
+  // \u0420\u0435\u0434\u043a\u0438\u0439 \u0437\u0432\u0435\u0440\u044c: the first card in the \u041f\u0438\u0440\u0430\u0442\u044b faction \u2014 see
+  // conditionalDefender in the pre-combat loop in tryEndTurn above
+  // (right alongside \u0411\u0438\u043b\u043b \u0438 \u0411\u0438\u043b\u043b\u0438's own coinFlipAttack roll).
+  { id: 'c263', name: '\u0420\u0435\u0434\u043a\u0438\u0439 \u0437\u0432\u0435\u0440\u044c', type: 'creature', cost: 1, atk: 4, hp: 5, conditionalDefender: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1959,6 +1963,10 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     devourerGrowOnHeroHit: !!card.devourerGrowOnHeroHit,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
+    // Редкий зверь: see the pre-combat loop in tryEndTurn above (right
+    // alongside Билл и Билли's own coinFlipAttack roll) — re-checked
+    // fresh every round, unlike cowardlyAssassin's one-time check.
+    conditionalDefender: !!card.conditionalDefender,
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
@@ -8846,6 +8854,26 @@ export function tryEndTurn(match, username) {
       for (let d = 0; d < DEPTH; d++) {
         const u = board[l][d];
         if (u && u.coinFlipAttack && Math.random() < 0.5) {
+          u.cantAttackThisRound = true;
+        }
+      }
+    }
+  }
+
+  // Редкий зверь: re-checked fresh every round, right before combat —
+  // if the OPPOSING player's board has ANY unit anywhere on it (not
+  // just the same lane, unlike Трусливый убийца's one-time check), it
+  // can't attack this round and effectively acts as a Защитник for the
+  // wave. An empty enemy board lets it attack normally.
+  for (const name of match.players) {
+    const board = match.boards[name];
+    const enemyBoard = match.boards[otherPlayer(match, name)];
+    const enemyBoardHasUnit = enemyBoard.some((lane) => lane.some((cell) => !!cell));
+    if (!enemyBoardHasUnit) continue;
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.conditionalDefender) {
           u.cantAttackThisRound = true;
         }
       }
