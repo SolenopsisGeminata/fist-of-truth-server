@@ -1209,6 +1209,10 @@ export const CARD_POOL = [
   // directly on the enemy hero" trigger family in resolveCombat above
   // (right after \u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c's own tormentorExtraDamage).
   { id: 'c272', name: '\u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 4, hp: 1, daredevilExtraDamage: true, rarity: 'rare', faction: 'pirates' },
+  // \u0421\u043d\u0435\u0433\u043e\u0432\u0438\u043a: see snowmanMeltOffIce in the end-of-round loop above
+  // (right after \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430's own iceWallGrowOnFrozenCell) \u2014 mirror
+  // image, melts instead of growing, off-ice instead of on-ice.
+  { id: 'c273', name: '\u0421\u043d\u0435\u0433\u043e\u0432\u0438\u043a', type: 'creature', cost: 2, atk: 3, hp: 3, defender: true, counterattack: true, snowmanMeltOffIce: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1930,6 +1934,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Ледяная стена: see the end-of-round block right after
     // frozenCellPulse above.
     iceWallGrowOnFrozenCell: !!card.iceWallGrowOnFrozenCell,
+    snowmanMeltOffIce: !!card.snowmanMeltOffIce,
     // Костяная гончая: see the killUnit block right after Стена костей's
     // own boneWallHealOnAnyDeath reaction above.
     boneHoundGrowAllyOnDeath: !!card.boneHoundGrowAllyOnDeath,
@@ -9296,6 +9301,26 @@ export function tryEndTurn(match, username) {
               type: 'rallyBuff', side: name, laneIdx: l, targetDepth: d,
               buffAtk: 0, buffHp: 2, sourceUid: unit.uid,
             });
+          }
+          // Снеговик: mirror-image condition of Ледяная стена's own
+          // iceWallGrowOnFrozenCell right above — melts instead of
+          // growing, and only when its OWN cell is NOT frozen (the
+          // opposite check). Loses 1 attack (floored at 0) and 1
+          // permanent health every round it isn't standing on ice; if
+          // that hp loss brings it to 0 or below, it dies like anything
+          // else via killUnit. A dedicated event since the negative
+          // delta can't be represented by rallyBuff, same reasoning as
+          // Часовой боли's own painSentinelPulse above.
+          if (unit && unit.snowmanMeltOffIce && !match.frozenCells[name][l][d]) {
+            unit.atk = Math.max(0, unit.atk - 1);
+            unit.hp -= 1;
+            unit.maxHp -= 1;
+            const died = unit.hp <= 0;
+            events.push({
+              type: 'snowmanMelt', side: name, laneIdx: l, depthIdx: d,
+              sourceUid: unit.uid, died,
+            });
+            if (died) killUnit(match, name, l, d, events);
           }
           if (unit && unit.cookHeal) {
             const healed = healHero(match, name, unit.atk, events);
