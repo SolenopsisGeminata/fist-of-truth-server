@@ -1197,6 +1197,10 @@ export const CARD_POOL = [
   // "recipient of a \u041d\u0430\u0441\u043b\u0435\u0434\u0438\u0435 transfer" reaction chain in killUnit above
   // (right after \u041b\u0438\u043d\u044c, \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u044b\u0439 \u043a\u043b\u0438\u043d\u043e\u043a's own linLegacyDoubleStrike).
   { id: 'c269', name: '\u0418\u043d\u043e\u0437\u0435\u043c\u043d\u044b\u0439 \u043f\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 5, foreignTravelerDrawOnLegacy: true, rarity: 'rare', faction: 'pirates' },
+  // \u041d\u043e\u0447\u043d\u043e\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a: see nightMarksmanShotOnHeroHit in the "own attack
+  // lands directly on the enemy hero" trigger family in resolveCombat
+  // above (right after \u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441's own thiefImpStealOnHeroHit).
+  { id: 'c270', name: '\u041d\u043e\u0447\u043d\u043e\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, nightMarksmanShotOnHeroHit: 2, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -2012,6 +2016,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     musicalDaoist: !!card.musicalDaoist,
     steadfastDaoist: !!card.steadfastDaoist,
     impAtkGrowOnHeroHit: card.impAtkGrowOnHeroHit || 0,
+    nightMarksmanShotOnHeroHit: card.nightMarksmanShotOnHeroHit || 0,
     devourerGrowOnHeroHit: !!card.devourerGrowOnHeroHit,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
@@ -7264,6 +7269,22 @@ function resolveCombatPass(match, events, isEligible) {
         if (!discarded) {
           events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
         }
+      }
+
+      // Ночной стрелок: same "own attack lands directly on the enemy
+      // hero" trigger family as Вороватый бес above — fires a crossbow
+      // bolt at a fully random enemy unit anywhere on the board (same
+      // Чаростойкость-excluded pool/no-hero-fallback shape as
+      // Скелет-лучник's own pre-attack shot, reusing applyRandomEnemyShot)
+      // for a fixed amount of damage (nightMarksmanShotOnHeroHit holds
+      // the amount itself, same "amount lives on the flag" convention as
+      // impAtkGrowOnHeroHit above). A silent no-op if the enemy board is
+      // completely empty.
+      if (aAttacks && !aTarget && aUnit.nightMarksmanShotOnHeroHit) {
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, aUnit.nightMarksmanShotOnHeroHit, 'nightMarksmanShot');
+      }
+      if (bAttacks && !bTarget && bUnit.nightMarksmanShotOnHeroHit) {
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, bUnit.nightMarksmanShotOnHeroHit, 'nightMarksmanShot');
       }
 
       // Сумеречный фамилиар: same "own attack lands directly on the
