@@ -1184,6 +1184,10 @@ export const CARD_POOL = [
   // \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d: see furiousPeasantGrow in the end-of-round
   // self-growth loop above (right after \u041c\u043e\u043d\u0430\u0445-\u0430\u0441\u043a\u0435\u0442's own monkGrow).
   { id: 'c266', name: '\u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d', type: 'creature', cost: 2, atk: 2, hp: 2, furiousPeasantGrow: true, rarity: 'rare', faction: 'empire' },
+  // \u0421\u0435\u0434\u043e\u0439 \u043f\u0440\u043e\u0440\u043e\u043a: see greyProphetBuffOnSpellCast in the resolveSpells
+  // per-spell loop above (right after \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c's own
+  // moonBatGrowOnSpellCast).
+  { id: 'c267', name: '\u0421\u0435\u0434\u043e\u0439 \u043f\u0440\u043e\u0440\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, greyProphetBuffOnSpellCast: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1882,6 +1886,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Злолунная летучая мышь: see the resolveSpells loop preamble above
     // (checked unconditionally for every spell that resolves).
     moonBatGrowOnSpellCast: !!card.moonBatGrowOnSpellCast,
+    greyProphetBuffOnSpellCast: !!card.greyProphetBuffOnSpellCast,
     // Хранительница времени: see the resolveSpells loop preamble above
     // (right after Злолунная летучая мышь's own moonBatGrowOnSpellCast).
     timeKeeperReturnSpellOnCast: !!card.timeKeeperReturnSpellOnCast,
@@ -4269,6 +4274,32 @@ function resolveSpells(match, events) {
             type: 'rallyBuff', side: spell.side, laneIdx: l,
             targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: u.uid,
           });
+        }
+        // Седой пророк: same "whenever ITS OWNER casts ANY spell"
+        // scoping and timing as Злолунная летучая мышь right above —
+        // every copy currently on the CASTER's own board independently
+        // rolls a self-inclusive random ally (same Щит-excluded pool as
+        // Мудрый сфинкс's own sacrifice buff) and gives it +1/+1, once
+        // per spell cast (not once per round).
+        if (u && u.greyProphetBuffOnSpellCast) {
+          const allies = [];
+          for (let al = 0; al < LANES; al++) {
+            for (let ad = 0; ad < DEPTH; ad++) {
+              const a = moonBatBoard[al][ad];
+              if (a && !a.shieldEffect) allies.push({ laneIdx: al, depthIdx: ad });
+            }
+          }
+          if (allies.length > 0) {
+            const chosen = allies[Math.floor(Math.random() * allies.length)];
+            const targetUnit = moonBatBoard[chosen.laneIdx][chosen.depthIdx];
+            targetUnit.atk += 1;
+            targetUnit.hp += 1;
+            targetUnit.maxHp += 1;
+            events.push({
+              type: 'rallyBuff', side: spell.side, laneIdx: chosen.laneIdx,
+              targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: u.uid,
+            });
+          }
         }
         // Хранительница времени: same "whenever ITS OWNER casts ANY
         // spell" scoping as Злолунная летучая мышь's own
