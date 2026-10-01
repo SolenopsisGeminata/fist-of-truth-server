@@ -1188,6 +1188,11 @@ export const CARD_POOL = [
   // per-spell loop above (right after \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u0430\u044f \u043b\u0435\u0442\u0443\u0447\u0430\u044f \u043c\u044b\u0448\u044c's own
   // moonBatGrowOnSpellCast).
   { id: 'c267', name: '\u0421\u0435\u0434\u043e\u0439 \u043f\u0440\u043e\u0440\u043e\u043a', type: 'creature', cost: 2, atk: 1, hp: 4, greyProphetBuffOnSpellCast: true, rarity: 'rare', faction: 'pirates' },
+  // \u0425\u0438\u0442\u0440\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a: see pendingCunningApprenticeBounce in tryEndTurn \u2014
+  // same targeting as \u041a\u0430\u0440\u0430\u044e\u0449\u0438\u0439 \u0430\u043d\u0433\u0435\u043b's own punisherKill, but bounces to
+  // hand instead of killing (\u0421\u043a\u0430\u043b\u0430/\u0429\u0438\u0442 also protect, unlike punisherKill
+  // which only checks \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c).
+  { id: 'c268', name: '\u0425\u0438\u0442\u0440\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, cunningApprenticeBounceOnPlay: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1650,6 +1655,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingImpTridentShots: [],
     pendingBloodShadowSpawns: [],
     pendingPunisherKills: [],
+    pendingCunningApprenticeBounce: [],
     pendingIllusionMasterSummons: [],
     pendingBlinds: [],
     pendingWarlordBuffs: [],
@@ -1819,6 +1825,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // above/below).
     invisible: !!card.invisible,
     punisherKill: !!card.punisherKill,
+    cunningApprenticeBounceOnPlay: !!card.cunningApprenticeBounceOnPlay,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
     boneShamanBuff: !!card.boneShamanBuff,
@@ -2769,6 +2776,16 @@ export function placeCard(match, username, uid, lane, depth) {
   // turn is already on the board and counts as "appeared this turn" too.
   if (card.punisherKill) {
     match.pendingPunisherKills.push({ side: username, laneIdx: lane, sourceUid: unit.uid });
+  }
+
+  // Хитрый ученик: same deferred "appeared this round" battlecry timing
+  // and targeting as Карающий ангел's own punisherKill right above
+  // (checked and resolved at the start of the next resolution, after
+  // Мгновенный призыв has already run) — the only difference is the
+  // resolution bounces the target to hand instead of killing it (see
+  // pendingCunningApprenticeBounce in tryEndTurn).
+  if (card.cunningApprenticeBounceOnPlay) {
+    match.pendingCunningApprenticeBounce.push({ side: username, laneIdx: lane, sourceUid: unit.uid });
   }
 
   // Рейна Ослепительная: battlecry queued the same deferred way as every
@@ -7660,6 +7677,37 @@ export function tryEndTurn(match, username) {
       sourceUid: kill.sourceUid, resisted,
     });
     if (!resisted) killUnit(match, targetSide, kill.laneIdx, targetInfo.depth, events);
+  }
+
+  // Хитрый ученик: same "first unit whose bornRound matches THIS round,
+  // front-to-back, in the mirrored lane" targeting as Карающий ангел
+  // right above — but Чаростойкость, Скала AND Щит all protect against
+  // the bounce (same three-way resist as Метла/Колокольчик's own
+  // bounce-to-hand), and the found unit is returned to its owner's hand
+  // as a fresh base card (losing every buff/debuff) instead of being
+  // killed. Nothing appearing in that lane this round is a silent no-op.
+  const cunningApprenticeQueue = match.pendingCunningApprenticeBounce;
+  match.pendingCunningApprenticeBounce = [];
+  for (const entry of cunningApprenticeQueue) {
+    const targetSide = otherPlayer(match, entry.side);
+    const targetBoard = match.boards[targetSide];
+    let targetInfo = null;
+    for (let d = 0; d < DEPTH; d++) {
+      const candidate = targetBoard[entry.laneIdx][d];
+      if (candidate && candidate.bornRound === match.round) { targetInfo = { unit: candidate, depth: d }; break; }
+    }
+    if (!targetInfo) continue;
+    const resisted = !!(targetInfo.unit.spellResist || targetInfo.unit.rockEffect || targetInfo.unit.shieldEffect);
+    if (!resisted) {
+      match.hands[targetSide].push({ id: targetInfo.unit.id, uid: nextUid('card') });
+      targetBoard[entry.laneIdx][targetInfo.depth] = null;
+    }
+    events.push({
+      type: 'cunningApprenticeBounce', side: entry.side, targetSide,
+      laneIdx: entry.laneIdx, targetDepth: targetInfo.depth,
+      sourceUid: entry.sourceUid, resisted, rockProtected: !!targetInfo.unit.rockEffect,
+      bouncedCardId: resisted ? null : targetInfo.unit.id,
+    });
   }
 
   // Мастер иллюзий: right after Карающий ангел above (early enough
