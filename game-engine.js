@@ -1145,6 +1145,12 @@ export const CARD_POOL = [
   // 1 card every round, +1 more and a random-ally +1/+1 (self included)
   // on a sacrifice.
   { id: 'c260', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u0441\u0444\u0438\u043d\u043a\u0441', type: 'creature', cost: 7, atk: 4, hp: 10, wiseSphinxDrawOnRoundEnd: true, rarity: 'epic', faction: 'mystery' },
+  // \u041a\u043e\u0432\u0447\u0435\u0433 \u041c\u0438\u0440\u0440\u044b: see arkOfMyrrhGrowOnAllyDeath in the killUnit block above
+  // (mirror image of \u0421\u043c\u0435\u0440\u0442\u044c \u0441 \u043a\u043e\u0441\u043e\u0439's own deathScytheGrowOnEnemyDeath, same
+  // side as the dying unit instead of the opposite side). armor,
+  // magicShield, pierce and rockEffect are all pure reuses of existing
+  // keywords.
+  { id: 'c261', name: '\u041a\u043e\u0432\u0447\u0435\u0433 \u041c\u0438\u0440\u0440\u044b', type: 'creature', cost: 7, atk: 8, hp: 15, armor: 2, magicShield: 2, pierce: true, rockEffect: true, arkOfMyrrhGrowOnAllyDeath: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1841,6 +1847,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Смерть с косой: see the killUnit block right after Дурной глаз's
     // own badEyeGrowOnFactionDeath reaction above.
     deathScytheGrowOnEnemyDeath: !!card.deathScytheGrowOnEnemyDeath,
+    // Ковчег Мирры: see the killUnit block right after Смерть с косой's
+    // own deathScytheGrowOnEnemyDeath reaction above.
+    arkOfMyrrhGrowOnAllyDeath: !!card.arkOfMyrrhGrowOnAllyDeath,
     // Стена костей: see the killUnit block right after Смерть с косой's
     // own deathScytheGrowOnEnemyDeath reaction above.
     boneWallHealOnAnyDeath: !!card.boneWallHealOnAnyDeath,
@@ -3607,6 +3616,28 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
         // board is already full, same as every other user of that helper).
         if (reactUnit && reactUnit.necromancerSummonOnEnemyDeath) {
           summonUnitToRandomFreeCell(match, enemySide, 'c201', events);
+        }
+      }
+    }
+  }
+  // Ковчег Мирры: mirror image of Смерть с косой's own
+  // deathScytheGrowOnEnemyDeath above — reacts to an ALLY dying by
+  // scanning the SAME side as whoever just died (not the opposite
+  // side), +2 attack and +2 health instead of +1/+1. Reuses the plain
+  // 'rallyBuff' event.
+  if (unit) {
+    const allyBoard = match.boards[side];
+    for (let l2 = 0; l2 < LANES; l2++) {
+      for (let d2 = 0; d2 < DEPTH; d2++) {
+        const reactUnit = allyBoard[l2][d2];
+        if (reactUnit && reactUnit.arkOfMyrrhGrowOnAllyDeath) {
+          reactUnit.atk += 2;
+          reactUnit.hp += 2;
+          reactUnit.maxHp += 2;
+          events.push({
+            type: 'rallyBuff', side, laneIdx: l2,
+            targetDepth: d2, buffAtk: 2, buffHp: 2, sourceUid: reactUnit.uid,
+          });
         }
       }
     }
