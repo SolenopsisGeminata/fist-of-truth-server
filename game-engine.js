@@ -1164,6 +1164,10 @@ export const CARD_POOL = [
   // pre-attack hook above (right alongside \u0417\u043b\u043e\u043b\u0443\u043d\u043d\u044b\u0439 \u043a\u043e\u0442's own
   // moonCatGrowOnSpellCount check) plus the applyLittleWitchHex helper.
   { id: 'c264', name: '\u041c\u0430\u043b\u0435\u043d\u044c\u043a\u0430\u044f \u0432\u0435\u0434\u044c\u043c\u0430', type: 'creature', cost: 1, atk: 1, hp: 1, littleWitchSpellPower: true, rarity: 'rare', faction: 'pirates' },
+  // \u041e\u0433\u0440\u0430\u0431\u043b\u0435\u043d\u0438\u0435: see the 'robbery' spell kind in resolveSpells above \u2014
+  // always hits the enemy hero's health directly, never a unit, same
+  // "purely a formality" targeting as \u041a\u043e\u043d\u0446\u0435\u043d\u0442\u0440\u0430\u0446\u0438\u044f.
+  { id: 's62', name: '\u041e\u0433\u0440\u0430\u0431\u043b\u0435\u043d\u0438\u0435', type: 'spell', cost: 1, robberyDrain: true, robberyAmount: 3, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -2861,6 +2865,13 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: 'Некорректная позиция.' };
     }
+  } else if (card.robberyDrain) {
+    // Ограбление: same "purely a formality" casting as Концентрация
+    // above — the damage always lands directly on the enemy hero, never
+    // on a unit, so no board cell is actually read at resolution.
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: 'Некорректная позиция.' };
+    }
   } else if (card.pineForest) {
     // Сосновый лес: unlike Отряд ополченцев, the target cell here is
     // NOT just a formality — it's specifically WHERE one of the
@@ -3068,7 +3079,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : 'buff')))))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : (card.robberyDrain ? 'robbery' : 'buff'))))))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     // Клонирование/Извращенная сила/Разуплотнение/Тишина: resolved once,
@@ -3083,6 +3094,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     healHero: card.healHero,
     drawCard: card.drawCard,
     concentrationDraw: card.concentrationDraw,
+    robberyAmount: card.robberyAmount,
     buffHp: card.buffHp,
     buffAtk: card.buffAtk,
     buffArmor: card.buffArmor,
@@ -5052,6 +5064,20 @@ function resolveSpells(match, events) {
         type: 'spell', kind: 'concentration', side: spell.side, cardId: spell.cardId,
         laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: spell.side,
         attempted, drewCount, bonus,
+      });
+    } else if (spell.kind === 'robbery') {
+      // Ограбление: never touches the board at all — the targeted cell
+      // is purely a formality, same as Концентрация right above. Damage
+      // always lands directly on the enemy hero's health (never on a
+      // unit, unlike every other hero-reaching spell so far), and the
+      // self-heal is for the exact same amount, always.
+      const defenderName = otherPlayer(match, spell.side);
+      damageHero(match, defenderName, spell.robberyAmount, events);
+      const healed = healHero(match, spell.side, spell.robberyAmount, events);
+      events.push({
+        type: 'spell', kind: 'robbery', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: defenderName,
+        amount: spell.robberyAmount, healed,
       });
     } else if (spell.kind === 'buff') {
       // Permanent stat increase (e.g. Кольчуга, Доспехи) — unlike heal,
