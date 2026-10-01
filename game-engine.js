@@ -1172,6 +1172,15 @@ export const CARD_POOL = [
   // resolveSpells above \u2014 \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c/\u0429\u0438\u0442 blocks both the unit damage
   // and the hero damage at once, same all-or-nothing resist as \u041a\u0430\u043f\u043a\u0430\u043d.
   { id: 's63', name: '\u0427\u0435\u0440\u043d\u0430\u044f \u0434\u044b\u0440\u0430 \u0440\u0430\u0437\u0443\u043c\u0430', type: 'spell', cost: 1, blackHoleMindSpell: true, blackHoleMindDmg: 3, rarity: 'rare', faction: 'pirates' },
+  // \u041c\u0430\u0442\u0440\u043e\u0441: the first common card in the \u041f\u0438\u0440\u0430\u0442\u044b faction \u2014 a plain
+  // vanilla creature, no special fields at all. See
+  // piratesStarterDeckCounts below.
+  { id: 'c265', name: '\u041c\u0430\u0442\u0440\u043e\u0441', type: 'creature', cost: 2, atk: 2, hp: 2, rarity: 'common', faction: 'pirates' },
+  // \u0413\u0440\u0430\u0434 \u0441\u0442\u0440\u0435\u043b: pure reuse of \u041a\u0430\u043c\u0435\u043d\u043d\u044b\u0439 \u0433\u0440\u0430\u0434's exact wrathDmg mechanic
+  // (hits every depth position in the chosen lane for a fixed amount,
+  // no hero damage at all \u2014 see the 'wrath' spell kind in resolveSpells)
+  // with its own flavor/art. See piratesStarterDeckCounts below.
+  { id: 's64', name: '\u0413\u0440\u0430\u0434 \u0441\u0442\u0440\u0435\u043b', type: 'spell', cost: 2, wrathDmg: 2, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1302,6 +1311,15 @@ export function mysteryStarterDeckCounts() {
   return { c219: 3, s52: 3, c221: 3, c223: 3, c231: 3, c239: 3 };
 }
 
+// The Пираты starter deck — same "granted once the faction unlocks"
+// placeholder reasoning as the other faction starter decks above.
+// Матрос and Град стрел are the confirmed starter-deck cards so far
+// (every other Пираты card so far is Rare, so none of them join, same
+// "starter decks are Common-only" convention as every other faction).
+export function piratesStarterDeckCounts() {
+  return { c265: 3, s64: 3 };
+}
+
 // ---------- Factions ----------
 // The full canonical set of faction ids that exist in the client's own
 // UI (tabs), whether or not they have any cards yet. Server-authoritative
@@ -1332,6 +1350,7 @@ export function starterDeckCountsForFaction(factionId) {
   if (factionId === 'inferno') return infernoStarterDeckCounts();
   if (factionId === 'frost') return frostStarterDeckCounts();
   if (factionId === 'mystery') return mysteryStarterDeckCounts();
+  if (factionId === 'pirates') return piratesStarterDeckCounts();
   return {};
 }
 
