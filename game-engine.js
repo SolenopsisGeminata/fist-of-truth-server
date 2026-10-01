@@ -1140,6 +1140,11 @@ export const CARD_POOL = [
   // \u2014 reuses applyGuardRobotShot (fixed 3 dmg) and summons \u041e\u0445\u0440\u0430\u043d\u043d\u044b\u0439
   // \u0440\u043e\u0431\u043e\u0442 (c235) on a sacrifice.
   { id: 'c259', name: '\u0418\u043c\u043f\u0443\u043b\u044c\u0441\u043d\u044b\u0439 \u0441\u0442\u0440\u0430\u0436', type: 'creature', cost: 6, atk: 4, hp: 7, impulseGuardianShot: true, impulseGuardianSummonOnSacrifice: true, rarity: 'epic', faction: 'mystery' },
+  // \u041c\u0443\u0434\u0440\u044b\u0439 \u0441\u0444\u0438\u043d\u043a\u0441: see wiseSphinxDrawOnRoundEnd in the end-of-round loop
+  // above (right after \u0411\u0435\u0441\u043a\u043e\u043d\u0435\u0447\u043d\u0430\u044f \u0441\u043b\u0438\u0437\u044c's own infiniteSlimeSummonOnDamage) \u2014
+  // 1 card every round, +1 more and a random-ally +1/+1 (self included)
+  // on a sacrifice.
+  { id: 'c260', name: '\u041c\u0443\u0434\u0440\u044b\u0439 \u0441\u0444\u0438\u043d\u043a\u0441', type: 'creature', cost: 7, atk: 4, hp: 10, wiseSphinxDrawOnRoundEnd: true, rarity: 'epic', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1969,6 +1974,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Бесконечная слизь: see the end-of-round loop in tryEndTurn above
     // (right after Горный воин's own mountainWarriorBuff).
     infiniteSlimeSummonOnDamage: !!card.infiniteSlimeSummonOnDamage,
+    // Мудрый сфинкс: see the end-of-round loop in tryEndTurn above
+    // (right after Бесконечная слизь's own infiniteSlimeSummonOnDamage).
+    wiseSphinxDrawOnRoundEnd: !!card.wiseSphinxDrawOnRoundEnd,
     selfHpGrowthOnDamage: card.selfHpGrowthOnDamage || 0,
     prairieFlowerGrowth: !!card.prairieFlowerGrowth,
     axeWarriorGrowth: !!card.axeWarriorGrowth,
@@ -8880,6 +8888,55 @@ export function tryEndTurn(match, username) {
                   events.push({ type: 'summon', side: name, cardId: unit.id, laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, uid: summonedUnit.uid });
                   applyRageOnSummon(match, name, events);
                 }
+              }
+            }
+          }
+          // Мудрый сфинкс: at the end of every round it's alive
+          // (unconditional, same "no roundStartHp gate" timing as
+          // Адское пугало above), draws 1 card from its OWNER's own
+          // deck. If its owner ALSO sacrificed a card this round
+          // (match.sacrifices[name], same "still reflects THIS round's
+          // sacrifice at this exact point in resolution" timing as
+          // Страж реки Стикс/Мальчик-северин/Боевой робот/Импульсный
+          // страж elsewhere), draws 1 MORE card (2 total) and
+          // permanently grants +1 attack and +1 health to a random
+          // ally anywhere on its OWN board (Щит excluded from the
+          // pool, same as every other "buff a random ally" mechanic in
+          // the file) — the pool explicitly includes the sphinx's own
+          // cell, so it can buff itself. Reuses the plain 'rallyBuff'
+          // event for the ally buff, and its own 'wiseSphinxDraw' event
+          // (exposing the exact count drawn, never the cards'
+          // identity, same privacy-safe convention as Концентрация's
+          // own drewCount) for the draw.
+          if (unit && unit.wiseSphinxDrawOnRoundEnd) {
+            const hand = match.hands[name];
+            const beforeLen = hand.length;
+            const sacrificed = !!match.sacrifices[name];
+            const attempted = sacrificed ? 2 : 1;
+            draw(match.decks[name], hand, attempted);
+            const drewCount = hand.length - beforeLen;
+            events.push({
+              type: 'wiseSphinxDraw', side: name, sourceUid: unit.uid,
+              laneIdx: l, depthIdx: d, attempted, drewCount, bonus: sacrificed,
+            });
+            if (sacrificed) {
+              const allies = [];
+              for (let al = 0; al < LANES; al++) {
+                for (let ad = 0; ad < DEPTH; ad++) {
+                  const a = board[al][ad];
+                  if (a && !a.shieldEffect) allies.push({ laneIdx: al, depthIdx: ad });
+                }
+              }
+              if (allies.length > 0) {
+                const chosen = allies[Math.floor(Math.random() * allies.length)];
+                const targetUnit = board[chosen.laneIdx][chosen.depthIdx];
+                targetUnit.atk += 1;
+                targetUnit.hp += 1;
+                targetUnit.maxHp += 1;
+                events.push({
+                  type: 'rallyBuff', side: name, laneIdx: chosen.laneIdx,
+                  targetDepth: chosen.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+                });
               }
             }
           }
