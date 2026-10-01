@@ -1151,6 +1151,11 @@ export const CARD_POOL = [
   // magicShield, pierce and rockEffect are all pure reuses of existing
   // keywords.
   { id: 'c261', name: '\u041a\u043e\u0432\u0447\u0435\u0433 \u041c\u0438\u0440\u0440\u044b', type: 'creature', cost: 7, atk: 8, hp: 15, armor: 2, magicShield: 2, pierce: true, rockEffect: true, arkOfMyrrhGrowOnAllyDeath: true, rarity: 'epic', faction: 'mystery' },
+  // \u0413\u0440\u0430\u0444 \u0418\u0441\u0442\u043e\u0440\u0432\u0438\u043b\u043b\u044c: see countHistorvilleOnRoundStart in the round-start loop
+  // above (right after \u0414\u0435\u0440\u0435\u0432\u043e \u043c\u0430\u043d\u044b's own manaTreeShrinkOnMana) \u2014 the first
+  // card in this file to actually use \u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0440\u0430\u0437\u0443\u043c\u0430 (Mind Control),
+  // previously only promised by rockEffect's own tooltip.
+  { id: 'c262', name: '\u0413\u0440\u0430\u0444 \u0418\u0441\u0442\u043e\u0440\u0432\u0438\u043b\u043b\u044c', type: 'creature', cost: 9, atk: 3, hp: 3, countHistorvilleOnRoundStart: true, rarity: 'legendary', faction: 'mystery' },
 ];
 
 export function cardById(id) {
@@ -1891,6 +1896,9 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Дерево маны: see the round-start loop in tryEndTurn above (right
     // after Мастер иллюзий's own illusionMasterGrowGhostAlly).
     manaTreeShrinkOnMana: !!card.manaTreeShrinkOnMana,
+    // Граф Исторвилль: see the round-start loop in tryEndTurn above
+    // (right after Дерево маны's own manaTreeShrinkOnMana block).
+    countHistorvilleOnRoundStart: !!card.countHistorvilleOnRoundStart,
     // Мастер иллюзий: see the round-start loop in tryEndTurn above
     // (right after Робот техобслуживания's own maintenanceRobotPulse
     // block). illusionMasterSummonPython is battlecry-only, checked
@@ -7729,6 +7737,89 @@ export function tryEndTurn(match, username) {
           sourceUid: unit.uid, amount, died,
         });
         if (died) killUnit(match, enemySide, chosen.laneIdx, chosen.depthIdx, events);
+      }
+    }
+  }
+
+  // Граф Исторвилль: same unconditional "start of every round" timing
+  // as Робот техобслуживания's own maintenanceRobotPulse above (not
+  // gated on eligibility to attack) — two independent sub-effects that
+  // both fire every round, neither contingent on the other.
+  //
+  // (1) Контроль разума — the FIRST card in this file to actually use
+  // this category (previously only promised by rockEffect's own
+  // tooltip): picks one random enemy unit anywhere on the opposing
+  // board (Чаростойкость/Щит/Скала all excluded from the pool — Скала
+  // finally gets to matter here) and moves that EXACT unit object (same
+  // uid, same current stats and every buff/debuff it's carrying) onto a
+  // random EMPTY cell of this side's OWN board, flipping its
+  // allegiance. bornRound is reset to match.round so it's treated as
+  // freshly joined this side (e.g. any Сон gate on it starts over);
+  // placedThisRound stays false so it never looks provisional. Not a
+  // kill — killUnit is never called, so no on-death reaction of any
+  // kind fires for either side. Silent no-op with no eligible enemy
+  // unit, or no empty cell on this side's own board.
+  //
+  // (2) Right after that (so a freshly-stolen unit is already visible
+  // to this scan), grants +1 attack and +1 health to a random ally
+  // anywhere on this side's OWN board, Щит excluded — the pool
+  // explicitly includes the Count's own cell, so it can buff itself.
+  // Reuses the plain 'rallyBuff' event for this half.
+  for (const side of match.players) {
+    const board = match.boards[side];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const unit = board[l][d];
+        if (!unit || !unit.countHistorvilleOnRoundStart) continue;
+        const enemySide = otherPlayer(match, side);
+        const enemyBoard = match.boards[enemySide];
+        const enemyTargets = [];
+        for (let el = 0; el < LANES; el++) {
+          for (let ed = 0; ed < DEPTH; ed++) {
+            const t = enemyBoard[el][ed];
+            if (t && !t.spellResist && !t.shieldEffect && !t.rockEffect) enemyTargets.push({ laneIdx: el, depthIdx: ed });
+          }
+        }
+        const ownFreeCells = [];
+        for (let ol = 0; ol < LANES; ol++) {
+          for (let od = 0; od < DEPTH; od++) {
+            if (!board[ol][od]) ownFreeCells.push({ laneIdx: ol, depthIdx: od });
+          }
+        }
+        if (enemyTargets.length > 0 && ownFreeCells.length > 0) {
+          const chosenEnemy = enemyTargets[Math.floor(Math.random() * enemyTargets.length)];
+          const chosenCell = ownFreeCells[Math.floor(Math.random() * ownFreeCells.length)];
+          const stolenUnit = enemyBoard[chosenEnemy.laneIdx][chosenEnemy.depthIdx];
+          enemyBoard[chosenEnemy.laneIdx][chosenEnemy.depthIdx] = null;
+          stolenUnit.bornRound = match.round;
+          stolenUnit.placedThisRound = false;
+          board[chosenCell.laneIdx][chosenCell.depthIdx] = stolenUnit;
+          events.push({
+            type: 'countMindControl', side, targetSide: enemySide,
+            laneIdx: l, depthIdx: d,
+            fromLaneIdx: chosenEnemy.laneIdx, fromDepthIdx: chosenEnemy.depthIdx,
+            toLaneIdx: chosenCell.laneIdx, toDepthIdx: chosenCell.depthIdx,
+            sourceUid: unit.uid, uid: stolenUnit.uid, cardId: stolenUnit.id,
+          });
+        }
+        const allies = [];
+        for (let al = 0; al < LANES; al++) {
+          for (let ad = 0; ad < DEPTH; ad++) {
+            const a = board[al][ad];
+            if (a && !a.shieldEffect) allies.push({ laneIdx: al, depthIdx: ad });
+          }
+        }
+        if (allies.length > 0) {
+          const chosenAlly = allies[Math.floor(Math.random() * allies.length)];
+          const targetUnit = board[chosenAlly.laneIdx][chosenAlly.depthIdx];
+          targetUnit.atk += 1;
+          targetUnit.hp += 1;
+          targetUnit.maxHp += 1;
+          events.push({
+            type: 'rallyBuff', side, laneIdx: chosenAlly.laneIdx,
+            targetDepth: chosenAlly.depthIdx, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+          });
+        }
       }
     }
   }
