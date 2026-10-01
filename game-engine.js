@@ -1201,6 +1201,10 @@ export const CARD_POOL = [
   // lands directly on the enemy hero" trigger family in resolveCombat
   // above (right after \u0412\u043e\u0440\u043e\u0432\u0430\u0442\u044b\u0439 \u0431\u0435\u0441's own thiefImpStealOnHeroHit).
   { id: 'c270', name: '\u041d\u043e\u0447\u043d\u043e\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, nightMarksmanShotOnHeroHit: 2, rarity: 'rare', faction: 'pirates' },
+  // \u0413\u0440\u0430\u0431\u0438\u0442\u0435\u043b\u044c: see pendingRobberBattlecry in tryEndTurn above (right
+  // after \u0411\u0435\u0441\u0442\u0435\u043b\u0435\u0441\u043d\u044b\u0439 \u0414\u0440\u0430\u043a\u043e\u043d's own pendingDragonWeaken) \u2014 pure reuse
+  // of \u041e\u0433\u0440\u0430\u0431\u043b\u0435\u043d\u0438\u0435's own 'robbery' mechanic, as a battlecry.
+  { id: 'c271', name: '\u0413\u0440\u0430\u0431\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 3, hp: 2, firstStrike: true, robberBattlecryDrain: 3, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1632,6 +1636,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingWiseDeerDebuff: [],
     pendingWiseDeerBuff: [],
     pendingDragonWeaken: [],
+    pendingRobberBattlecry: [],
     pendingSpearmanBuff: [],
     pendingArcticScarecrow: [],
     pendingFrostSpiderWeb: [],
@@ -2017,6 +2022,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     steadfastDaoist: !!card.steadfastDaoist,
     impAtkGrowOnHeroHit: card.impAtkGrowOnHeroHit || 0,
     nightMarksmanShotOnHeroHit: card.nightMarksmanShotOnHeroHit || 0,
+    robberBattlecryDrain: card.robberBattlecryDrain || 0,
     devourerGrowOnHeroHit: !!card.devourerGrowOnHeroHit,
     valleyBarn: !!card.valleyBarn,
     cowardlyAssassin: !!card.cowardlyAssassin,
@@ -2388,6 +2394,17 @@ export function placeCard(match, username, uid, lane, depth) {
   // debuff+damage combo).
   if (card.dragonWeakenAllEnemiesOnPlay) {
     match.pendingDragonWeaken.push({ side: username, sourceUid: unit.uid });
+  }
+
+  // Грабитель: battlecry queued the same deferred way as every other
+  // battlecry here — resolved at the start of the next resolution (see
+  // pendingRobberBattlecry in tryEndTurn), same "amount lives on the
+  // flag" convention as impAtkGrowOnHeroHit — deals that much damage
+  // directly to the enemy hero and heals its own hero for the same
+  // amount, reusing the exact mechanic already built for Ограбление
+  // (robberyDrain), just as a battlecry instead of a spell.
+  if (card.robberBattlecryDrain) {
+    match.pendingRobberBattlecry.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.robberBattlecryDrain });
   }
 
   // Воин с копьем: whether an enemy "ALSO appeared this same phase"
@@ -8518,6 +8535,24 @@ export function tryEndTurn(match, username) {
         });
       }
     }
+  }
+
+  // Грабитель: battlecry — never touches the board at all, same
+  // unconditional "damage enemy hero, heal own hero by the same amount"
+  // mechanic already built for Ограбление's own 'robbery' spell kind,
+  // just resolved from this deferred battlecry queue instead of a spell
+  // cast.
+  const robberBattlecryQueue = match.pendingRobberBattlecry;
+  match.pendingRobberBattlecry = [];
+  for (const entry of robberBattlecryQueue) {
+    const enemySide = otherPlayer(match, entry.side);
+    damageHero(match, enemySide, entry.amount, events);
+    const healed = healHero(match, entry.side, entry.amount, events);
+    events.push({
+      type: 'robberBattlecryDrain', side: entry.side, targetSide: enemySide,
+      laneIdx: entry.laneIdx, depthIdx: entry.depthIdx,
+      amount: entry.amount, healed, sourceUid: entry.sourceUid,
+    });
   }
 
   // Арктическое пугало: battlecry — freezes a random ADJACENT cell on
