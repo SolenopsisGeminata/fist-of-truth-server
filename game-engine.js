@@ -1205,6 +1205,10 @@ export const CARD_POOL = [
   // after \u0411\u0435\u0441\u0442\u0435\u043b\u0435\u0441\u043d\u044b\u0439 \u0414\u0440\u0430\u043a\u043e\u043d's own pendingDragonWeaken) \u2014 pure reuse
   // of \u041e\u0433\u0440\u0430\u0431\u043b\u0435\u043d\u0438\u0435's own 'robbery' mechanic, as a battlecry.
   { id: 'c271', name: '\u0413\u0440\u0430\u0431\u0438\u0442\u0435\u043b\u044c', type: 'creature', cost: 2, atk: 3, hp: 2, firstStrike: true, robberBattlecryDrain: 3, rarity: 'rare', faction: 'pirates' },
+  // \u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430: see daredevilExtraDamage in the "own attack lands
+  // directly on the enemy hero" trigger family in resolveCombat above
+  // (right after \u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c's own tormentorExtraDamage).
+  { id: 'c272', name: '\u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 4, hp: 1, daredevilExtraDamage: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1995,6 +1999,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     maintenanceRobotPulse: !!card.maintenanceRobotPulse,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
+    daredevilExtraDamage: !!card.daredevilExtraDamage,
     acidShotOnDeath: !!card.acidShotOnDeath,
     // Ледяной зомби: see freezeCellOnDeath in killUnit above.
     freezeCellOnDeath: !!card.freezeCellOnDeath,
@@ -7398,6 +7403,22 @@ function resolveCombatPass(match, events, isEligible) {
         damageHero(match, nameA, 1, events);
         damageHero(match, nameB, 1, events);
         events.push({ type: 'tormentorHit', side: nameB, targetSide: nameA, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, amount: 1 });
+      }
+
+      // Сорвиголова: same "own attack lands directly on the enemy hero"
+      // trigger family as Бес-мучитель right above, but ONLY the enemy
+      // hero takes the extra hit — no self-damage at all, unlike
+      // tormentorExtraDamage's own two-sided version. Routed through
+      // damageHero() so it still correctly triggers any reaction on the
+      // enemy side (e.g. Огненная муха) for the extra hit, same as any
+      // other source of hero damage.
+      if (aAttacks && !aTarget && aUnit.daredevilExtraDamage) {
+        damageHero(match, nameB, 1, events);
+        events.push({ type: 'daredevilExtraHit', side: nameA, targetSide: nameB, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, amount: 1 });
+      }
+      if (bAttacks && !bTarget && bUnit.daredevilExtraDamage) {
+        damageHero(match, nameA, 1, events);
+        events.push({ type: 'daredevilExtraHit', side: nameB, targetSide: nameA, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, amount: 1 });
       }
 
       // Небесный воин: whenever his own attack lands directly on the
