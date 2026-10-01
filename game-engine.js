@@ -1193,6 +1193,10 @@ export const CARD_POOL = [
   // hand instead of killing (\u0421\u043a\u0430\u043b\u0430/\u0429\u0438\u0442 also protect, unlike punisherKill
   // which only checks \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c).
   { id: 'c268', name: '\u0425\u0438\u0442\u0440\u044b\u0439 \u0443\u0447\u0435\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 1, cunningApprenticeBounceOnPlay: true, rarity: 'rare', faction: 'pirates' },
+  // \u0418\u043d\u043e\u0437\u0435\u043c\u043d\u044b\u0439 \u043f\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0438\u043a: see foreignTravelerDrawOnLegacy in the
+  // "recipient of a \u041d\u0430\u0441\u043b\u0435\u0434\u0438\u0435 transfer" reaction chain in killUnit above
+  // (right after \u041b\u0438\u043d\u044c, \u0421\u0432\u044f\u0449\u0435\u043d\u043d\u044b\u0439 \u043a\u043b\u0438\u043d\u043e\u043a's own linLegacyDoubleStrike).
+  { id: 'c269', name: '\u0418\u043d\u043e\u0437\u0435\u043c\u043d\u044b\u0439 \u043f\u0443\u0442\u0435\u0448\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 5, foreignTravelerDrawOnLegacy: true, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1826,6 +1830,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     invisible: !!card.invisible,
     punisherKill: !!card.punisherKill,
     cunningApprenticeBounceOnPlay: !!card.cunningApprenticeBounceOnPlay,
+    foreignTravelerDrawOnLegacy: !!card.foreignTravelerDrawOnLegacy,
     doubleHeal: !!card.doubleHeal,
     baronBuff: !!card.baronBuff,
     boneShamanBuff: !!card.boneShamanBuff,
@@ -3635,6 +3640,23 @@ function killUnit(match, side, laneIdx, depthIdx, events) {
           type: 'rallyBuff', side, laneIdx: chosen.laneIdx, targetDepth: chosen.depthIdx,
           buffAtk: 0, buffHp: 0, buffDoubleStrike: true, sourceUid: targetUnit.uid,
         });
+      }
+      // Иноземный путешественник: whenever THIS specific unit is the
+      // RECIPIENT of a Наследие transfer (same "recipient, not
+      // born-with" scoping as every other reaction in this chain), draws
+      // 1 card from its owner's own deck — same draw()/beforeLen/MAX_HAND
+      // respect as Денежное дерево's own moneyTreeDraw.
+      if (targetUnit.foreignTravelerDrawOnLegacy) {
+        const hand = match.hands[side];
+        if (hand.length < MAX_HAND) {
+          const beforeLen = hand.length;
+          draw(match.decks[side], hand, 1);
+          const drew = hand.length > beforeLen;
+          events.push({
+            type: 'foreignTravelerDraw', side, sourceUid: targetUnit.uid,
+            laneIdx: chosen.laneIdx, depthIdx: chosen.depthIdx, drew,
+          });
+        }
       }
     }
   }
