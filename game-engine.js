@@ -1168,6 +1168,10 @@ export const CARD_POOL = [
   // always hits the enemy hero's health directly, never a unit, same
   // "purely a formality" targeting as \u041a\u043e\u043d\u0446\u0435\u043d\u0442\u0440\u0430\u0446\u0438\u044f.
   { id: 's62', name: '\u041e\u0433\u0440\u0430\u0431\u043b\u0435\u043d\u0438\u0435', type: 'spell', cost: 1, robberyDrain: true, robberyAmount: 3, rarity: 'rare', faction: 'pirates' },
+  // \u0427\u0435\u0440\u043d\u0430\u044f \u0434\u044b\u0440\u0430 \u0440\u0430\u0437\u0443\u043c\u0430: see the 'blackHoleMind' spell kind in
+  // resolveSpells above \u2014 \u0427\u0430\u0440\u043e\u0441\u0442\u043e\u0439\u043a\u043e\u0441\u0442\u044c/\u0429\u0438\u0442 blocks both the unit damage
+  // and the hero damage at once, same all-or-nothing resist as \u041a\u0430\u043f\u043a\u0430\u043d.
+  { id: 's63', name: '\u0427\u0435\u0440\u043d\u0430\u044f \u0434\u044b\u0440\u0430 \u0440\u0430\u0437\u0443\u043c\u0430', type: 'spell', cost: 1, blackHoleMindSpell: true, blackHoleMindDmg: 3, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -3003,6 +3007,14 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.blackHoleMindSpell) {
+    // \u0427\u0451\u0440\u043d\u0430\u044f \u0434\u044b\u0440\u0430 \u0440\u0430\u0437\u0443\u043c\u0430: same "specific enemy cell, empty or occupied"
+    // bounds-only validation as \u0411\u0435\u0437\u0443\u043c\u043d\u044b\u0439 \u043e\u0433\u043d\u0435\u043d\u043d\u044b\u0439 \u0448\u0430\u0440 above \u2014 an empty
+    // cell means the spell does nothing at all, no hero damage either
+    // (there is no "targeted unit" to read a mana cost from).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.meteorDmg) {
     // \u041c\u0435\u0442\u0435\u043e\u0440\u0438\u0442: same "specific enemy cell, empty or occupied"
     // targeting as \u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430 above \u2014 unit-or-hero fallback
@@ -3079,7 +3091,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : (card.robberyDrain ? 'robbery' : 'buff'))))))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.blackHoleMindSpell ? 'blackHoleMind' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : (card.robberyDrain ? 'robbery' : 'buff')))))))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     // Клонирование/Извращенная сила/Разуплотнение/Тишина: resolved once,
@@ -3122,6 +3134,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     buffDrawCard: card.buffDrawCard,
     buffPierce: card.buffPierce,
     madFireballDmg: card.madFireballDmg,
+    blackHoleMindDmg: card.blackHoleMindDmg,
     meteorDmg: card.meteorDmg,
     soulDrainDmg: card.soulDrainDmg,
     ignitionDmg: card.ignitionDmg,
@@ -5187,6 +5200,35 @@ function resolveSpells(match, events) {
           sourceUid: null, laneIdx: spell.laneIdx, depthIdx: spell.depthIdx,
         });
       }
+    } else if (spell.kind === 'blackHoleMind') {
+      // Чёрная дыра разума: targets a specific enemy cell chosen at cast
+      // time, same "empty cell means the spell does nothing at all, no
+      // hero damage either" shape as Безумный огненный шар right below —
+      // Чаростойкость/Щит blocks BOTH halves at once (same all-or-nothing
+      // resist as Капкан above), since the hero-damage half only exists
+      // because that specific targeted unit does.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const targetUnit = board[spell.laneIdx] && board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(targetUnit && (targetUnit.spellResist || targetUnit.shieldEffect));
+      let died = false;
+      let applied = 0;
+      let heroDmg = 0;
+      if (targetUnit && !resisted) {
+        applied = applyWardedDamage(targetUnit, spell.blackHoleMindDmg);
+        targetUnit.hp -= applied;
+        died = targetUnit.hp <= 0;
+        const targetCard = cardById(targetUnit.id);
+        heroDmg = targetCard ? targetCard.cost : 0;
+        damageHero(match, defenderName, heroDmg, events);
+      }
+      events.push({
+        type: 'spell', kind: 'blackHoleMind', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, targetSide: defenderName, targetDepth: spell.depthIdx,
+        amount: (targetUnit && !resisted) ? applied : 0, heroDmg,
+        resisted, empty: !targetUnit, died,
+      });
+      if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
     } else if (spell.kind === 'madFireball') {
       // Безумный огненный шар (the new one, distinct from Огненный
       // шар): targets a specific enemy cell chosen at cast time, same
