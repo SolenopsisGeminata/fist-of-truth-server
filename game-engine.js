@@ -1258,6 +1258,10 @@ export const CARD_POOL = [
   // with effectiveAtk (Synergy counts), fires every round including the
   // one it's placed (no battlecry counterpart to gate against).
   { id: 'c281', name: '\u041f\u0438\u0440\u0430\u0442\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 0, hp: 5, defender: true, synergy: 2, pirateCannonShotOnRoundStart: true, rarity: 'common', faction: 'pirates' },
+  // \u0426\u0435\u043f\u043d\u0430\u044f \u043c\u043e\u043b\u043d\u0438\u044f: see the 'chainLightning' spell kind in
+  // resolveSpells above \u2014 targets a specific enemy cell like \u041c\u043e\u043b\u043d\u0438\u044f, then
+  // arcs once to a random occupied non-resistant cardinal neighbour.
+  { id: 's66', name: '\u0426\u0435\u043f\u043d\u0430\u044f \u043c\u043e\u043b\u043d\u0438\u044f', type: 'spell', cost: 3, chainLightningSpell: true, chainLightningDmg: 3, rarity: 'rare', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -3123,6 +3127,15 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
       return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
     }
+  } else if (card.chainLightningSpell) {
+    // \u0426\u0435\u043f\u043d\u0430\u044f \u043c\u043e\u043b\u043d\u0438\u044f: same "specific enemy cell, empty or occupied"
+    // targeting shape as \u041c\u043e\u043b\u043d\u0438\u044f above \u2014 the player picks the exact unit
+    // to strike; if that cell ends up empty by resolution time, the
+    // whole spell is simply a no-op (no hero fallback at all, unlike
+    // every other targeted damage spell here).
+    if (lane < 0 || lane >= LANES || depth == null || depth < 0 || depth >= DEPTH) {
+      return { error: '\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u0430\u044f \u043f\u043e\u0437\u0438\u0446\u0438\u044f.' };
+    }
   } else if (card.heatSurge) {
     // \u041f\u0440\u0438\u043b\u0438\u0432 \u0442\u0435\u043f\u043b\u0430: same "specific enemy cell, empty or occupied"
     // targeting as \u041c\u043e\u043b\u043d\u0438\u044f above \u2014 unlike \u041c\u043e\u043b\u043d\u0438\u044f (which hits BOTH the
@@ -3257,7 +3270,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
   match.pendingSpells.push({
     side: username,
     cardId: card.id,
-    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.blackHoleMindSpell ? 'blackHoleMind' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.nightAttackSpell ? 'nightAttack' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : (card.robberyDrain ? 'robbery' : 'buff'))))))))))))))))))))))))))))))))))))),
+    kind: card.wrathDmg ? 'wrath' : (card.dmg ? 'damage' : (card.healHero ? 'wellspring' : (card.heal ? 'heal' : (card.instantSummon ? 'instantSummon' : (card.endOfRoundSpell ? 'endOfRoundSpell' : (card.bounceToHand ? 'skyWhirlwind' : (card.randomBlind ? 'randomBlind' : (card.lifeLight ? 'lifeLight' : (card.guardCall ? 'guardCall' : (card.houndCall ? 'houndCall' : (card.heavenlyRays ? 'heavenlyRays' : (card.songToTheMoon ? 'songToTheMoon' : (card.bounceCellAndNeighbor ? 'bounceCellAndNeighbor' : (card.treeWrath ? 'treeWrath' : (card.mountainStrength ? 'mountainStrength' : (card.pineForest ? 'pineForest' : (card.trapKill ? 'trapKill' : (card.lightningStrike ? 'lightningStrike' : (card.chainLightningSpell ? 'chainLightning' : (card.heatSurge ? 'heatSurge' : (card.painHeartCurse ? 'painHeartCurse' : (card.ragingFire ? 'ragingFire' : (card.blackHoleMindSpell ? 'blackHoleMind' : (card.madFireballDmg ? 'madFireball' : (card.meteorDmg ? 'meteor' : (card.soulDrainSpell ? 'soulDrain' : (card.nightAttackSpell ? 'nightAttack' : (card.deathChill ? 'deathChill' : (card.ignitionDmg ? 'ignition' : (card.muteStrike ? 'muteStrike' : (card.burdenDebuff ? 'burden' : (card.cloneCardToHand ? 'cloneCardToHand' : (card.corruptedPowerBuff ? 'corruptedPower' : (card.fatigueDebuff ? 'fatigue' : (card.decompressionDebuff ? 'decompression' : (card.silenceDebuff ? 'silence' : (card.concentrationDraw ? 'concentration' : (card.robberyDrain ? 'robbery' : 'buff')))))))))))))))))))))))))))))))))))))),
     laneIdx: lane,
     depthIdx: depth,
     // Клонирование/Извращенная сила/Разуплотнение/Тишина: resolved once,
@@ -3291,6 +3304,7 @@ export function castSpell(match, username, uid, lane, depth, targetMine) {
     buffSpellResist: card.buffSpellResist,
     buffLegacy: card.buffLegacy,
     lightningDmg: card.lightningDmg,
+    chainLightningDmg: card.chainLightningDmg,
     heatSurgeDmg: card.heatSurgeDmg,
     heatSurgeHeal: card.heatSurgeHeal,
     ragingFireDmg: card.ragingFireDmg,
@@ -5003,6 +5017,60 @@ function resolveSpells(match, events) {
         targetHero: !cellUnit, died, resisted,
       });
       if (died) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+    } else if (spell.kind === 'chainLightning') {
+      // Цепная молния: hits the specific unit the player targeted
+      // (spell.laneIdx/depthIdx), same resisted shape as Молния right
+      // above — Чаростойкость OR Щит block the primary hit outright, no
+      // hero fallback of any kind. An empty cell by resolution time is a
+      // complete no-op, nothing to chain from. If a unit WAS there (hit
+      // or resisted — the strike still happened, it just didn't always
+      // land), the bolt then arcs to a random occupied, non-resistant
+      // CARDINAL NEIGHBOUR of that same fixed position (its geography
+      // doesn't move even if the primary target just died) for the same
+      // amount. No neighbour at all is a silent no-op for that half.
+      const defenderName = otherPlayer(match, spell.side);
+      const board = match.boards[defenderName];
+      const primaryUnit = board[spell.laneIdx][spell.depthIdx];
+      const resisted = !!(primaryUnit && (primaryUnit.spellResist || primaryUnit.shieldEffect));
+      const amount = spell.chainLightningDmg;
+      let primaryApplied = 0;
+      let primaryDied = false;
+      if (primaryUnit && !resisted) {
+        primaryApplied = applyWardedDamage(primaryUnit, amount);
+        primaryUnit.hp -= primaryApplied;
+        primaryDied = primaryUnit.hp <= 0;
+      }
+      let chainLaneIdx = null;
+      let chainDepthIdx = null;
+      let chainApplied = 0;
+      let chainDied = false;
+      if (primaryUnit) {
+        const deltas = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+        const candidates = [];
+        for (const [dl, dd] of deltas) {
+          const l = spell.laneIdx + dl, d = spell.depthIdx + dd;
+          if (l >= 0 && l < LANES && d >= 0 && d < DEPTH) {
+            const u = board[l][d];
+            if (u && !u.spellResist && !u.shieldEffect) candidates.push({ laneIdx: l, depthIdx: d, unit: u });
+          }
+        }
+        if (candidates.length > 0) {
+          const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+          chainLaneIdx = chosen.laneIdx;
+          chainDepthIdx = chosen.depthIdx;
+          chainApplied = applyWardedDamage(chosen.unit, amount);
+          chosen.unit.hp -= chainApplied;
+          chainDied = chosen.unit.hp <= 0;
+        }
+      }
+      events.push({
+        type: 'spell', kind: 'chainLightning', side: spell.side, cardId: spell.cardId,
+        laneIdx: spell.laneIdx, depthIdx: spell.depthIdx, targetSide: defenderName,
+        empty: !primaryUnit, resisted, primaryAmount: resisted ? 0 : primaryApplied, primaryDied,
+        chainLaneIdx, chainDepthIdx, chainAmount: chainApplied, chainDied,
+      });
+      if (primaryDied) killUnit(match, defenderName, spell.laneIdx, spell.depthIdx, events);
+      if (chainDied) killUnit(match, defenderName, chainLaneIdx, chainDepthIdx, events);
     } else if (spell.kind === 'heatSurge') {
       // Прилив тепла: specific-cell targeting like Молния above, but
       // EITHER the unit there takes the hit OR the hero does (never
