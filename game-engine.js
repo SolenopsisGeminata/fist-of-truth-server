@@ -1217,6 +1217,10 @@ export const CARD_POOL = [
   // above \u2014 pure reuse of \u0412\u044b\u0441\u0430\u0441\u044b\u0432\u0430\u043d\u0438\u0435 \u0434\u0443\u0448\u0438's own random-enemy-unit
   // targeting, minus the discard half.
   { id: 's65', name: '\u041d\u043e\u0447\u043d\u0430\u044f \u0430\u0442\u0430\u043a\u0430', type: 'spell', cost: 2, nightAttackSpell: true, nightAttackDmg: 5, rarity: 'rare', faction: 'pirates' },
+  // \u0428\u0430\u0445\u0442\u0435\u0440: see minerShootHeroOnRoundEnd in the end-of-round loop above
+  // (right after \u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439's own shootHero) \u2014 same damage formula,
+  // but NO battlecry shot on play (unlike shootHero, which fires both).
+  { id: 'c274', name: '\u0428\u0430\u0445\u0442\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, minerShootHeroOnRoundEnd: true, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1365,11 +1369,11 @@ export function mysteryStarterDeckCounts() {
 
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Матрос and Град стрел are the confirmed starter-deck cards so far
-// (every other Пираты card so far is Rare, so none of them join, same
-// "starter decks are Common-only" convention as every other faction).
+// Матрос, Град стрел, and Шахтер are Common and join the same
+// "starter decks are Common-only" convention as every other faction
+// (every other Пираты card so far is Rare, so none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3 };
+  return { c265: 3, s64: 3, c274: 3 };
 }
 
 // ---------- Factions ----------
@@ -1805,6 +1809,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     lifesteal: !!card.lifesteal,
     synergy: card.synergy || 0,
     shootHero: !!card.shootHero,
+    minerShootHeroOnRoundEnd: !!card.minerShootHeroOnRoundEnd,
     shootHeroStartOfTurn: !!card.shootHeroStartOfTurn,
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
@@ -9819,6 +9824,19 @@ export function tryEndTurn(match, username) {
           // its rework to shootHeroStartOfTurn (see the start-of-round
           // check further up in resolution instead).
           if (unit && unit.shootHero) {
+            const targetSide = match.players.find((p) => p !== name);
+            const amount = effectiveAtk(board, l, d);
+            damageHero(match, targetSide, amount, events);
+            events.push({
+              type: 'heroShot', side: name, targetSide, amount,
+              laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+            });
+          }
+          // Шахтер: same end-of-round damage formula as Лучник прерий's
+          // own shootHero right above (reuses the exact 'heroShot' event
+          // so the client needs no new handler), but NO battlecry shot
+          // on play — this one fires only here, every round it survives.
+          if (unit && unit.minerShootHeroOnRoundEnd) {
             const targetSide = match.players.find((p) => p !== name);
             const amount = effectiveAtk(board, l, d);
             damageHero(match, targetSide, amount, events);
