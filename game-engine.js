@@ -229,7 +229,7 @@ export const CARD_POOL = [
   { id: 'c55', name: '\u0421\u043b\u0435\u0434\u043e\u043f\u044b\u0442', type: 'creature', cost: 1, atk: 1, hp: 1, synergy: 1, rarity: 'rare' , faction: 'empire' },
   // musketShot: see applyMusketShot above, hooked in right before his
   // own attack in resolveCombatPass (same spot as Аннабэль's dawnBuff).
-  { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: true, rarity: 'rare' , faction: 'empire' },
+  { id: 'c56', name: '\u041c\u0443\u0448\u043a\u0435\u0442\u0435\u0440', type: 'creature', cost: 4, atk: 3, hp: 5, musketShot: 1, rarity: 'rare' , faction: 'empire' },
   // lunaBlind: see applyLunaBlind above — persistent aura, re-evaluated
   // every round she's alive, checking her CURRENT lane each time.
   { id: 'c57', name: '\u041b\u0443\u043d\u0430, \u0433\u043e\u043b\u043e\u0441 \u0431\u0443\u0434\u0443\u0449\u0435\u0433\u043e', type: 'creature', cost: 4, atk: 0, hp: 1, spellResist: true, lunaBlind: true, rarity: 'legendary' , faction: 'empire' },
@@ -1269,6 +1269,12 @@ export const CARD_POOL = [
   // \u0414\u0440\u0435\u0441\u0441\u0438\u0440\u043e\u0432\u0449\u0438\u043a: see trainerWakeAndInvisible/tempInvisibleThisRound above
   // (buildUnitFromCard) and placeCard's own immediate handling of it.
   { id: 'c283', name: '\u0414\u0440\u0435\u0441\u0441\u0438\u0440\u043e\u0432\u0449\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, trainerWakeAndInvisible: true, rarity: 'epic', faction: 'pirates' },
+  // \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0440\u0443\u0436\u044c\u0435\u043c: battlecry is pure reuse of randomShotOnPlay
+  // (\u0423\u0447\u0435\u043d\u0438\u043a \u0430\u043b\u0445\u0438\u043c\u0438\u043a\u0430's own field); the pre-attack shot reuses
+  // applyMusketShot via its own separate sailorRifleShotRecurring field
+  // (see buildUnitFromCard/resolveCombatPass above), gated to skip its
+  // placement round so it never double-fires alongside the battlecry.
+  { id: 'c284', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0440\u0443\u0436\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, randomShotOnPlay: 2, sailorRifleShotRecurring: 2, rarity: 'epic', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -2096,7 +2102,18 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     acidShotOnDeath: !!card.acidShotOnDeath,
     // Ледяной зомби: see freezeCellOnDeath in killUnit above.
     freezeCellOnDeath: !!card.freezeCellOnDeath,
-    musketShot: !!card.musketShot,
+    // Мушкетёр: generalized from a boolean (always 1 damage) to the
+    // "amount lives on the flag" convention used elsewhere in this file,
+    // so Матрос с ружьем below can reuse applyMusketShot's exact same
+    // ownCount > enemyCount gate at a different fixed amount.
+    musketShot: card.musketShot || 0,
+    // Матрос с ружьем: same applyMusketShot helper/condition as Мушкетёр's
+    // own musketShot right above, but kept on its own separate field and
+    // gated by match.round > bornRound at the call site (same
+    // battlecry-vs-recurring split as Дикарь-стрелок's own randomShotOnPlay/
+    // randomShotRecurring pair) so it never double-fires alongside this
+    // card's own randomShotOnPlay battlecry in its placement round.
+    sailorRifleShotRecurring: card.sailorRifleShotRecurring || 0,
     lunaBlind: !!card.lunaBlind,
     legacyValue: card.legacy || 0,
     bambooShotRecurring: card.bambooShotRecurring || 0,
@@ -6377,7 +6394,7 @@ function applyBambooRecurringShot(match, side, enemySide, events, sourceUnit, so
   if (died) killUnit(match, enemySide, sourceLaneIdx, targetDepth, events);
 }
 
-function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx) {
+function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneIdx, sourceDepthIdx, shotAmount) {
   const ownCount = countUnitsOnBoard(match.boards[side]);
   const enemyCount = countUnitsOnBoard(match.boards[enemySide]);
   if (ownCount <= enemyCount) return;
@@ -6392,7 +6409,7 @@ function applyMusketShot(match, side, enemySide, events, sourceUnit, sourceLaneI
   const chosen = targets[Math.floor(Math.random() * targets.length)];
   const targetUnit = targetBoard[chosen.laneIdx][chosen.depthIdx];
   const resisted = !!targetUnit.spellResist;
-  const amount = resisted ? 0 : applyWardedDamage(targetUnit, 1);
+  const amount = resisted ? 0 : applyWardedDamage(targetUnit, shotAmount);
   let died = false;
   if (!resisted) {
     targetUnit.hp -= amount;
@@ -7006,8 +7023,10 @@ function resolveCombatPass(match, events, isEligible) {
       // allies only, and never himself.
       if (aEligible && aUnit.barrakInfernoBuff) applyBarrakInfernoBuff(match, nameA, events, aUnit.uid);
       if (bEligible && bUnit.barrakInfernoBuff) applyBarrakInfernoBuff(match, nameB, events, bUnit.uid);
-      if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth);
-      if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      if (aEligible && aUnit.musketShot) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, aUnit.musketShot);
+      if (bEligible && bUnit.musketShot) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, bUnit.musketShot);
+      if (aEligible && aUnit.sailorRifleShotRecurring && match.round > aUnit.bornRound) applyMusketShot(match, nameA, nameB, events, aUnit, l, aInfo.depth, aUnit.sailorRifleShotRecurring);
+      if (bEligible && bUnit.sailorRifleShotRecurring && match.round > bUnit.bornRound) applyMusketShot(match, nameB, nameA, events, bUnit, l, bInfo.depth, bUnit.sailorRifleShotRecurring);
       if (aEligible && aUnit.drunkenDisciple) applyDrunkenDisciple(match, nameA, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.drunkenDisciple) applyDrunkenDisciple(match, nameB, events, bUnit, l, bInfo.depth);
       if (aEligible && aUnit.shurikenMaster) applyShurikenMaster(match, nameA, nameB, events, aUnit, l, aInfo.depth);
