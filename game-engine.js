@@ -1251,6 +1251,13 @@ export const CARD_POOL = [
   // random-cell-in-mirrored-lane/unit-or-hero-fallback shape, fixed 2
   // damage, as a battlecry.
   { id: 'c280', name: '\u0417\u0430\u0445\u043c\u0435\u043b\u0435\u0432\u0448\u0438\u0439 \u0430\u043b\u043a\u043e\u0433\u043e\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 2, bottleShotOnPlay: 2, rarity: 'common', faction: 'pirates' },
+  // \u041f\u0438\u0440\u0430\u0442\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430: see pirateCannonShotOnRoundStart in the
+  // start-of-round loop above (right after \u0410\u0440\u0431\u0430\u043b\u0435\u0442\u0447\u0438\u043a's own
+  // shootHeroStartOfTurn) \u2014 same random-cell-in-mirrored-lane shape as
+  // \u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a's own bambooShotOnPlay, but damage scales
+  // with effectiveAtk (Synergy counts), fires every round including the
+  // one it's placed (no battlecry counterpart to gate against).
+  { id: 'c281', name: '\u041f\u0438\u0440\u0430\u0442\u0441\u043a\u0430\u044f \u043f\u0443\u0448\u043a\u0430', type: 'creature', cost: 3, atk: 0, hp: 5, defender: true, synergy: 2, pirateCannonShotOnRoundStart: true, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1400,12 +1407,12 @@ export function mysteryStarterDeckCounts() {
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
 // Матрос, Град стрел, Шахтер, Матрос с бочкой, Матрос с саблей, Матрос
-// с топорами, Злой щенок, Собачник, and Захмелевший алкоголик are
-// Common and join the same "starter decks are Common-only" convention
-// as every other faction (every other Пираты card so far is Rare, so
-// none of them join).
+// с топорами, Злой щенок, Собачник, Захмелевший алкоголик, and
+// Пиратская пушка are Common and join the same "starter decks are
+// Common-only" convention as every other faction (every other Пираты
+// card so far is Rare, so none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3, c278: 3, c279: 3, c280: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3, c278: 3, c279: 3, c280: 3, c281: 3 };
 }
 
 // ---------- Factions ----------
@@ -1844,6 +1851,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     shootHero: !!card.shootHero,
     minerShootHeroOnRoundEnd: !!card.minerShootHeroOnRoundEnd,
     shootHeroStartOfTurn: !!card.shootHeroStartOfTurn,
+    pirateCannonShotOnRoundStart: !!card.pirateCannonShotOnRoundStart,
     cookHeal: !!card.cookHeal,
     cowHeal: !!card.cowHeal,
     wallGrow: !!card.wallGrow,
@@ -8087,6 +8095,43 @@ export function tryEndTurn(match, username) {
             type: 'heroShot', side, targetSide, amount,
             laneIdx: l, depthIdx: d, sourceUid: unit.uid,
           });
+        }
+        // Пиратская пушка: fires at the start of EVERY round it's alive,
+        // including the round it was placed — no bornRound gate, unlike
+        // Арбалетчик's shootHeroStartOfTurn right above, since there's no
+        // battlecry counterpart covering that first round here. Same
+        // random-cell-in-mirrored-lane/unit-or-hero-fallback shape as
+        // Бамбуковый стрелок's own bambooShotOnPlay, but the damage
+        // scales with its own CURRENT attack (effectiveAtk, so her
+        // Synergy bonus counts) read fresh every round, not a fixed
+        // amount.
+        if (unit && unit.pirateCannonShotOnRoundStart) {
+          const targetSide = match.players.find((p) => p !== side);
+          const targetBoard = match.boards[targetSide];
+          const targetDepth = Math.floor(Math.random() * DEPTH);
+          const cellUnit = targetBoard[l][targetDepth];
+          const resisted = !!(cellUnit && cellUnit.spellResist);
+          const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+          const amount = effectiveAtk(board, l, d);
+          let died = false;
+          let applied = 0;
+          if (resisted) {
+            // no-op: the cannonball lands harmlessly
+          } else if (targetUnit) {
+            applied = applyWardedDamage(targetUnit, amount);
+            targetUnit.hp -= applied;
+            died = targetUnit.hp <= 0;
+          } else {
+            damageHero(match, targetSide, amount, events);
+            applied = amount;
+          }
+          events.push({
+            type: 'pirateCannonShot', side, targetSide, amount: resisted ? 0 : applied,
+            laneIdx: l, depthIdx: d, sourceUid: unit.uid,
+            targetLaneIdx: l, targetDepthIdx: targetDepth,
+            targetHero: !cellUnit, died, resisted,
+          });
+          if (died) killUnit(match, targetSide, l, targetDepth, events);
         }
       }
     }
