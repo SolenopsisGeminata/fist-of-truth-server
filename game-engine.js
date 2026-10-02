@@ -1266,6 +1266,9 @@ export const CARD_POOL = [
   // same mechanic as \u0421\u043e\u0431\u0430\u0447\u043d\u0438\u043a above, summoning \u0420\u0435\u0434\u043a\u0438\u0439 \u0437\u0432\u0435\u0440\u044c (c263)
   // instead of \u0417\u043b\u043e\u0439 \u0449\u0435\u043d\u043e\u043a.
   { id: 'c282', name: '\u041a\u043e\u043d\u0442\u0440\u0430\u0431\u0430\u043d\u0434\u0438\u0441\u0442', type: 'creature', cost: 2, atk: 3, hp: 1, battlecrySummon: 'c263', rarity: 'epic', faction: 'pirates' },
+  // \u0414\u0440\u0435\u0441\u0441\u0438\u0440\u043e\u0432\u0449\u0438\u043a: see trainerWakeAndInvisible/tempInvisibleThisRound above
+  // (buildUnitFromCard) and placeCard's own immediate handling of it.
+  { id: 'c283', name: '\u0414\u0440\u0435\u0441\u0441\u0438\u0440\u043e\u0432\u0449\u0438\u043a', type: 'creature', cost: 2, atk: 2, hp: 2, trainerWakeAndInvisible: true, rarity: 'epic', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1918,8 +1921,18 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // Невидимость: not currently a static card property anywhere —
     // only ever granted dynamically by Разуплотнение (see the
     // 'decompression' spell kind in resolveSpells and frontVisibleUnit
-    // above/below).
+    // above/below) or, temporarily, by Дрессировщик's own battlecry (see
+    // trainerWakeAndInvisible/tempInvisibleThisRound below).
     invisible: !!card.invisible,
+    // Дрессировщик: battlecry flag checked immediately in placeCard (not
+    // deferred — a plain flag flip, same immediacy as Безногий зомби's
+    // own thawIfFrozenOnPlay above). tempInvisibleThisRound marks THIS
+    // unit's own invisible flag as temporary so the post-combat reset
+    // loop in tryEndTurn (right alongside cantAttackThisRound's own
+    // reset) clears it after the round it was granted in, without ever
+    // touching a unit made permanently invisible by Разуплотнение.
+    trainerWakeAndInvisible: !!card.trainerWakeAndInvisible,
+    tempInvisibleThisRound: false,
     punisherKill: !!card.punisherKill,
     cunningApprenticeBounceOnPlay: !!card.cunningApprenticeBounceOnPlay,
     foreignTravelerDrawOnLegacy: !!card.foreignTravelerDrawOnLegacy,
@@ -2808,6 +2821,23 @@ export function placeCard(match, username, uid, lane, depth) {
   // it never comes back later either.
   if (card.thawIfFrozenOnPlay && match.frozenCells[username][lane][depth]) {
     unit.sleep = false;
+  }
+
+  // Дрессировщик: on play, immediately wakes every currently-asleep ally
+  // on its own board (same unit.sleep = false flip as Безногий зомби's
+  // own thawIfFrozenOnPlay right above, just board-wide instead of
+  // self-only), then becomes Invisible itself for the rest of this round
+  // — see tempInvisibleThisRound's own post-combat reset in tryEndTurn.
+  if (card.trainerWakeAndInvisible) {
+    const ownBoard = match.boards[username];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = ownBoard[l][d];
+        if (u) u.sleep = false;
+      }
+    }
+    unit.invisible = true;
+    unit.tempInvisibleThisRound = true;
   }
 
   // Крушитель черепов: on play, deals a fixed amount of damage to its
@@ -9527,6 +9557,24 @@ export function tryEndTurn(match, username) {
     for (let l = 0; l < LANES; l++) {
       for (let d = 0; d < DEPTH; d++) {
         if (board[l][d]) board[l][d].cantAttackThisRound = false;
+      }
+    }
+  }
+  // Дрессировщик: same "only covers the one round it applies to" scoping
+  // as Рейна's blind / Трусливый убийца's cantAttackThisRound right above
+  // — the Invisible it granted itself protected it through this round's
+  // combat, and now disappears. Only ever touches units flagged
+  // tempInvisibleThisRound, so a unit made permanently Invisible by
+  // Разуплотнение is never affected by this reset.
+  for (const name of match.players) {
+    const board = match.boards[name];
+    for (let l = 0; l < LANES; l++) {
+      for (let d = 0; d < DEPTH; d++) {
+        const u = board[l][d];
+        if (u && u.tempInvisibleThisRound) {
+          u.invisible = false;
+          u.tempInvisibleThisRound = false;
+        }
       }
     }
   }
