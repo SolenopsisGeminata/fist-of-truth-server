@@ -1221,6 +1221,10 @@ export const CARD_POOL = [
   // (right after \u041b\u0443\u0447\u043d\u0438\u043a \u043f\u0440\u0435\u0440\u0438\u0439's own shootHero) \u2014 same damage formula,
   // but NO battlecry shot on play (unlike shootHero, which fires both).
   { id: 'c274', name: '\u0428\u0430\u0445\u0442\u0435\u0440', type: 'creature', cost: 3, atk: 2, hp: 2, minerShootHeroOnRoundEnd: true, rarity: 'common', faction: 'pirates' },
+  // \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0431\u043e\u0447\u043a\u043e\u0439: see sailorBarrelGrowIfHpAhead in the end-of-round
+  // loop above (right after \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d's own furiousPeasantGrow)
+  // \u2014 same hero-hp comparison as \u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446's own lifeLight spell.
+  { id: 'c275', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0431\u043e\u0447\u043a\u043e\u0439', type: 'creature', cost: 3, atk: 1, hp: 6, sailorBarrelGrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1369,11 +1373,12 @@ export function mysteryStarterDeckCounts() {
 
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Матрос, Град стрел, and Шахтер are Common and join the same
-// "starter decks are Common-only" convention as every other faction
-// (every other Пираты card so far is Rare, so none of them join).
+// Матрос, Град стрел, Шахтер, and Матрос с бочкой are Common and join
+// the same "starter decks are Common-only" convention as every other
+// faction (every other Пираты card so far is Rare, so none of them
+// join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3 };
 }
 
 // ---------- Factions ----------
@@ -1815,6 +1820,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     cowHeal: !!card.cowHeal,
     wallGrow: !!card.wallGrow,
     furiousPeasantGrow: !!card.furiousPeasantGrow,
+    sailorBarrelGrowIfHpAhead: !!card.sailorBarrelGrowIfHpAhead,
     firstStrike: !!card.firstStrike,
     dawnBuff: !!card.dawnBuff,
     barrakInfernoBuff: !!card.barrakInfernoBuff,
@@ -10052,6 +10058,23 @@ export function tryEndTurn(match, username) {
               type: 'rallyBuff', side: name, laneIdx: l,
               targetDepth: d, buffAtk: 1, buffHp: 0, sourceUid: unit.uid,
             });
+          }
+          // Матрос с бочкой: at the end of every round he survives, if
+          // his OWN hero currently has more health than the opponent's
+          // hero (same comparison Ополченец's own lifeLight spell uses),
+          // permanently gains +1/+1 — re-checked fresh every round, no
+          // memory of past rounds. Reuses the plain rallyBuff event.
+          if (unit && unit.sailorBarrelGrowIfHpAhead) {
+            const enemySide = otherPlayer(match, name);
+            if (match.hp[name] > match.hp[enemySide]) {
+              unit.atk += 1;
+              unit.hp += 1;
+              unit.maxHp += 1;
+              events.push({
+                type: 'rallyBuff', side: name, laneIdx: l,
+                targetDepth: d, buffAtk: 1, buffHp: 1, sourceUid: unit.uid,
+              });
+            }
           }
           // Персиковый сад: at the end of every round he survives, adds
           // a fresh Персик card directly to his owner's hand — NOT
