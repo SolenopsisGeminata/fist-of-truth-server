@@ -1225,6 +1225,12 @@ export const CARD_POOL = [
   // loop above (right after \u042f\u0440\u043e\u0441\u0442\u043d\u044b\u0439 \u043a\u0440\u0435\u0441\u0442\u044c\u044f\u043d\u0438\u043d's own furiousPeasantGrow)
   // \u2014 same hero-hp comparison as \u041e\u043f\u043e\u043b\u0447\u0435\u043d\u0435\u0446's own lifeLight spell.
   { id: 'c275', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0431\u043e\u0447\u043a\u043e\u0439', type: 'creature', cost: 3, atk: 1, hp: 6, sailorBarrelGrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
+  // \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0441\u0430\u0431\u043b\u0435\u0439: see sailorSabreGrowIfHpAhead in the resolveCombatPass
+  // pre-attack hook above (right after \u041c\u0430\u043b\u0435\u043d\u044c\u043a\u0430\u044f \u0432\u0435\u0434\u044c\u043c\u0430's own
+  // littleWitchSpellPower) \u2014 same hero-hp comparison as \u041c\u0430\u0442\u0440\u043e\u0441 \u0441
+  // \u0431\u043e\u0447\u043a\u043e\u0439's own sailorBarrelGrowIfHpAhead, just checked before every
+  // attack instead of at the end of the round.
+  { id: 'c276', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0441\u0430\u0431\u043b\u0435\u0439', type: 'creature', cost: 3, atk: 3, hp: 5, sailorSabreGrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1373,12 +1379,12 @@ export function mysteryStarterDeckCounts() {
 
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Матрос, Град стрел, Шахтер, and Матрос с бочкой are Common and join
-// the same "starter decks are Common-only" convention as every other
-// faction (every other Пираты card so far is Rare, so none of them
-// join).
+// Матрос, Град стрел, Шахтер, Матрос с бочкой, and Матрос с саблей are
+// Common and join the same "starter decks are Common-only" convention
+// as every other faction (every other Пираты card so far is Rare, so
+// none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3, c275: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3 };
 }
 
 // ---------- Factions ----------
@@ -2075,6 +2081,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // above (right alongside Злолунный кот's own moonCatGrowOnSpellCount
     // check) plus the applyLittleWitchHex helper it calls.
     littleWitchSpellPower: !!card.littleWitchSpellPower,
+    sailorSabreGrowIfHpAhead: !!card.sailorSabreGrowIfHpAhead,
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
@@ -6993,6 +7000,25 @@ function resolveCombatPass(match, events, isEligible) {
         }
         const enemyCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameA]) || 0;
         if (enemyCount) applyLittleWitchHex(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, enemyCount);
+      }
+      // Матрос с саблей: same "no bornRound gate" timing as every other
+      // single-trigger pre-attack card above — right before every attack
+      // of his, if his OWN hero currently has more health than the
+      // opponent's hero (same strict-greater comparison Матрос с
+      // бочкой's own sailorBarrelGrowIfHpAhead uses at end of round),
+      // permanently gains +1/+1. Re-checked fresh every time, so it can
+      // start or stop applying as hero hp shifts mid-match.
+      if (aEligible && aUnit.sailorSabreGrowIfHpAhead && match.hp[nameA] > match.hp[nameB]) {
+        aUnit.atk += 1;
+        aUnit.hp += 1;
+        aUnit.maxHp += 1;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: aUnit.uid });
+      }
+      if (bEligible && bUnit.sailorSabreGrowIfHpAhead && match.hp[nameB] > match.hp[nameA]) {
+        bUnit.atk += 1;
+        bUnit.hp += 1;
+        bUnit.maxHp += 1;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 1, sourceUid: bUnit.uid });
       }
       // Робот авангарда: same "no bornRound gate" timing as every other
       // single-trigger pre-attack card above — right before every attack
