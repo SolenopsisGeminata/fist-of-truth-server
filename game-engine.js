@@ -1208,7 +1208,7 @@ export const CARD_POOL = [
   // \u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430: see daredevilExtraDamage in the "own attack lands
   // directly on the enemy hero" trigger family in resolveCombat above
   // (right after \u0411\u0435\u0441-\u043c\u0443\u0447\u0438\u0442\u0435\u043b\u044c's own tormentorExtraDamage).
-  { id: 'c272', name: '\u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 4, hp: 1, daredevilExtraDamage: true, rarity: 'rare', faction: 'pirates' },
+  { id: 'c272', name: '\u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430', type: 'creature', cost: 2, atk: 4, hp: 1, daredevilExtraDamage: 1, rarity: 'rare', faction: 'pirates' },
   // \u0421\u043d\u0435\u0433\u043e\u0432\u0438\u043a: see snowmanMeltOffIce in the end-of-round loop above
   // (right after \u041b\u0435\u0434\u044f\u043d\u0430\u044f \u0441\u0442\u0435\u043d\u0430's own iceWallGrowOnFrozenCell) \u2014 mirror
   // image, melts instead of growing, off-ice instead of on-ice.
@@ -1237,6 +1237,15 @@ export const CARD_POOL = [
   // applyAxeFanaticThrow, gated behind the same hero-hp-ahead condition
   // as \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0441\u0430\u0431\u043b\u0435\u0439's own sailorSabreGrowIfHpAhead.
   { id: 'c277', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 4, atk: 2, hp: 5, sailorAxesThrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
+  // \u0417\u043b\u043e\u0439 \u0449\u0435\u043d\u043e\u043a: pure reuse of \u0421\u043e\u0440\u0432\u0438\u0433\u043e\u043b\u043e\u0432\u0430's own daredevilExtraDamage
+  // mechanic (see the "own attack lands directly on the enemy hero"
+  // trigger family in resolveCombat above) \u2014 the amount itself lives on
+  // the flag, so this is just a different value, no new code at all.
+  { id: 'c278', name: '\u0417\u043b\u043e\u0439 \u0449\u0435\u043d\u043e\u043a', type: 'creature', cost: 1, atk: 1, hp: 1, daredevilExtraDamage: 2, rarity: 'common', faction: 'pirates' },
+  // \u0421\u043e\u0431\u0430\u0447\u043d\u0438\u043a: pure reuse of battlecrySummon/battlecrySummonCount (see
+  // pendingBattlecrySummons in tryEndTurn \u2014 summonUnitToRandomFreeCell,
+  // same mechanic as \u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d/\u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430).
+  { id: 'c279', name: '\u0421\u043e\u0431\u0430\u0447\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, battlecrySummon: 'c278', battlecrySummonCount: 2, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1385,12 +1394,12 @@ export function mysteryStarterDeckCounts() {
 
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Матрос, Град стрел, Шахтер, Матрос с бочкой, Матрос с саблей, and
-// Матрос с топорами are Common and join the same "starter decks are
-// Common-only" convention as every other faction (every other Пираты
-// card so far is Rare, so none of them join).
+// Матрос, Град стрел, Шахтер, Матрос с бочкой, Матрос с саблей, Матрос
+// с топорами, Злой щенок, and Собачник are Common and join the same
+// "starter decks are Common-only" convention as every other faction
+// (every other Пираты card so far is Rare, so none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3, c278: 3, c279: 3 };
 }
 
 // ---------- Factions ----------
@@ -2047,7 +2056,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     maintenanceRobotPulse: !!card.maintenanceRobotPulse,
     rageGrowOnEnemySummon: !!card.rageGrowOnEnemySummon,
     tormentorExtraDamage: !!card.tormentorExtraDamage,
-    daredevilExtraDamage: !!card.daredevilExtraDamage,
+    daredevilExtraDamage: card.daredevilExtraDamage || 0,
     acidShotOnDeath: !!card.acidShotOnDeath,
     // Ледяной зомби: see freezeCellOnDeath in killUnit above.
     freezeCellOnDeath: !!card.freezeCellOnDeath,
@@ -7534,14 +7543,18 @@ function resolveCombatPass(match, events, isEligible) {
       // tormentorExtraDamage's own two-sided version. Routed through
       // damageHero() so it still correctly triggers any reaction on the
       // enemy side (e.g. Огненная муха) for the extra hit, same as any
-      // other source of hero damage.
+      // other source of hero damage. The amount itself lives on the flag
+      // (same convention as impAtkGrowOnHeroHit) — Сорвиголова is 1,
+      // Злой щенок (daredevilExtraDamage: 2) reuses the exact same check.
       if (aAttacks && !aTarget && aUnit.daredevilExtraDamage) {
-        damageHero(match, nameB, 1, events);
-        events.push({ type: 'daredevilExtraHit', side: nameA, targetSide: nameB, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, amount: 1 });
+        const amount = aUnit.daredevilExtraDamage;
+        damageHero(match, nameB, amount, events);
+        events.push({ type: 'daredevilExtraHit', side: nameA, targetSide: nameB, laneIdx: l, depthIdx: aInfo.depth, sourceUid: aUnit.uid, amount });
       }
       if (bAttacks && !bTarget && bUnit.daredevilExtraDamage) {
-        damageHero(match, nameA, 1, events);
-        events.push({ type: 'daredevilExtraHit', side: nameB, targetSide: nameA, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, amount: 1 });
+        const amount = bUnit.daredevilExtraDamage;
+        damageHero(match, nameA, amount, events);
+        events.push({ type: 'daredevilExtraHit', side: nameB, targetSide: nameA, laneIdx: l, depthIdx: bInfo.depth, sourceUid: bUnit.uid, amount });
       }
 
       // Небесный воин: whenever his own attack lands directly on the
