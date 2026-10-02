@@ -1275,6 +1275,10 @@ export const CARD_POOL = [
   // (see buildUnitFromCard/resolveCombatPass above), gated to skip its
   // placement round so it never double-fires alongside the battlecry.
   { id: 'c284', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0440\u0443\u0436\u044c\u0435\u043c', type: 'creature', cost: 2, atk: 2, hp: 1, randomShotOnPlay: 2, sailorRifleShotRecurring: 2, rarity: 'epic', faction: 'pirates' },
+  // \u0414\u0435\u043c\u043e\u043d\u043e\u043b\u043e\u0433 \u0431\u0430\u0433\u0440\u043e\u0432\u043e\u0433\u043e \u043c\u043e\u0440\u044f: see demonologistSpellBuff in
+  // buildUnitFromCard/resolveCombatPass above (right alongside \u041c\u0430\u043b\u0435\u043d\u044c\u043a\u0430\u044f
+  // \u0432\u0435\u0434\u044c\u043c\u0430's own littleWitchSpellPower).
+  { id: 'c285', name: '\u0414\u0435\u043c\u043e\u043d\u043e\u043b\u043e\u0433 \u0431\u0430\u0433\u0440\u043e\u0432\u043e\u0433\u043e \u043c\u043e\u0440\u044f', type: 'creature', cost: 2, atk: 3, hp: 1, firstStrike: true, demonologistSpellBuff: true, rarity: 'epic', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -2149,6 +2153,13 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // above (right alongside Злолунный кот's own moonCatGrowOnSpellCount
     // check) plus the applyLittleWitchHex helper it calls.
     littleWitchSpellPower: !!card.littleWitchSpellPower,
+    // Демонолог багрового моря: same pre-attack hook point and
+    // match.spellsCastThisRoundBySide check as Маленькая ведьма's own
+    // littleWitchSpellPower right above, but a flat yes/no condition
+    // (own side cast at least one spell this round) instead of scaling
+    // with the count, and a fixed +1 atk plus a 1-damage shot at a
+    // random enemy unit (applyRandomEnemyShot) instead of a hex.
+    demonologistSpellBuff: !!card.demonologistSpellBuff,
     sailorSabreGrowIfHpAhead: !!card.sailorSabreGrowIfHpAhead,
     sailorAxesThrowIfHpAhead: !!card.sailorAxesThrowIfHpAhead,
     heavenlyWarrior: !!card.heavenlyWarrior,
@@ -7172,6 +7183,23 @@ function resolveCombatPass(match, events, isEligible) {
         }
         const enemyCount = (match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameA]) || 0;
         if (enemyCount) applyLittleWitchHex(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, enemyCount);
+      }
+      // Демонолог багрового моря: same match.spellsCastThisRoundBySide
+      // check as Маленькая ведьма right above, but flat yes/no (own side
+      // cast at least one spell this round) instead of scaling with the
+      // count — a fixed +1 atk plus a 1-damage shot at a random enemy
+      // unit via applyRandomEnemyShot (no hero fallback, same as every
+      // other musketShot-style shot). No bornRound gate, same as every
+      // other single-trigger pre-attack card with no separate battlecry.
+      if (aEligible && aUnit.demonologistSpellBuff && ((match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameA]) || 0) > 0) {
+        aUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameA, laneIdx: l, targetDepth: aInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: aUnit.uid });
+        applyRandomEnemyShot(match, nameA, nameB, events, aUnit.uid, l, aInfo.depth, 1);
+      }
+      if (bEligible && bUnit.demonologistSpellBuff && ((match.spellsCastThisRoundBySide && match.spellsCastThisRoundBySide[nameB]) || 0) > 0) {
+        bUnit.atk += 1;
+        events.push({ type: 'rallyBuff', side: nameB, laneIdx: l, targetDepth: bInfo.depth, buffAtk: 1, buffHp: 0, sourceUid: bUnit.uid });
+        applyRandomEnemyShot(match, nameB, nameA, events, bUnit.uid, l, bInfo.depth, 1);
       }
       // Матрос с саблей: same "no bornRound gate" timing as every other
       // single-trigger pre-attack card above — right before every attack
