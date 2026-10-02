@@ -1329,12 +1329,20 @@ export function infernoStarterDeckCounts() {
 
 // The Холод starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Скелет, Ледяной зомби (downgraded to common), Костяная гончая, and
-// Скелет-лучник are the confirmed starter-deck cards so far (every
-// other Холод card so far is Rare, so none of them join, same "starter
-// decks are Common-only" convention as every other faction).
+// Скелет, Ледяной зомби, Костяная гончая, Скелет-лучник, and Морозный
+// скааб are Common and join the same way as every other faction's
+// starter deck. Смерть с косой, Стена костей, Ледяная стена, Оживший
+// труп, and Скелет-воин are explicitly requested additions ON TOP of
+// that Common-only convention — they stay Rare (Скелет-воин stays
+// Common) and keep showing up in the shop exactly as before
+// (shoppableCards() is keyed purely on card.rarity/locked/noShop, never
+// on starter-deck membership, so granting them here doesn't touch their
+// shop eligibility at all).
 export function frostStarterDeckCounts() {
-  return { c200: 3, c201: 3, c208: 3, c209: 3, c211: 3 };
+  return {
+    c200: 3, c201: 3, c208: 3, c209: 3, c211: 3,
+    c202: 3, c203: 3, c204: 3, c206: 3, c217: 3,
+  };
 }
 
 // The Мистерия starter deck — same "granted once the faction unlocks"
