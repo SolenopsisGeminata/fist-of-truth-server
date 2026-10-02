@@ -1246,6 +1246,11 @@ export const CARD_POOL = [
   // pendingBattlecrySummons in tryEndTurn \u2014 summonUnitToRandomFreeCell,
   // same mechanic as \u0414\u0432\u043e\u0440\u0446\u043e\u0432\u044b\u0439 \u0433\u0440\u0438\u0444\u043e\u043d/\u0411\u0430\u0440\u0440\u0430\u043a, \u0411\u0430\u0440\u043e\u043d \u0410\u0434\u0430).
   { id: 'c279', name: '\u0421\u043e\u0431\u0430\u0447\u043d\u0438\u043a', type: 'creature', cost: 5, atk: 3, hp: 3, battlecrySummon: 'c278', battlecrySummonCount: 2, rarity: 'common', faction: 'pirates' },
+  // \u0417\u0430\u0445\u043c\u0435\u043b\u0435\u0432\u0448\u0438\u0439 \u0430\u043b\u043a\u043e\u0433\u043e\u043b\u0438\u043a: see pendingBottleThrows in tryEndTurn above
+  // (right after \u0411\u0430\u043c\u0431\u0443\u043a\u043e\u0432\u044b\u0439 \u0441\u0442\u0440\u0435\u043b\u043e\u043a's own bambooShotOnPlay) \u2014 same
+  // random-cell-in-mirrored-lane/unit-or-hero-fallback shape, fixed 2
+  // damage, as a battlecry.
+  { id: 'c280', name: '\u0417\u0430\u0445\u043c\u0435\u043b\u0435\u0432\u0448\u0438\u0439 \u0430\u043b\u043a\u043e\u0433\u043e\u043b\u0438\u043a', type: 'creature', cost: 2, atk: 1, hp: 2, bottleShotOnPlay: 2, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1395,11 +1400,12 @@ export function mysteryStarterDeckCounts() {
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
 // Матрос, Град стрел, Шахтер, Матрос с бочкой, Матрос с саблей, Матрос
-// с топорами, Злой щенок, and Собачник are Common and join the same
-// "starter decks are Common-only" convention as every other faction
-// (every other Пираты card so far is Rare, so none of them join).
+// с топорами, Злой щенок, Собачник, and Захмелевший алкоголик are
+// Common and join the same "starter decks are Common-only" convention
+// as every other faction (every other Пираты card so far is Rare, so
+// none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3, c278: 3, c279: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3, c278: 3, c279: 3, c280: 3 };
 }
 
 // ---------- Factions ----------
@@ -1678,6 +1684,7 @@ export function createMatch(matchId, nameA, deckCountsA, nameB, deckCountsB) {
     pendingHeals: [],
     pendingShots: [],
     pendingBambooShots: [],
+    pendingBottleThrows: [],
     pendingMarksmanShots: [],
     pendingHerbalist: [],
     pendingFoxSword: [],
@@ -2841,6 +2848,14 @@ export function placeCard(match, username, uid, lane, depth) {
   // Synergy-based shot.
   if (card.bambooShotOnPlay) {
     match.pendingBambooShots.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.bambooShotOnPlay });
+  }
+
+  // Захмелевший алкоголик: battlecry bottle throw — same deferred
+  // reasoning and shape as Бамбуковый стрелок's own bambooShotOnPlay
+  // right above (fixed damage, unit-or-hero fallback, resolved at the
+  // start of the next resolution — see pendingBottleThrows below).
+  if (card.bottleShotOnPlay) {
+    match.pendingBottleThrows.push({ side: username, laneIdx: lane, depthIdx: depth, sourceUid: unit.uid, amount: card.bottleShotOnPlay });
   }
 
   // Дикарь-стрелок: battlecry throw at a random ENEMY UNIT (not a cell —
@@ -8331,6 +8346,42 @@ export function tryEndTurn(match, username) {
     }
     events.push({
       type: 'bambooShot', side: shot.side, targetSide, amount: resisted ? 0 : applied,
+      laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
+      targetLaneIdx: shot.laneIdx, targetDepthIdx: targetDepth,
+      targetHero: !cellUnit, died, resisted,
+    });
+    if (died) killUnit(match, targetSide, shot.laneIdx, targetDepth, events);
+  }
+
+  // Захмелевший алкоголик's battlecry bottle throw: same shape as
+  // Бамбуковый стрелок's own bambooShot right above — a random depth
+  // within the SAME lane on the enemy's side, fixed damage,
+  // Чаростойкость blocks outright, an empty square redirects to the
+  // hero.
+  const bottleThrowQueue = match.pendingBottleThrows;
+  match.pendingBottleThrows = [];
+  for (const shot of bottleThrowQueue) {
+    const targetSide = otherPlayer(match, shot.side);
+    const targetBoard = match.boards[targetSide];
+    const targetDepth = Math.floor(Math.random() * DEPTH);
+    const cellUnit = targetBoard[shot.laneIdx][targetDepth];
+    const resisted = !!(cellUnit && cellUnit.spellResist);
+    const targetUnit = (cellUnit && !resisted) ? cellUnit : null;
+    const amount = shot.amount;
+    let died = false;
+    let applied = 0;
+    if (resisted) {
+      // no-op: the bottle shatters on her harmlessly
+    } else if (targetUnit) {
+      applied = applyWardedDamage(targetUnit, amount);
+      targetUnit.hp -= applied;
+      died = targetUnit.hp <= 0;
+    } else {
+      damageHero(match, targetSide, amount, events);
+      applied = amount;
+    }
+    events.push({
+      type: 'bottleThrow', side: shot.side, targetSide, amount: resisted ? 0 : applied,
       laneIdx: shot.laneIdx, depthIdx: shot.depthIdx, sourceUid: shot.sourceUid,
       targetLaneIdx: shot.laneIdx, targetDepthIdx: targetDepth,
       targetHero: !cellUnit, died, resisted,
