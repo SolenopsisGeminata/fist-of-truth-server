@@ -1262,6 +1262,10 @@ export const CARD_POOL = [
   // resolveSpells above \u2014 targets a specific enemy cell like \u041c\u043e\u043b\u043d\u0438\u044f, then
   // arcs once to a random occupied non-resistant cardinal neighbour.
   { id: 's66', name: '\u0426\u0435\u043f\u043d\u0430\u044f \u043c\u043e\u043b\u043d\u0438\u044f', type: 'spell', cost: 3, chainLightningSpell: true, chainLightningDmg: 3, rarity: 'rare', faction: 'pirates' },
+  // \u041a\u043e\u043d\u0442\u0440\u0430\u0431\u0430\u043d\u0434\u0438\u0441\u0442: pure reuse of battlecrySummon (default count 1) \u2014
+  // same mechanic as \u0421\u043e\u0431\u0430\u0447\u043d\u0438\u043a above, summoning \u0420\u0435\u0434\u043a\u0438\u0439 \u0437\u0432\u0435\u0440\u044c (c263)
+  // instead of \u0417\u043b\u043e\u0439 \u0449\u0435\u043d\u043e\u043a.
+  { id: 'c282', name: '\u041a\u043e\u043d\u0442\u0440\u0430\u0431\u0430\u043d\u0434\u0438\u0441\u0442', type: 'creature', cost: 2, atk: 3, hp: 1, battlecrySummon: 'c263', rarity: 'epic', faction: 'pirates' },
 ];
 
 export function cardById(id) {
