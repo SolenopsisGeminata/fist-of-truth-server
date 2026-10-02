@@ -1231,6 +1231,12 @@ export const CARD_POOL = [
   // \u0431\u043e\u0447\u043a\u043e\u0439's own sailorBarrelGrowIfHpAhead, just checked before every
   // attack instead of at the end of the round.
   { id: 'c276', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0441\u0430\u0431\u043b\u0435\u0439', type: 'creature', cost: 3, atk: 3, hp: 5, sailorSabreGrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
+  // \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438: see sailorAxesThrowIfHpAhead in the
+  // resolveCombatPass pre-attack hook above (right after \u0414\u0438\u043a\u0430\u0440\u043a\u0430 \u0441
+  // \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438's own axeWomanThrow) \u2014 pure reuse of
+  // applyAxeFanaticThrow, gated behind the same hero-hp-ahead condition
+  // as \u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0441\u0430\u0431\u043b\u0435\u0439's own sailorSabreGrowIfHpAhead.
+  { id: 'c277', name: '\u041c\u0430\u0442\u0440\u043e\u0441 \u0441 \u0442\u043e\u043f\u043e\u0440\u0430\u043c\u0438', type: 'creature', cost: 4, atk: 2, hp: 5, sailorAxesThrowIfHpAhead: true, rarity: 'common', faction: 'pirates' },
 ];
 
 export function cardById(id) {
@@ -1379,12 +1385,12 @@ export function mysteryStarterDeckCounts() {
 
 // The Пираты starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
-// Матрос, Град стрел, Шахтер, Матрос с бочкой, and Матрос с саблей are
-// Common and join the same "starter decks are Common-only" convention
-// as every other faction (every other Пираты card so far is Rare, so
-// none of them join).
+// Матрос, Град стрел, Шахтер, Матрос с бочкой, Матрос с саблей, and
+// Матрос с топорами are Common and join the same "starter decks are
+// Common-only" convention as every other faction (every other Пираты
+// card so far is Rare, so none of them join).
 export function piratesStarterDeckCounts() {
-  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3 };
+  return { c265: 3, s64: 3, c274: 3, c275: 3, c276: 3, c277: 3 };
 }
 
 // ---------- Factions ----------
@@ -2082,6 +2088,7 @@ function buildUnitFromCard(card, placedThisRound, bornRound) {
     // check) plus the applyLittleWitchHex helper it calls.
     littleWitchSpellPower: !!card.littleWitchSpellPower,
     sailorSabreGrowIfHpAhead: !!card.sailorSabreGrowIfHpAhead,
+    sailorAxesThrowIfHpAhead: !!card.sailorAxesThrowIfHpAhead,
     heavenlyWarrior: !!card.heavenlyWarrior,
     rockEffect: !!card.rockEffect,
     armoredDragon: !!card.armoredDragon,
@@ -6894,6 +6901,18 @@ function resolveCombatPass(match, events, isEligible) {
       // round).
       if (aEligible && aUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
       if (bEligible && bUnit.axeWomanThrow) applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      // Матрос с топорами: same throw as Фанатик с топорами's own
+      // axeFanaticThrow right above (pure reuse of applyAxeFanaticThrow,
+      // same random-cell-in-mirrored-lane/unit-or-hero-fallback shape),
+      // but gated behind the same strict-greater hero-hp comparison as
+      // Матрос с саблей's own sailorSabreGrowIfHpAhead — no throw at all
+      // if his own hero isn't currently ahead.
+      if (aEligible && aUnit.sailorAxesThrowIfHpAhead && match.hp[nameA] > match.hp[nameB]) {
+        applyAxeFanaticThrow(match, nameA, nameB, events, aUnit, l, aInfo.depth);
+      }
+      if (bEligible && bUnit.sailorAxesThrowIfHpAhead && match.hp[nameB] > match.hp[nameA]) {
+        applyAxeFanaticThrow(match, nameB, nameA, events, bUnit, l, bInfo.depth);
+      }
       // Вождь Большеротых: same "no bornRound gate" reasoning as every
       // other single-trigger pre-attack card above — summons a
       // Ящерица степей onto a random free cell of his OWN board right
