@@ -1348,11 +1348,19 @@ export function frostStarterDeckCounts() {
 // The Мистерия starter deck — same "granted once the faction unlocks"
 // placeholder reasoning as the other faction starter decks above.
 // Робот-разведчик, Немота, Ремонтный робот, Призрачный питон, Ученик
-// алхимика, and Робот-погрузчик are the confirmed starter-deck cards so
-// far, same "starter decks are Common-only" convention as every other
-// faction.
+// алхимика, and Робот-погрузчик are Common and join the same way as
+// every other faction's starter deck. Механическая муха, Обуза, Робот
+// снабжения, and Охранный робот are explicitly requested additions ON
+// TOP of that Common-only convention (same exception already made for
+// Холод's own starter deck) — they stay Rare and keep showing up in the
+// shop exactly as before (shoppableCards() is keyed purely on
+// card.rarity/locked/noShop, never on starter-deck membership, so
+// granting them here doesn't touch their shop eligibility at all).
 export function mysteryStarterDeckCounts() {
-  return { c219: 3, s52: 3, c221: 3, c223: 3, c231: 3, c239: 3 };
+  return {
+    c219: 3, s52: 3, c221: 3, c223: 3, c231: 3, c239: 3,
+    c243: 3, s53: 3, c232: 3, c235: 3,
+  };
 }
 
 // The Пираты starter deck — same "granted once the faction unlocks"
